@@ -51,6 +51,7 @@ func sendToFilter(dc int) {
 	if len(buffer[dc]) == 0 {
 		return
 	}
+	b := []byte{'r'}
 	jsonBytes, err := log.ToJSONArray(buffer[dc])
 	if err != nil {
 		fmt.Println("Couldn't convert buffer to records")
@@ -61,7 +62,7 @@ func sendToFilter(dc int) {
 		fmt.Printf("Couldn't connect to filterHost[%d] %s\n", dc, filterHost[dc])
 	}
 	defer conn.Close()
-	conn.Write(jsonBytes)
+	conn.Write(append(b, jsonBytes...))
 	fmt.Println(info.Name, "sent to filter", filterHost[dc])
 }
 

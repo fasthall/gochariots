@@ -6,6 +6,8 @@ import (
 	"sort"
 	"time"
 
+	"encoding/json"
+
 	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/log"
 )
@@ -13,6 +15,7 @@ import (
 var buffered []map[int]log.Record
 var sameDCBuffered []log.Record
 var logMaintainerHost string
+var nextQueueHost string
 
 type queueHost int
 
@@ -127,7 +130,26 @@ func assignLId(records []log.Record, lastLId int) int {
 // passToken sends the token to the next queue in the ring
 func passToken(token *Token) {
 	time.Sleep(1 * time.Second)
-	TokenArrival(*token)
+	if nextQueueHost == "" {
+		TokenArrival(*token)
+	} else {
+		b := []byte{'t'}
+		jsonBytes, err := json.Marshal(token)
+		if err != nil {
+			fmt.Println("Couldn't convert token to bytes")
+			panic(err)
+		}
+		conn, err := net.Dial("tcp", nextQueueHost)
+		if err != nil {
+			fmt.Println(info.Name, "couldn't connect to", nextQueueHost)
+			panic(err)
+		}
+		defer conn.Close()
+		conn.Write(append(b, jsonBytes...))
+		if len(token.DeferredRecords) > 0 {
+			fmt.Println(info.Name, "sent to", nextQueueHost)
+		}
+	}
 }
 
 // dispatchRecords sends the ready records to log maintainers
@@ -138,7 +160,7 @@ func dispatchRecords(records []log.Record) {
 	}
 	conn, err := net.Dial("tcp", logMaintainerHost)
 	if err != nil {
-		fmt.Println("Not yey connected")
+		fmt.Println("Not yet connected")
 		return
 	}
 	defer conn.Close()
@@ -152,13 +174,31 @@ func HandleRequest(conn net.Conn) {
 	// Read the incoming connection into the buffer.
 	l, err := conn.Read(buf)
 	if err != nil {
+		fmt.Println("Error during reading buffer")
 		panic(err)
 	}
-	records, err := log.ToRecordArray(buf[:l])
-	if err != nil {
-		panic(err)
+	if buf[0] == 'r' { // received records
+		records, err := log.ToRecordArray(buf[1:l])
+		if err != nil {
+			fmt.Println("Couldn't convert received bytes to records")
+			panic(err)
+		}
+		fmt.Println(info.Name, "received:", records)
+		recordsArrival(records)
+	} else if buf[0] == 'q' { // received next host update
+		nextQueueHost = string(buf[1:l])
+		fmt.Println(info.Name, "set next host:", nextQueueHost)
+	} else if buf[0] == 't' { // received token
+		var token Token
+		err := json.Unmarshal(buf[1:l], &token)
+		if err != nil {
+			fmt.Println("Couldn't convert received bytes to token")
+			panic(err)
+		}
+		TokenArrival(token)
+		if len(token.DeferredRecords) > 0 {
+			fmt.Println(info.Name, "received:", token)
+		}
 	}
-	fmt.Println(info.Name, "received:", records)
 	conn.Close()
-	recordsArrival(records)
 }

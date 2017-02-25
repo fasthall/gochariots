@@ -25,11 +25,6 @@ func InitFilter(n int) {
 	buffer = make([]log.Record, 0)
 }
 
-// AddQueue adds a queue to the host pool
-func AddQueue(host string) {
-	queuePool = append(queuePool, host)
-}
-
 // arrival deals with the records the filter received.
 // If the TOId is the same as expected, the record will be forwared to the queue.
 // If the TOId is larger than expected, the record will be buffered.
@@ -68,6 +63,7 @@ func arrival(records []log.Record) {
 }
 
 func sendToQueue(records []log.Record) {
+	b := []byte{'r'}
 	jsonBytes, err := log.ToJSONArray(records)
 	if err != nil {
 		panic(err)
@@ -75,7 +71,7 @@ func sendToQueue(records []log.Record) {
 	host := queuePool[rand.Intn(len(queuePool))]
 	conn, _ := net.Dial("tcp", host)
 	defer conn.Close()
-	conn.Write(jsonBytes)
+	conn.Write(append(b, jsonBytes...))
 	fmt.Println(info.Name, "sent to", host)
 }
 
@@ -85,13 +81,19 @@ func HandleRequest(conn net.Conn) {
 	// Read the incoming connection into the buffer.
 	l, err := conn.Read(buf)
 	if err != nil {
+		fmt.Println("Error during reading buffer")
 		panic(err)
 	}
-	records, err := log.ToRecordArray(buf[:l])
-	if err != nil {
-		panic(err)
+	if buf[0] == 'r' { // received records
+		records, err := log.ToRecordArray(buf[1:l])
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println(info.Name, "received:", records)
+		arrival(records)
+	} else if buf[0] == 'q' { // received queue hosts
+		queuePool = append(queuePool, string(buf[1:l]))
+		fmt.Println(info.Name, "new queue:", string(buf[1:l]))
 	}
-	fmt.Println(info.Name, "received:", records)
-	arrival(records)
 	conn.Close()
 }

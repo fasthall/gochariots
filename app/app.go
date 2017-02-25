@@ -5,6 +5,10 @@ import (
 	"math/rand"
 	"net"
 
+	"strconv"
+
+	"net/http"
+
 	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/log"
 	"github.com/gin-gonic/gin"
@@ -20,12 +24,22 @@ type JsonRecord struct {
 
 func Run(port string) {
 	router := gin.Default()
-	router.POST("/", postRecord)
+	router.POST("/record", postRecord)
+	router.GET("/record/:lid", getRecord)
+	router.POST("/batcher", addBatcher)
+	router.GET("/batcher", getBatchers)
 	router.Run(":" + port)
 }
 
-func AddBatcher(host string) {
-	batcherPool = append(batcherPool, host)
+func addBatcher(c *gin.Context) {
+	batcherPool = append(batcherPool, c.Query("host"))
+	c.String(http.StatusOK, c.Query("host")+" added\n")
+}
+
+func getBatchers(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"batchers": batcherPool,
+	})
 }
 
 func postRecord(c *gin.Context) {
@@ -52,6 +66,32 @@ func postRecord(c *gin.Context) {
 	conn, _ := net.Dial("tcp", host)
 	defer conn.Close()
 	conn.Write(jsonBytes)
+}
+
+func getRecord(c *gin.Context) {
+	lid, err := strconv.Atoi(c.Param("lid"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"message": "Invalid LId",
+			"error":   err,
+		})
+		return
+	}
+	record, err := log.ReadByLId(lid)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"message": "Record not found",
+			"error":   err,
+		})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"LId":       record.LId,
+		"Host":      record.Host,
+		"TOId":      record.TOId,
+		"Causality": record.Pre,
+		"Tags":      record.Tags,
+	})
 }
 
 func randomHost() string {

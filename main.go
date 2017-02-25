@@ -2,8 +2,11 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
 	"net"
 	"os"
+
+	"strconv"
 
 	"github.com/fasthall/gochariots/app"
 	"github.com/fasthall/gochariots/batcher"
@@ -14,18 +17,19 @@ import (
 )
 
 func main() {
+	fmt.Println(os.Getpid())
 	initChariots(1, 0)
 
 	if len(os.Args) >= 3 {
 		switch os.Args[1] {
 		case "app":
 			info.Name = "App" + os.Args[2]
-			app.AddBatcher("localhost:9000")
-			app.AddBatcher("localhost:9001")
+			writePID()
 			app.Run(os.Args[2])
 			break
 		case "batcher":
 			info.Name = "Bather" + os.Args[2]
+			writePID()
 			batcher.InitBatcher(1)
 			batcher.SetFilterHost(0, "localhost:9010")
 			ln, err := net.Listen("tcp", ":"+os.Args[2])
@@ -46,8 +50,8 @@ func main() {
 			}
 		case "filter":
 			info.Name = "Filter" + os.Args[2]
+			writePID()
 			filter.InitFilter(info.NumDC)
-			filter.AddQueue("localhost:9020")
 			ln, err := net.Listen("tcp", ":"+os.Args[2])
 			if err != nil {
 				panic(err)
@@ -65,6 +69,7 @@ func main() {
 			}
 		case "queue":
 			info.Name = "Queue" + os.Args[2]
+			writePID()
 			queue.InitQueue(os.Args[3] == "true")
 			queue.SetLogMaintainer("localhost:9030")
 			ln, err := net.Listen("tcp", ":"+os.Args[2])
@@ -82,9 +87,15 @@ func main() {
 				// Handle connections in a new goroutine.
 				go queue.HandleRequest(conn)
 			}
-		case "log":
-			info.Name = "Log" + os.Args[2]
-			log.InitLogMaintainer()
+		case "controller":
+			info.Name = "LogController" + os.Args[2]
+			writePID()
+			log.StartController(os.Args[2])
+			break
+		case "maintainer":
+			info.Name = "LogMaintainer" + os.Args[2]
+			writePID()
+			log.InitLogMaintainer("flstore/")
 			ln, err := net.Listen("tcp", ":"+os.Args[2])
 			if err != nil {
 				panic(err)
@@ -107,4 +118,8 @@ func main() {
 func initChariots(numDc int, id int) {
 	info.NumDC = numDc
 	info.ID = id
+}
+
+func writePID() {
+	ioutil.WriteFile(info.Name+".pid", []byte(strconv.Itoa(os.Getpid())+"\n"), 0644)
 }
