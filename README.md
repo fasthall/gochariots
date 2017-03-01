@@ -5,6 +5,7 @@ For the system details, please refer to the EDBT paper:
 
 ## Quickstart
 The shared log system consists of several parts:
+
 * **controller** for meta data and cluster management
 * **app** for RESTful APIs
 * **batcher** for batching the records sent by applications or propagation
@@ -14,6 +15,7 @@ The shared log system consists of several parts:
 
 Each part can be scaled independently.
 To quickstart a shared log, use the scripts in test folder in the following order:
+
 1. `sh gochariots/test/controller.sh`
 2. `sh gochariots/test/app.sh`
 3. `sh gochariots/test/batcher.sh`
@@ -22,6 +24,7 @@ To quickstart a shared log, use the scripts in test folder in the following orde
 6. `sh gochariots/test/maintainer.sh`
 
 The above scripts will start a small cluster. The new component information will be reported to the controller. The cluster will have following components:
+
 * **1 controller** running on port **8081**
 * **1 app** running on port **8080**
 * **3 batchers** running on port **9000**, **9001**, and **9002**
