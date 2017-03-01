@@ -69,7 +69,7 @@ func HandleRequest(conn net.Conn) {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(info.Name, "received:", records)
+	fmt.Println(info.GetName(), "received:", records)
 	conn.Close()
 	recordsArrival(records)
 }

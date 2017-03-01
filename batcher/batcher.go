@@ -25,7 +25,7 @@ func InitBatcher(n int) {
 		buffer[i] = make([]log.Record, 0, bufferSize)
 	}
 	filterHost = make([]string, numFilters)
-	fmt.Printf("%s is initialized with %d filter channels\n", info.Name, n)
+	fmt.Printf("%s is initialized with %d filter channels\n", info.GetName(), n)
 }
 
 // SetFilterHost sets the host of filter
@@ -63,7 +63,7 @@ func sendToFilter(dc int) {
 	}
 	defer conn.Close()
 	conn.Write(append(b, jsonBytes...))
-	fmt.Println(info.Name, "sent to filter", filterHost[dc])
+	fmt.Println(info.GetName(), "sent to filter", filterHost[dc])
 }
 
 func Sweeper() {
@@ -87,7 +87,7 @@ func HandleRequest(conn net.Conn) {
 	if err != nil {
 		fmt.Println("Couldn't convert buffer to record")
 	}
-	fmt.Println(info.Name, "received:", record)
+	fmt.Println(info.GetName(), "received:", record)
 	arrival(record)
 	conn.Close()
 }

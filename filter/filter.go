@@ -72,7 +72,7 @@ func sendToQueue(records []log.Record) {
 	conn, _ := net.Dial("tcp", host)
 	defer conn.Close()
 	conn.Write(append(b, jsonBytes...))
-	fmt.Println(info.Name, "sent to", host)
+	fmt.Println(info.GetName(), "sent to", host)
 }
 
 func HandleRequest(conn net.Conn) {
@@ -89,11 +89,11 @@ func HandleRequest(conn net.Conn) {
 		if err != nil {
 			panic(err)
 		}
-		fmt.Println(info.Name, "received:", records)
+		fmt.Println(info.GetName(), "received:", records)
 		arrival(records)
 	} else if buf[0] == 'q' { // received queue hosts
 		queuePool = append(queuePool, string(buf[1:l]))
-		fmt.Println(info.Name, "new queue:", string(buf[1:l]))
+		fmt.Println(info.GetName(), "new queue:", string(buf[1:l]))
 	}
 	conn.Close()
 }

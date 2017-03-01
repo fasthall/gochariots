@@ -141,13 +141,13 @@ func passToken(token *Token) {
 		}
 		conn, err := net.Dial("tcp", nextQueueHost)
 		if err != nil {
-			fmt.Println(info.Name, "couldn't connect to", nextQueueHost)
+			fmt.Println(info.GetName(), "couldn't connect to", nextQueueHost)
 			panic(err)
 		}
 		defer conn.Close()
 		conn.Write(append(b, jsonBytes...))
 		if len(token.DeferredRecords) > 0 {
-			fmt.Println(info.Name, "sent to", nextQueueHost)
+			fmt.Println(info.GetName(), "sent to", nextQueueHost)
 		}
 	}
 }
@@ -165,7 +165,7 @@ func dispatchRecords(records []log.Record) {
 	}
 	defer conn.Close()
 	conn.Write(jsonBytes)
-	fmt.Println(info.Name, "sent to", logMaintainerHost)
+	fmt.Println(info.GetName(), "sent to", logMaintainerHost)
 }
 
 func HandleRequest(conn net.Conn) {
@@ -183,11 +183,11 @@ func HandleRequest(conn net.Conn) {
 			fmt.Println("Couldn't convert received bytes to records")
 			panic(err)
 		}
-		fmt.Println(info.Name, "received:", records)
+		fmt.Println(info.GetName(), "received:", records)
 		recordsArrival(records)
 	} else if buf[0] == 'q' { // received next host update
 		nextQueueHost = string(buf[1:l])
-		fmt.Println(info.Name, "set next host:", nextQueueHost)
+		fmt.Println(info.GetName(), "set next host:", nextQueueHost)
 	} else if buf[0] == 't' { // received token
 		var token Token
 		err := json.Unmarshal(buf[1:l], &token)
@@ -197,7 +197,7 @@ func HandleRequest(conn net.Conn) {
 		}
 		TokenArrival(token)
 		if len(token.DeferredRecords) > 0 {
-			fmt.Println(info.Name, "received:", token)
+			fmt.Println(info.GetName(), "received:", token)
 		}
 	}
 	conn.Close()
