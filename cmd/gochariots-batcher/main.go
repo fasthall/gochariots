@@ -21,7 +21,6 @@ func main() {
 	info.SetName("batcher" + os.Args[1])
 	info.WritePID()
 	batcher.InitBatcher(1)
-	batcher.SetFilterHost(0, "localhost:9010")
 	ln, err := net.Listen("tcp", ":"+os.Args[1])
 	if err != nil {
 		panic(err)

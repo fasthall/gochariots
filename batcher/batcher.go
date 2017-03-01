@@ -7,6 +7,8 @@ import (
 	"net"
 	"time"
 
+	"encoding/json"
+
 	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/log"
 )
@@ -26,11 +28,6 @@ func InitBatcher(n int) {
 	}
 	filterHost = make([]string, numFilters)
 	fmt.Printf("%s is initialized with %d filter channels\n", info.GetName(), n)
-}
-
-// SetFilterHost sets the host of filter
-func SetFilterHost(id int, host string) {
-	filterHost[id] = host
 }
 
 // arrival buffers arriving records.
@@ -81,13 +78,25 @@ func HandleRequest(conn net.Conn) {
 	// Read the incoming connection into the buffer.
 	l, err := conn.Read(buf)
 	if err != nil {
-		fmt.Println("Couldn't read buffer")
+		fmt.Println("Error during reading buffer")
+		panic(err)
 	}
-	record, err := log.ToRecord(buf[:l])
-	if err != nil {
-		fmt.Println("Couldn't convert buffer to record")
+	if buf[0] == 'r' { // received records
+		record, err := log.ToRecord(buf[1:l])
+		if err != nil {
+			fmt.Println("Couldn't convert buffer to record")
+			panic(err)
+		}
+		fmt.Println(info.GetName(), "received:", record)
+		arrival(record)
+	} else if buf[0] == 'f' { //received filter update
+		err := json.Unmarshal(buf[1:l], &filterHost)
+		if err != nil {
+			fmt.Println("Couldn't convert bytes to filter list")
+			fmt.Println("Bytes:", string(buf[1:l]))
+			panic(err)
+		}
+		fmt.Println(info.GetName(), "update filter:", filterHost)
 	}
-	fmt.Println(info.GetName(), "received:", record)
-	arrival(record)
 	conn.Close()
 }

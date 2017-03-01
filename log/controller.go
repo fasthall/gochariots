@@ -5,32 +5,66 @@ import (
 	"net"
 	"net/http"
 
+	"encoding/json"
+
 	"github.com/gin-gonic/gin"
 )
 
-var maintainers []string
-var queues []string
+var batchers []string
 var filters []string
+var queues []string
+var maintainers []string
 
 func StartController(port string) {
 	router := gin.Default()
-	router.POST("/maintainer", addMaintainer)
-	router.GET("/maintainer", getMaintainers)
-	router.POST("/queue", addQueue)
-	router.GET("/queue", getQueues)
+
+	router.POST("/batcher", addBatchers)
+	router.GET("/batcher", getBatchers)
 	router.POST("/filter", addFilter)
 	router.GET("/filter", getFilters)
+	router.POST("/queue", addQueue)
+	router.GET("/queue", getQueues)
+	router.POST("/maintainer", addMaintainer)
+	router.GET("/maintainer", getMaintainers)
+
 	router.Run(":" + port)
 }
 
-func addMaintainer(c *gin.Context) {
-	maintainers = append(maintainers, c.Query("host"))
+func addBatchers(c *gin.Context) {
+	batchers = append(batchers, c.Query("host"))
 	c.String(http.StatusOK, c.Query("host")+" added\n")
 }
 
-func getMaintainers(c *gin.Context) {
+func getBatchers(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
-		"maintainers": maintainers,
+		"batchers": batchers,
+	})
+}
+
+func addFilter(c *gin.Context) {
+	filters = append(filters, c.Query("host"))
+	c.String(http.StatusOK, c.Query("host")+" added\n")
+	for _, host := range batchers {
+		conn, err := net.Dial("tcp", host)
+		if err != nil {
+			fmt.Println("Couldn't connect to batcher", host)
+			panic(err)
+		}
+		defer conn.Close()
+		b := []byte{'f'}
+		jsonBytes, err := json.Marshal(filters)
+		if err != nil {
+			fmt.Println("Couldn't convert filter list to bytes")
+			panic(err)
+		}
+		conn.Write(append(b, jsonBytes...))
+		fmt.Println("update ", host, "filters")
+	}
+}
+
+func getFilters(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"filters": filters,
 	})
 }
 
@@ -67,13 +101,13 @@ func getQueues(c *gin.Context) {
 	})
 }
 
-func addFilter(c *gin.Context) {
-	filters = append(filters, c.Query("host"))
+func addMaintainer(c *gin.Context) {
+	maintainers = append(maintainers, c.Query("host"))
 	c.String(http.StatusOK, c.Query("host")+" added\n")
 }
 
-func getFilters(c *gin.Context) {
+func getMaintainers(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
-		"filters": filters,
+		"maintainers": maintainers,
 	})
 }

@@ -48,6 +48,8 @@ func postRecord(c *gin.Context) {
 	if err != nil {
 		panic(err)
 	}
+
+	// send to batcher
 	host := randomHost()
 	fmt.Println("POST ", jsonRecord, " to ", host)
 	record := log.Record{
@@ -58,6 +60,7 @@ func postRecord(c *gin.Context) {
 			TOId: jsonRecord.PreTOId,
 		},
 	}
+	b := []byte{'r'}
 	jsonBytes, err := log.ToJSON(record)
 	if err != nil {
 		panic(err)
@@ -65,7 +68,7 @@ func postRecord(c *gin.Context) {
 
 	conn, _ := net.Dial("tcp", host)
 	defer conn.Close()
-	conn.Write(jsonBytes)
+	conn.Write(append(b, jsonBytes...))
 }
 
 func getRecord(c *gin.Context) {

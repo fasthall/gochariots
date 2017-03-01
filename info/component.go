@@ -1,11 +1,5 @@
 package info
 
-import (
-	"io/ioutil"
-	"os"
-	"strconv"
-)
-
 // Name is the name of this running component
 var name string
 
@@ -18,5 +12,5 @@ func GetName() string {
 }
 
 func WritePID() {
-	ioutil.WriteFile(name+".pid", []byte(strconv.Itoa(os.Getpid())+"\n"), 0644)
+	// ioutil.WriteFile(name+".pid", []byte(strconv.Itoa(os.Getpid())+"\n"), 0644)
 }
