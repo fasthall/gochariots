@@ -1,12 +1,11 @@
 package queue
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 	"sort"
 	"time"
-
-	"encoding/json"
 
 	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/log"

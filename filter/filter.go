@@ -87,6 +87,7 @@ func HandleRequest(conn net.Conn) {
 	if buf[0] == 'r' { // received records
 		records, err := log.ToRecordArray(buf[1:l])
 		if err != nil {
+			fmt.Println("Couldn't convert buffer to record")
 			panic(err)
 		}
 		fmt.Println(info.GetName(), "received:", records)

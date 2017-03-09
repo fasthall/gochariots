@@ -3,11 +3,10 @@
 package batcher
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 	"time"
-
-	"encoding/json"
 
 	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/log"
