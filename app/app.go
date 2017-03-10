@@ -4,10 +4,8 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
-
-	"strconv"
-
 	"net/http"
+	"strconv"
 
 	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/log"
