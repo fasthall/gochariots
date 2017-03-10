@@ -3,6 +3,9 @@ Scalable shared log *Chariots* implemented in Go.
 For the system details, please refer to the EDBT paper:
 [Chariots : A Scalable Shared Log for Data Management in Multi-Datacenter Cloud Environments](https://openproceedings.org/2015/conf/edbt/paper-236.pdf)
 
+## Using Docker
+If you are seeing this page on Docker repository page, [please see this page for details](https://github.com/fasthall/gochariots/blob/master/doc/run_in_docker.md).
+
 ## Quickstart
 The shared log system consists of several parts:
 
@@ -59,4 +62,6 @@ Remember to report new component to the controller and app.
 To append to the shared log, send POST request to http://localhost:8080/record. The payload needs to be in JSON format. See [post_example.sh](test/post_example.sh) and [example.json](test/example.json).
 
 ## Issues (TODO)
- 
+
+* Queue currently only uses the first maintainer.
+* Need a way to notify queue about the LId mapping of maintainers.
