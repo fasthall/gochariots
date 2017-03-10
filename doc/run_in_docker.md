@@ -1,5 +1,5 @@
 # Run gochariots in Docker
-The image is derived from official golang:1.8-alpine image. Pleasesee [Dockerfile](../Dockerfile) for details.
+The image is derived from official golang:1.8-alpine image. Please see [Dockerfile](../Dockerfile) for details.
 
 To deploy a complete gochariots cluster, there are 6 components required. For the functionality of each component, please refer to the [paper](https://openproceedings.org/2015/conf/edbt/paper-236.pdf) or [README.md](../README.md).
 

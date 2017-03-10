@@ -57,3 +57,6 @@ Remember to report new component to the controller and app.
 
 ## Appending record
 To append to the shared log, send POST request to http://localhost:8080/record. The payload needs to be in JSON format. See [post_example.sh](test/post_example.sh) and [example.json](test/example.json).
+
+## Issues (TODO)
+ 

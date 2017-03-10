@@ -39,10 +39,6 @@ func InitQueue(hasToken bool) {
 	}
 }
 
-func SetLogMaintainer(host string) {
-	logMaintainerHost = host
-}
-
 // InitToken intializes a token. The IDs info should be accuired from log maintainers
 func (token *Token) InitToken(maxTOId []int, lastLId int) {
 	token.MaxTOId = maxTOId
@@ -197,6 +193,16 @@ func HandleRequest(conn net.Conn) {
 		TokenArrival(token)
 		if len(token.DeferredRecords) > 0 {
 			fmt.Println(info.GetName(), "received:", token)
+		}
+	} else if buf[0] == 'm' { // received maintainer update
+		var hosts []string
+		err := json.Unmarshal(buf[1:l], &hosts)
+		if err != nil {
+			fmt.Println("Couldn't convert received bytes to maintainer hosts")
+			panic(err)
+		}
+		if len(hosts) > 0 {
+			logMaintainerHost = hosts[0]
 		}
 	}
 	conn.Close()

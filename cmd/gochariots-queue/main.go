@@ -21,7 +21,6 @@ func main() {
 	info.SetName("queue" + os.Args[1])
 	info.WritePID()
 	queue.InitQueue(os.Args[2] == "true")
-	queue.SetLogMaintainer("localhost:9030")
 	ln, err := net.Listen("tcp", ":"+os.Args[1])
 	if err != nil {
 		panic(err)
