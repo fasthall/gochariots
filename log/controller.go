@@ -7,6 +7,8 @@ import (
 
 	"encoding/json"
 
+	"strconv"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -14,6 +16,8 @@ var batchers []string
 var filters []string
 var queues []string
 var maintainers []string
+var senders []string
+var remoteBatcher []string
 
 func StartController(port string) {
 	router := gin.Default()
@@ -26,6 +30,10 @@ func StartController(port string) {
 	router.GET("/queue", getQueues)
 	router.POST("/maintainer", addMaintainer)
 	router.GET("/maintainer", getMaintainers)
+	router.POST("/sender", addSender)
+	router.GET("/sender", getSenders)
+	router.POST("/remote/batcher", addRemoteBatcher)
+	router.GET("/remote/batcher/:dc", getRemoteBatcher)
 
 	router.Run(":" + port)
 }
@@ -134,5 +142,59 @@ func addMaintainer(c *gin.Context) {
 func getMaintainers(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"maintainers": maintainers,
+	})
+}
+
+func addSender(c *gin.Context) {
+	senders = append(senders, c.Query("host"))
+	conn, err := net.Dial("tcp", c.Query("host"))
+	if err != nil {
+		fmt.Println("Couldn't connect to sender", c.Query("host"))
+		panic(err)
+	}
+	defer conn.Close()
+	b := []byte{'b'}
+	jsonBytes, err := json.Marshal(remoteBatcher)
+	conn.Write(append(b, jsonBytes...))
+	fmt.Println("Inform", c.Query("host"), "about remote batchers")
+	c.String(http.StatusOK, c.Query("host")+" added\n")
+}
+
+func getSenders(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"senders": senders,
+	})
+}
+
+func addRemoteBatcher(c *gin.Context) {
+	dc, err := strconv.Atoi(c.Query("dc"))
+	if err != nil {
+		fmt.Println("Invalid parameter.")
+		panic(err)
+	}
+	remoteBatcher[dc] = c.Query("host")
+	for _, host := range senders {
+		conn, err := net.Dial("tcp", host)
+		if err != nil {
+			fmt.Println("Couldn't connect to sender", host)
+			panic(err)
+		}
+		defer conn.Close()
+		b := []byte{'b'}
+		jsonBytes, err := json.Marshal(remoteBatcher)
+		conn.Write(append(b, jsonBytes...))
+		fmt.Println("Inform", host, "about remote batchers")
+	}
+	c.String(http.StatusOK, "remoteBatcher["+c.Query("dc")+"] = "+c.Query("host")+" updated\n")
+}
+
+func getRemoteBatcher(c *gin.Context) {
+	dc, err := strconv.Atoi(c.Param("dc"))
+	if err != nil {
+		fmt.Println("Invalid parameter.")
+		panic(err)
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"batchers": remoteBatcher[dc],
 	})
 }

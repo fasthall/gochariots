@@ -11,9 +11,11 @@ import (
 	"github.com/fasthall/gochariots/info"
 )
 
+var LastLId int
 var path string = "flstore"
 
 func InitLogMaintainer(p string) {
+	LastLId = 0
 	path = p
 	err := os.MkdirAll(path, os.ModePerm)
 	if err != nil {
@@ -34,6 +36,7 @@ func Append(record Record) error {
 		return err
 	}
 	fmt.Println("Wrote to", fpath)
+	LastLId = record.LId
 	return nil
 }
 

@@ -18,6 +18,8 @@ var nextQueueHost string
 
 type queueHost int
 
+var cnt int
+
 // Token is used by queues to ensure causality of LId assignment
 type Token struct {
 	MaxTOId         []int
@@ -124,7 +126,7 @@ func assignLId(records []log.Record, lastLId int) int {
 
 // passToken sends the token to the next queue in the ring
 func passToken(token *Token) {
-	time.Sleep(1 * time.Second)
+	time.Sleep(100 * time.Millisecond)
 	if nextQueueHost == "" {
 		TokenArrival(*token)
 	} else {
@@ -139,10 +141,13 @@ func passToken(token *Token) {
 			fmt.Println(info.GetName(), "couldn't connect to", nextQueueHost)
 			panic(err)
 		}
-		defer conn.Close()
-		conn.Write(append(b, jsonBytes...))
+		_, err = conn.Write(append(b, jsonBytes...))
+		if err != nil {
+			fmt.Println("Couldn't write to the connection")
+			panic(err)
+		}
 		if len(token.DeferredRecords) > 0 {
-			fmt.Println(info.GetName(), "sent to", nextQueueHost)
+			fmt.Println(info.GetName(), "sent to", nextQueueHost, cnt)
 		}
 	}
 }
