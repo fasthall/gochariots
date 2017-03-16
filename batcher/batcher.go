@@ -64,7 +64,7 @@ func sendToFilter(dc int) {
 
 func Sweeper() {
 	for {
-		time.Sleep(1 * time.Second)
+		time.Sleep(100 * time.Millisecond)
 		for i := range buffer {
 			sendToFilter(i)
 		}

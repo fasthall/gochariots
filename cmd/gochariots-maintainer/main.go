@@ -6,7 +6,7 @@ import (
 	"os"
 
 	"github.com/fasthall/gochariots/info"
-	"github.com/fasthall/gochariots/log"
+	"github.com/fasthall/gochariots/maintainer"
 )
 
 func main() {
@@ -20,7 +20,7 @@ func main() {
 
 	info.SetName("maintainer" + os.Args[1])
 	info.WritePID()
-	log.InitLogMaintainer("flstore/")
+	maintainer.InitLogMaintainer("flstore/")
 	ln, err := net.Listen("tcp", ":"+os.Args[1])
 	if err != nil {
 		panic(err)
@@ -34,6 +34,6 @@ func main() {
 			panic(err)
 		}
 		// Handle connections in a new goroutine.
-		go log.HandleRequest(conn)
+		go maintainer.HandleRequest(conn)
 	}
 }

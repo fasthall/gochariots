@@ -9,6 +9,7 @@ import (
 
 	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/log"
+	"github.com/fasthall/gochariots/maintainer"
 	"github.com/gin-gonic/gin"
 )
 
@@ -78,7 +79,7 @@ func getRecord(c *gin.Context) {
 		})
 		return
 	}
-	record, err := log.ReadByLId(lid)
+	record, err := maintainer.ReadByLId(lid)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
 			"message": "Record not found",

@@ -154,6 +154,7 @@ func passToken(token *Token) {
 
 // dispatchRecords sends the ready records to log maintainers
 func dispatchRecords(records []log.Record) {
+	b := []byte{'r'}
 	jsonBytes, err := log.ToJSONArray(records)
 	if err != nil {
 		panic(err)
@@ -164,7 +165,7 @@ func dispatchRecords(records []log.Record) {
 		return
 	}
 	defer conn.Close()
-	conn.Write(jsonBytes)
+	conn.Write(append(b, jsonBytes...))
 	fmt.Println(info.GetName(), "sent to", logMaintainerHost)
 }
 

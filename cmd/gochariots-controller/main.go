@@ -5,7 +5,6 @@ import (
 	"os"
 
 	"github.com/fasthall/gochariots/info"
-	"github.com/fasthall/gochariots/log"
 )
 
 func main() {
@@ -19,5 +18,5 @@ func main() {
 
 	info.SetName("controller" + os.Args[1])
 	info.WritePID()
-	log.StartController(os.Args[1])
+	info.StartController(os.Args[1])
 }

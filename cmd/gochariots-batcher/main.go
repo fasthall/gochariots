@@ -5,6 +5,8 @@ import (
 	"net"
 	"os"
 
+	"strconv"
+
 	"github.com/fasthall/gochariots/batcher"
 	"github.com/fasthall/gochariots/info"
 )
@@ -13,14 +15,19 @@ func main() {
 	fmt.Println(os.Getpid())
 	info.InitChariots(1, 0)
 
-	if len(os.Args) < 2 {
-		fmt.Println("Usage: gochariots-batcher port")
+	if len(os.Args) < 3 {
+		fmt.Println("Usage: gochariots-batcher port num_datacenters")
 		return
 	}
 
 	info.SetName("batcher" + os.Args[1])
 	info.WritePID()
-	batcher.InitBatcher(1)
+	n, err := strconv.Atoi(os.Args[2])
+	if err != nil {
+		fmt.Println("Usage: gochariots-batcher port num_datacenters")
+		return
+	}
+	batcher.InitBatcher(n)
 	ln, err := net.Listen("tcp", ":"+os.Args[1])
 	if err != nil {
 		panic(err)

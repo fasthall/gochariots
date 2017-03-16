@@ -72,7 +72,7 @@ def init(self, args):
         net = self.mn
         net.get('c').cmd(os.path.join(gopath, 'bin', 'gochariots-controller') + ' 8081 > c.log &')
         net.get('a').cmd(os.path.join(gopath, 'bin', 'gochariots-app') + ' 8080 > a.log &')
-        net.get('b1').cmd(os.path.join(gopath, 'bin', 'gochariots-batcher') + ' 9000 > b.log &')
+        net.get('b1').cmd(os.path.join(gopath, 'bin', 'gochariots-batcher') + ' 9000 1 > b.log &')
         net.get('f1').cmd(os.path.join(gopath, 'bin', 'gochariots-filter') + ' 9010 > f.log &')
         net.get('q1').cmd(os.path.join(gopath, 'bin', 'gochariots-queue') + ' 9020 true > q.log &')
         net.get('m1').cmd(os.path.join(gopath, 'bin', 'gochariots-maintainer') + ' 9030 > m.log &')
@@ -92,9 +92,9 @@ def init(self, args):
         net = self.mn
         net.get('c').cmd(os.path.join(gopath, 'bin', 'gochariots-controller') + ' 8081 > c.log &')
         net.get('a').cmd(os.path.join(gopath, 'bin', 'gochariots-app') + ' 8080 > a.log &')
-        net.get('b1').cmd(os.path.join(gopath, 'bin', 'gochariots-batcher') + ' 9000 > b1.log &')
-        net.get('b2').cmd(os.path.join(gopath, 'bin', 'gochariots-batcher') + ' 9001 > b2.log &')
-        net.get('b3').cmd(os.path.join(gopath, 'bin', 'gochariots-batcher') + ' 9002 > b3.log &')
+        net.get('b1').cmd(os.path.join(gopath, 'bin', 'gochariots-batcher') + ' 9000 1 > b1.log &')
+        net.get('b2').cmd(os.path.join(gopath, 'bin', 'gochariots-batcher') + ' 9001 1 > b2.log &')
+        net.get('b3').cmd(os.path.join(gopath, 'bin', 'gochariots-batcher') + ' 9002 1 > b3.log &')
         net.get('f1').cmd(os.path.join(gopath, 'bin', 'gochariots-filter') + ' 9010 > f1.log &')
         net.get('q1').cmd(os.path.join(gopath, 'bin', 'gochariots-queue') + ' 9020 true > q1.log &')
         net.get('q2').cmd(os.path.join(gopath, 'bin', 'gochariots-queue') + ' 9021 false > q2.log &')

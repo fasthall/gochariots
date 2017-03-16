@@ -6,9 +6,9 @@ nohup gochariots-app 8080 > $0.log &
 
 sleep 1
 
-nohup gochariots-batcher 9000 >> $0.log &
-nohup gochariots-batcher 9001 >> $0.log &
-nohup gochariots-batcher 9002 >> $0.log &
+nohup gochariots-batcher 9000 1 >> $0.log &
+nohup gochariots-batcher 9001 1 >> $0.log &
+nohup gochariots-batcher 9002 1 >> $0.log &
 curl -XPOST localhost:8080/batcher?host=localhost:9000
 curl -XPOST localhost:8080/batcher?host=localhost:9001
 curl -XPOST localhost:8080/batcher?host=localhost:9002
