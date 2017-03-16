@@ -147,7 +147,7 @@ func addRemoteBatcher(c *gin.Context) {
 		fmt.Println("Invalid parameter.")
 		panic(err)
 	}
-	for cap(remoteBatcher) <= dc {
+	for len(remoteBatcher) <= dc {
 		remoteBatcher = append(remoteBatcher, "")
 	}
 	remoteBatcher[dc] = c.Query("host")

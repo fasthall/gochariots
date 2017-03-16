@@ -18,8 +18,6 @@ var nextQueueHost string
 
 type queueHost int
 
-var cnt int
-
 // Token is used by queues to ensure causality of LId assignment
 type Token struct {
 	MaxTOId         []int
@@ -73,6 +71,7 @@ func TokenArrival(token Token) {
 			v := buffered[dc][k]
 			token.DeferredRecords = append(token.DeferredRecords, v)
 		}
+		buffered[dc] = map[int]log.Record{}
 	}
 	token.DeferredRecords = append(token.DeferredRecords, sameDCBuffered...)
 	sameDCBuffered = []log.Record{}
@@ -147,7 +146,7 @@ func passToken(token *Token) {
 			panic(err)
 		}
 		if len(token.DeferredRecords) > 0 {
-			fmt.Println(info.GetName(), "sent to", nextQueueHost, cnt)
+			fmt.Println(info.GetName(), "sent to", nextQueueHost)
 		}
 	}
 }

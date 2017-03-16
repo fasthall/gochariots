@@ -12,14 +12,21 @@ import (
 )
 
 func main() {
-	fmt.Println(os.Getpid())
-	info.InitChariots(1, 0)
-
-	if len(os.Args) < 3 {
-		fmt.Println("Usage: gochariots-batcher port num_datacenters")
+	if len(os.Args) < 4 {
+		fmt.Println("Usage: gochariots-batcher port num_dc dc_id")
 		return
 	}
-
+	numDc, err := strconv.Atoi(os.Args[2])
+	if err != nil {
+		fmt.Println("Usage: gochariots-batcher port num_dc dc_id")
+		return
+	}
+	dcID, err := strconv.Atoi(os.Args[3])
+	if err != nil {
+		fmt.Println("Usage: gochariots-batcher port num_dc dc_id")
+		return
+	}
+	info.InitChariots(numDc, dcID)
 	info.SetName("batcher" + os.Args[1])
 	info.WritePID()
 	n, err := strconv.Atoi(os.Args[2])

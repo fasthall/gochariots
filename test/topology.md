@@ -24,13 +24,13 @@ Two clusters setup.
 * **1 app** on 8080
 * **1 controller** on 8081
 * **1 batcher** on 9000
-* **1 filter** on 9010
+* **2 filters** on 9010, 9011
 * **1 queue** on 9020
 * **1 maintainer** on 9030
 ### Cluster B(ID=1)
 * **1 app** on 8180
 * **1 controller** on 8181
 * **1 batcher** on 9100
-* **1 filter** on 9110
+* **2 filters** on 9110, 9111
 * **1 queue** on 9120
 * **1 maintainer** on 9130

@@ -4,23 +4,31 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strconv"
 
 	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/queue"
 )
 
 func main() {
-	fmt.Println(os.Getpid())
-	info.InitChariots(1, 0)
-
-	if len(os.Args) < 3 {
-		fmt.Println("Usage: gochariots-queue port token(true|false)")
+	if len(os.Args) < 5 {
+		fmt.Println("Usage: gochariots-queue port num_dc dc_id token(true|false)")
 		return
 	}
-
+	numDc, err := strconv.Atoi(os.Args[2])
+	if err != nil {
+		fmt.Println("Usage: gochariots-queue port num_dc dc_id token(true|false)")
+		return
+	}
+	dcID, err := strconv.Atoi(os.Args[3])
+	if err != nil {
+		fmt.Println("Usage: gochariots-queue port num_dc dc_id token(true|false)")
+		return
+	}
+	info.InitChariots(numDc, dcID)
 	info.SetName("queue" + os.Args[1])
 	info.WritePID()
-	queue.InitQueue(os.Args[2] == "true")
+	queue.InitQueue(os.Args[4] == "true")
 	ln, err := net.Listen("tcp", ":"+os.Args[1])
 	if err != nil {
 		panic(err)
