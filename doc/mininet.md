@@ -1,5 +1,3 @@
-# ***WORK IN PROGRESS***
-
 # Mininet simulation
 
 In this document kept all the steps to use mininet to do the simulation. For the introduction to mininet please refer to the [official website](http://mininet.org/).
@@ -8,6 +6,7 @@ The following steps were executed on Ubuntu Trusty server. The mininet version i
 
 ## Installation
 
+### Install from source
 Install gochariots binary. Install [Go](https://golang.org/doc/install#install) if it's not installed yet.
 ```
 $ go get github.com/fasthall/gochariots/cmd/...
@@ -22,6 +21,14 @@ $ git checkout -b 2.3.0d1 (Optional, the latest branch should work)
 $ cd ..
 $ mininet/util/install.sh -a
 ```
+
+### Using Vagrant
+Another way to do this is using [Vagrantfile](../test/mininet/Vagrantfile) provided in this repo. 
+```
+$ cd gochariots/test/mininet/
+$ vagrant up
+```
+
 ## Setup
 
 Launch mininet under test/mininet folder:
