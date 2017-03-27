@@ -31,7 +31,7 @@ $ sudo mn --custom custom.py --topo single
 ```
 Now we have mininet up and several components running. The next step is report all components info to controller and app. (This will hopefully done automatically in the future version)
 ```
-mininet> init
+mininet> init single
 ```
 If no error occured, the screen will show several ip and port being added. Now we have a gochariots cluster working. Try `post` and `get` command to append and get records.
 ```
@@ -44,6 +44,9 @@ Content-Type: text/plain; charset=utf-8
 mininet> get 1
 {"Causality":{"Host":0,"TOId":0},"Host":0,"LId":1,"TOId":1,"Tags":{"key":"value"}}
 ``` 
+
+### Topology
+To run the simulation on different topology, replace single with another topology, including `mn` and `init` command's parameter. For the description of topologies, please see [topology.md](topology.md).
 
 ## Configure cluster
 To configure cluster, modify [custom.py](../test/mininet/custom.py).

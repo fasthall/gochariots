@@ -70,12 +70,15 @@ def init(self, args):
         gopath = args[1]
     if topo == 'single':
         net = self.mn
-        net.get('c').cmd(os.path.join(gopath, 'bin', 'gochariots-controller') + ' 8081 > c.log &')
-        net.get('a').cmd(os.path.join(gopath, 'bin', 'gochariots-app') + ' 8080 > a.log &')
-        net.get('b1').cmd(os.path.join(gopath, 'bin', 'gochariots-batcher') + ' 9000 1 > b.log &')
-        net.get('f1').cmd(os.path.join(gopath, 'bin', 'gochariots-filter') + ' 9010 > f.log &')
-        net.get('q1').cmd(os.path.join(gopath, 'bin', 'gochariots-queue') + ' 9020 true > q.log &')
-        net.get('m1').cmd(os.path.join(gopath, 'bin', 'gochariots-maintainer') + ' 9030 > m.log &')
+        net.get('c').cmd(os.path.join(gopath, 'bin', 'gochariots-controller') + ' 8081 1 0 > c.log &')
+        net.get('a').cmd(os.path.join(gopath, 'bin', 'gochariots-app') + ' 8080 1 0 > a.log &')
+        net.get('b1').cmd(os.path.join(gopath, 'bin', 'gochariots-batcher') + ' 9000 1 0 > b.log &')
+        net.get('f1').cmd(os.path.join(gopath, 'bin', 'gochariots-filter') + ' 9010 1 0 > f.log &')
+        net.get('q1').cmd(os.path.join(gopath, 'bin', 'gochariots-queue') + ' 9020 1 0 true > q.log &')
+        net.get('m1').cmd(os.path.join(gopath, 'bin', 'gochariots-maintainer') + ' 9030 1 0 > m.log &')
+
+        # Wait for controller and app running
+        time.sleep(2)
 
         c_ip = net.get('c').IP()
         a_ip = net.get('a').IP()
@@ -90,16 +93,19 @@ def init(self, args):
         print(net.get('client').cmd('curl -XPOST ' + c_ip + ':8081/maintainer?host=' + m1_ip + ':9030'))
     if topo == 'simple':
         net = self.mn
-        net.get('c').cmd(os.path.join(gopath, 'bin', 'gochariots-controller') + ' 8081 > c.log &')
-        net.get('a').cmd(os.path.join(gopath, 'bin', 'gochariots-app') + ' 8080 > a.log &')
-        net.get('b1').cmd(os.path.join(gopath, 'bin', 'gochariots-batcher') + ' 9000 1 > b1.log &')
-        net.get('b2').cmd(os.path.join(gopath, 'bin', 'gochariots-batcher') + ' 9001 1 > b2.log &')
-        net.get('b3').cmd(os.path.join(gopath, 'bin', 'gochariots-batcher') + ' 9002 1 > b3.log &')
-        net.get('f1').cmd(os.path.join(gopath, 'bin', 'gochariots-filter') + ' 9010 > f1.log &')
-        net.get('q1').cmd(os.path.join(gopath, 'bin', 'gochariots-queue') + ' 9020 true > q1.log &')
-        net.get('q2').cmd(os.path.join(gopath, 'bin', 'gochariots-queue') + ' 9021 false > q2.log &')
-        net.get('q3').cmd(os.path.join(gopath, 'bin', 'gochariots-queue') + ' 9022 false > q3.log &')
-        net.get('m1').cmd(os.path.join(gopath, 'bin', 'gochariots-maintainer') + ' 9030 > m1.log &')
+        net.get('c').cmd(os.path.join(gopath, 'bin', 'gochariots-controller') + ' 8081 1 0 > c.log &')
+        net.get('a').cmd(os.path.join(gopath, 'bin', 'gochariots-app') + ' 8080 1 0 > a.log &')
+        net.get('b1').cmd(os.path.join(gopath, 'bin', 'gochariots-batcher') + ' 9000 1 0 > b1.log &')
+        net.get('b2').cmd(os.path.join(gopath, 'bin', 'gochariots-batcher') + ' 9001 1 0 > b2.log &')
+        net.get('b3').cmd(os.path.join(gopath, 'bin', 'gochariots-batcher') + ' 9002 1 0 > b3.log &')
+        net.get('f1').cmd(os.path.join(gopath, 'bin', 'gochariots-filter') + ' 9010 1 0 > f1.log &')
+        net.get('q1').cmd(os.path.join(gopath, 'bin', 'gochariots-queue') + ' 9020 1 0 true > q1.log &')
+        net.get('q2').cmd(os.path.join(gopath, 'bin', 'gochariots-queue') + ' 9021 1 0 false > q2.log &')
+        net.get('q3').cmd(os.path.join(gopath, 'bin', 'gochariots-queue') + ' 9022 1 0 false > q3.log &')
+        net.get('m1').cmd(os.path.join(gopath, 'bin', 'gochariots-maintainer') + ' 9030 1 0 > m1.log &')
+
+        # Wait for controller and app running
+        time.sleep(2)
 
         c_ip = net.get('c').IP()
         a_ip = net.get('a').IP()
@@ -123,6 +129,8 @@ def init(self, args):
         print(net.get('client').cmd('curl -XPOST ' + c_ip + ':8081/queue?host=' + q3_ip + ':9022'))
         print(net.get('client').cmd('curl -XPOST ' + c_ip + ':8081/maintainer?host=' + m1_ip + ':9030'))
 
+    print('If anything wrong, try to restart mininet and run init again with GOPATH specified.')
+    print('Example: mininet> init single /home/vagrant/go')
 def log(self, node):
     "log shows the log of a node"
     net = self.mn

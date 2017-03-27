@@ -4,7 +4,7 @@ For the system details, please refer to the EDBT paper:
 [Chariots : A Scalable Shared Log for Data Management in Multi-Datacenter Cloud Environments](https://openproceedings.org/2015/conf/edbt/paper-236.pdf)
 
 ## Using Docker
-If you are seeing this page on Docker repository page, [please see this page for details](https://github.com/fasthall/gochariots/blob/master/doc/run_in_docker.md).
+If you are seeing this page on Docker repository page, [please see this page for details](https://github.com/fasthall/gochariots/blob/master/doc/docker.md).
 
 ## Quickstart
 The shared log system consists of several parts:
