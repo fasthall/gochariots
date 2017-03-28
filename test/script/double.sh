@@ -71,6 +71,6 @@ curl -XGET localhost:8181/maintainer
 curl -XPOST localhost:8081/remote/batcher?dc=1\&host=localhost:9100
 curl -XGET localhost:8081/maintainer
 curl -XPOST localhost:8181/remote/batcher?dc=0\&host=localhost:9000
- curl -XGET localhost:8181/maintainer
+curl -XGET localhost:8181/maintainer
 
 tail -f $0.log

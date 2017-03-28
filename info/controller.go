@@ -28,7 +28,7 @@ func StartController(port string) {
 	router.POST("/maintainer", addMaintainer)
 	router.GET("/maintainer", getMaintainers)
 	router.POST("/remote/batcher", addRemoteBatcher)
-	router.GET("/remote/batcher/:dc", getRemoteBatcher)
+	router.GET("/remote/batcher", getRemoteBatcher)
 
 	router.Run(":" + port)
 }
@@ -167,12 +167,7 @@ func addRemoteBatcher(c *gin.Context) {
 }
 
 func getRemoteBatcher(c *gin.Context) {
-	dc, err := strconv.Atoi(c.Param("dc"))
-	if err != nil {
-		fmt.Println("Invalid parameter.")
-		panic(err)
-	}
 	c.JSON(http.StatusOK, gin.H{
-		"batchers": remoteBatcher[dc],
+		"batchers": remoteBatcher,
 	})
 }
