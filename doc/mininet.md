@@ -34,23 +34,23 @@ $ vagrant up
 Launch mininet under test/mininet folder:
 ```
 $ cd $GOPATH/src/github.com/fasthall/gochariots/test/mininet
-$ sudo mn --custom custom.py --topo single
+$ sudo mn --link tc --custom custom.py --topo double
 ```
 Now we have mininet up and several components running. The next step is report all components info to controller and app. (This will hopefully done automatically in the future version)
 ```
-mininet> init single
+mininet> init double
 ```
-If no error occured, the screen will show several ip and port being added. Now we have a gochariots cluster working. Try `post` and `get` command to append and get records.
+If no error occured, the screen will show several ip and port being added. Now we have a gochariots cluster working. Try `post` and `get` command to append and get records. Use `help post` and `help get` to get information.
 ```
-mininet> post ../example.json
+mininet> post 0 ../example.json
 HTTP/1.1 200 OK
 Date: Fri, 10 Mar 2017 22:50:04 GMT
 Content-Length: 0
 Content-Type: text/plain; charset=utf-8
 
-mininet> get 1
+mininet> get 0 1
 {"Causality":{"Host":0,"TOId":0},"Host":0,"LId":1,"TOId":1,"Tags":{"key":"value"}}
-``` 
+```
 
 ### Topology
 To run the simulation on different topology, replace single with another topology, including `mn` and `init` command's parameter. For the description of topologies, please see [topology.md](topology.md).

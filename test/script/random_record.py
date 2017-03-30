@@ -14,7 +14,6 @@ def build_json(key, value, prehost, pretoid):
 def send_json(payload):
     url = 'http://localhost:8080/record'
     headers = {'content-type': 'application/json'}
-    print(payload)
     return requests.post(url, data=payload, headers=headers)
 
 if __name__ == '__main__':

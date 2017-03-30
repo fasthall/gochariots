@@ -65,9 +65,19 @@ func postRecord(c *gin.Context) {
 		panic(err)
 	}
 
-	conn, _ := net.Dial("tcp", host)
+	conn, err := net.Dial("tcp", host)
+	if err != nil {
+		fmt.Println("Couldn't connect to the batcher.")
+		c.String(http.StatusServiceUnavailable, "Couldn't connect to the batcher")
+		return
+	}
 	defer conn.Close()
-	conn.Write(append(b, jsonBytes...))
+	_, err = conn.Write(append(b, jsonBytes...))
+	if err != nil {
+		fmt.Println("Couldn't send record to the batcher.")
+		c.String(http.StatusServiceUnavailable, "Couldn't connect to the batcher")
+		return
+	}
 }
 
 func getRecord(c *gin.Context) {

@@ -100,9 +100,7 @@ class Double(Topo):
         self.addLink(client1, switch1)
 
         # Connect the switches
-        switch3 = self.addSwitch('s3')
-        self.addLink(switch0, switch3)
-        self.addLink(switch1, switch3)
+        self.addLink(switch0, switch1, bw=10, delay='100ms', max_queue_size=1000, loss=0, use_htb=True)
 
 def init(self, args):
     "init starts a single sinple cluster"
@@ -114,7 +112,10 @@ def init(self, args):
     if len(args) < 2:
         gopath = os.path.join(os.getenv('HOME'), 'go')
     else:
-        gopath = args[1]
+        if args[1] == 'vagrant':
+            gopath = '/home/vagrant/go'
+        else:
+            gopath = args[1]
     net = self.mn
     if topo == 'single':
         net.get('c').cmd(os.path.join(gopath, 'bin', 'gochariots-controller') + ' 8081 1 0 > c.log &')
@@ -239,6 +240,7 @@ def log(self, node):
 
 def post(self, args):
     "post posts json file to the app"
+    "post dc_id jsonfile"
     args = args.split()
     if len(args) == 0:
         print('Please specify json filename')
