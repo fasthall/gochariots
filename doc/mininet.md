@@ -52,6 +52,12 @@ mininet> get 0 1
 {"Causality":{"Host":0,"TOId":0},"Host":0,"LId":1,"TOId":1,"Tags":{"key":"value"}}
 ```
 
+To randomly post records to multiple data centers, modify [custom.py](../test/mininet/custom.py) line 272. The usage is:
+```
+mininet> random_post num_records dependency_prob max_window margin')
+```
+`max_window` and `margin` need to be set carefully, otherwise the records may not be able to be appended due to dependency issue. For example, when `max_window = 3` and `margin = 5`, the 100th record may depend on record 92 to 94. 
+
 ### Topology
 To run the simulation on different topology, replace single with another topology, including `mn` and `init` command's parameter. For the description of topologies, please see [topology.md](topology.md).
 

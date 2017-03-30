@@ -258,17 +258,18 @@ def post(self, args):
     print(client.cmd('curl -i -XPOST -H "Content-Type: application/json" -d "@' + jsonfile + '" http://' + n.IP() + ':8080/record'))
 
 def random_post(self, args):
-    "random randomly post records with dependency"
-    "random num_records dependency_prob max_window"
+    "random_post randomly post records with dependency"
+    "random_post num_records dependency_prob max_window margin"
     args = args.split()
-    if (len(args) < 3):
-        print('random num_records dependency_prob max_window')
+    if (len(args) < 4):
+        print('random num_records dependency_prob max_window margin')
         return
     n = int(args[0])
     dependency_prob = float(args[1])
     max_window = int(args[2])
+    margin = int(args[3])
     net = self.mn
-    url = [net.get('a01').IP()]
+    url = [net.get('a01').IP()] # Add more app IPs if desired
     for i in range(n):
         value = str(i + 1)
         host_id = random.randint(0, len(url) - 1)
@@ -277,7 +278,7 @@ def random_post(self, args):
         while sent == False:
             if random.random() < dependency_prob:
                 key = 'low'
-                pretoid = max(0, i - random.randint(1, max_window))
+                pretoid = int(max(0, (i - random.randint(1, max_window) - margin) / len(url)))
             else:
                 key = 'high'
                 pretoid = 0

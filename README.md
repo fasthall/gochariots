@@ -40,15 +40,15 @@ To terminate all the processes, use `sh gochariots/test/kill.sh`.
 ## Start your own cluster
 The cluster needs a controller for meta data.
 
-* `gochariots-controller PORT`
+* `gochariots-controller PORT NUM_DC DC_ID`
 
-The following components can be scaled independently. That is, you can start as many instances as you want for each component. *Notice that only one queue can hold the token at first.*
+The following components can be scaled independently. That is, you can start as many instances as you want for each component. `PORT` is the port the component will listen to, `NUM_DC` is the total number of data centers, and `DC_ID` is the ID number of the data center(start from 0). *Notice that only one queue can hold the token at first.*
 
-* `gochariots-app PORT`
-* `gochariots-batcher PORT`
-* `gochariots-filter PORT`
-* `gochariots-queue PORT TOKEN(true|false)`
-* `gochariots-maintainer PORT`
+* `gochariots-app PORT NUM_DC DC_ID`
+* `gochariots-batcher PORT NUM_DC DC_ID`
+* `gochariots-filter PORT NUM_DC DC_ID`
+* `gochariots-queue PORT NUM_DC DC_ID TOKEN(true|false)`
+* `gochariots-maintainer PORT NUM_DC DC_ID`
 
 Remember to report new component to the controller and app.
 
@@ -57,12 +57,14 @@ Remember to report new component to the controller and app.
 * `curl -XPOST CONTROLLER_IP/filter?host=FILTER_IP`
 * `curl -XPOST CONTROLLER_IP/queue?host=QUEUE_IP`
 * `curl -XPOST CONTROLLER_IP/maintainer?host=MAINTAINER_IP`
+* `curl -XPOST CONTROLLER_IP/remote/batcher?dc=DC_ID\&host=BATCHER_IP` (for multi-dc environment)
 
 ## Appending record
 To append to the shared log, send POST request to http://localhost:8080/record. The payload needs to be in JSON format. See [post_example.sh](test/post_example.sh) and [example.json](test/example.json).
 
 ## Issues (TODO)
 
+* Batcher doesn't survive DDOS
 * Queue currently only uses the first maintainer.
 * Need a way to notify queue about the LId mapping of maintainers.
 * Needs to keep connection between queues open.
