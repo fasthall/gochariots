@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/fasthall/gochariots/info"
@@ -15,6 +16,7 @@ import (
 
 const bufferSize int = 32
 
+var mutex sync.Mutex
 var buffer [][]log.Record
 var filterHost []string
 var numFilters int
@@ -35,6 +37,7 @@ func InitBatcher(n int) {
 // When a buffer is full, all the records in the buffer will be sent to the corresponding filter.
 // BUG(fasthall) In Arrival(), the mechanism to match thre record and filter needs to be done. Currently the number of filters needs to be equal to datacenters.
 func arrival(record log.Record) {
+	mutex.Lock()
 	dc := record.Host
 	buffer[dc] = append(buffer[dc], record)
 
@@ -42,12 +45,14 @@ func arrival(record log.Record) {
 	if len(buffer[dc]) == cap(buffer[dc]) {
 		sendToFilter(dc)
 	}
+	mutex.Unlock()
 }
 
 func sendToFilter(dc int) {
 	if len(buffer[dc]) == 0 {
 		return
 	}
+	mutex.Lock()
 	b := []byte{'r'}
 	jsonBytes, err := log.ToJSONArray(buffer[dc])
 	if err != nil {
@@ -61,6 +66,7 @@ func sendToFilter(dc int) {
 	defer conn.Close()
 	conn.Write(append(b, jsonBytes...))
 	fmt.Println(info.GetName(), "sent to filter", filterHost[dc])
+	mutex.Unlock()
 }
 
 func Sweeper() {
@@ -75,6 +81,7 @@ func Sweeper() {
 func HandleRequest(conn net.Conn) {
 	// Read the incoming connection into the buffer.
 	buf, err := ioutil.ReadAll(conn)
+	fmt.Println(string(buf))
 	if err != nil {
 		fmt.Println("Error during reading buffer")
 		panic(err)

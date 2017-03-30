@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"net"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/fasthall/gochariots/info"
@@ -16,6 +17,7 @@ var buffered []map[int]log.Record
 var sameDCBuffered []log.Record
 var logMaintainerHost string
 var nextQueueHost string
+var mutex sync.Mutex
 
 type queueHost int
 
@@ -48,6 +50,7 @@ func (token *Token) InitToken(maxTOId []int, lastLId int) {
 
 // recordsArrival deals with the records received from filters
 func recordsArrival(records []log.Record) {
+	mutex.Lock()
 	for _, record := range records {
 		if record.Host == info.ID {
 			sameDCBuffered = append(sameDCBuffered, record)
@@ -55,6 +58,7 @@ func recordsArrival(records []log.Record) {
 			buffered[record.Host][record.TOId] = record
 		}
 	}
+	mutex.Unlock()
 }
 
 // TokenArrival function deals with token received.
@@ -150,6 +154,7 @@ func passToken(token *Token) {
 		}
 		if len(token.DeferredRecords) > 0 {
 			fmt.Println(info.GetName(), "sent to", nextQueueHost)
+			fmt.Println(string(jsonBytes))
 		}
 	}
 }
@@ -169,6 +174,7 @@ func dispatchRecords(records []log.Record) {
 	defer conn.Close()
 	conn.Write(append(b, jsonBytes...))
 	fmt.Println(info.GetName(), "sent to", logMaintainerHost)
+	fmt.Println(string(jsonBytes))
 }
 
 func HandleRequest(conn net.Conn) {

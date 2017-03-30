@@ -141,7 +141,6 @@ func getMaintainers(c *gin.Context) {
 }
 
 func addRemoteBatcher(c *gin.Context) {
-	fmt.Println("ADD", c.Query("dc"), c.Query("host"))
 	dc, err := strconv.Atoi(c.Query("dc"))
 	if err != nil {
 		fmt.Println("Invalid parameter.")
