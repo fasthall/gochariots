@@ -3,6 +3,7 @@ package queue
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"sort"
 	"time"
@@ -125,8 +126,9 @@ func assignLId(records []log.Record, lastLId int) int {
 
 // passToken sends the token to the next queue in the ring
 func passToken(token *Token) {
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(500 * time.Millisecond)
 	if nextQueueHost == "" {
+		fmt.Println(1)
 		TokenArrival(*token)
 	} else {
 		b := []byte{'t'}
@@ -136,6 +138,7 @@ func passToken(token *Token) {
 			panic(err)
 		}
 		conn, err := net.Dial("tcp", nextQueueHost)
+		defer conn.Close()
 		if err != nil {
 			fmt.Println(info.GetName(), "couldn't connect to", nextQueueHost)
 			panic(err)
@@ -169,16 +172,13 @@ func dispatchRecords(records []log.Record) {
 }
 
 func HandleRequest(conn net.Conn) {
-	// Make a buffer to hold incoming data.
-	buf := make([]byte, 1024)
-	// Read the incoming connection into the buffer.
-	l, err := conn.Read(buf)
+	buf, err := ioutil.ReadAll(conn)
 	if err != nil {
 		fmt.Println("Error during reading buffer")
 		panic(err)
 	}
 	if buf[0] == 'r' { // received records
-		records, err := log.ToRecordArray(buf[1:l])
+		records, err := log.ToRecordArray(buf[1:])
 		if err != nil {
 			fmt.Println("Couldn't convert received bytes to records")
 			panic(err)
@@ -186,11 +186,11 @@ func HandleRequest(conn net.Conn) {
 		fmt.Println(info.GetName(), "received:", records)
 		recordsArrival(records)
 	} else if buf[0] == 'q' { // received next host update
-		nextQueueHost = string(buf[1:l])
+		nextQueueHost = string(buf[1:])
 		fmt.Println(info.GetName(), "set next host:", nextQueueHost)
 	} else if buf[0] == 't' { // received token
 		var token Token
-		err := json.Unmarshal(buf[1:l], &token)
+		err := json.Unmarshal(buf[1:], &token)
 		if err != nil {
 			fmt.Println("Couldn't convert received bytes to token")
 			panic(err)
@@ -201,7 +201,7 @@ func HandleRequest(conn net.Conn) {
 		}
 	} else if buf[0] == 'm' { // received maintainer update
 		var hosts []string
-		err := json.Unmarshal(buf[1:l], &hosts)
+		err := json.Unmarshal(buf[1:], &hosts)
 		if err != nil {
 			fmt.Println("Couldn't convert received bytes to maintainer hosts")
 			panic(err)

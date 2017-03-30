@@ -5,6 +5,7 @@ package batcher
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"time"
 
@@ -72,16 +73,14 @@ func Sweeper() {
 }
 
 func HandleRequest(conn net.Conn) {
-	// Make a buffer to hold incoming data.
-	buf := make([]byte, 1024)
 	// Read the incoming connection into the buffer.
-	l, err := conn.Read(buf)
+	buf, err := ioutil.ReadAll(conn)
 	if err != nil {
 		fmt.Println("Error during reading buffer")
 		panic(err)
 	}
 	if buf[0] == 'r' { // received records
-		record, err := log.ToRecord(buf[1:l])
+		record, err := log.ToRecord(buf[1:])
 		if err != nil {
 			fmt.Println("Couldn't convert buffer to record")
 			panic(err)
@@ -89,10 +88,10 @@ func HandleRequest(conn net.Conn) {
 		fmt.Println(info.GetName(), "received:", record)
 		arrival(record)
 	} else if buf[0] == 'f' { //received filter update
-		err := json.Unmarshal(buf[1:l], &filterHost)
+		err := json.Unmarshal(buf[1:], &filterHost)
 		if err != nil {
 			fmt.Println("Couldn't convert bytes to filter list")
-			fmt.Println("Bytes:", string(buf[1:l]))
+			fmt.Println("Bytes:", string(buf[1:]))
 			panic(err)
 		}
 		fmt.Println(info.GetName(), "update filter:", filterHost)

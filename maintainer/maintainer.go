@@ -68,16 +68,15 @@ func recordsArrival(records []log.Record) {
 
 func HandleRequest(conn net.Conn) {
 	// Make a buffer to hold incoming data.
-	buf := make([]byte, 1024)
+	buf, err := ioutil.ReadAll(conn)
 	// Read the incoming connection into the buffer.
-	l, err := conn.Read(buf)
 	if err != nil {
 		fmt.Println("Error during reading buffer")
 		panic(err)
 	}
 	if buf[0] == 'b' { // received remote batchers update
 		var batchers []string
-		err := json.Unmarshal(buf[1:l], &batchers)
+		err := json.Unmarshal(buf[1:], &batchers)
 		remoteBatchers = batchers
 		if err != nil {
 			fmt.Println("Couldn't convert received bytes to string list")
@@ -85,7 +84,7 @@ func HandleRequest(conn net.Conn) {
 		}
 		fmt.Println(info.GetName(), "received:", remoteBatchers)
 	} else if buf[0] == 'r' {
-		records, err := log.ToRecordArray(buf[1:l])
+		records, err := log.ToRecordArray(buf[1:])
 		if err != nil {
 			panic(err)
 		}

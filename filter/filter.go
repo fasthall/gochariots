@@ -5,6 +5,7 @@ package filter
 
 import (
 	"fmt"
+	"io/ioutil"
 	"math/rand"
 	"net"
 
@@ -69,23 +70,25 @@ func sendToQueue(records []log.Record) {
 		panic(err)
 	}
 	host := queuePool[rand.Intn(len(queuePool))]
-	conn, _ := net.Dial("tcp", host)
+	conn, err := net.Dial("tcp", host)
 	defer conn.Close()
+	if err != nil {
+		fmt.Println(info.GetName(), "couldn't connect to", host)
+		panic(err)
+	}
 	conn.Write(append(b, jsonBytes...))
 	fmt.Println(info.GetName(), "sent to", host)
 }
 
 func HandleRequest(conn net.Conn) {
-	// Make a buffer to hold incoming data.
-	buf := make([]byte, 1024)
 	// Read the incoming connection into the buffer.
-	l, err := conn.Read(buf)
+	buf, err := ioutil.ReadAll(conn)
 	if err != nil {
 		fmt.Println("Error during reading buffer")
 		panic(err)
 	}
 	if buf[0] == 'r' { // received records
-		records, err := log.ToRecordArray(buf[1:l])
+		records, err := log.ToRecordArray(buf[1:])
 		if err != nil {
 			fmt.Println("Couldn't convert buffer to record")
 			panic(err)
@@ -93,8 +96,8 @@ func HandleRequest(conn net.Conn) {
 		fmt.Println(info.GetName(), "received:", records)
 		arrival(records)
 	} else if buf[0] == 'q' { // received queue hosts
-		queuePool = append(queuePool, string(buf[1:l]))
-		fmt.Println(info.GetName(), "new queue:", string(buf[1:l]))
+		queuePool = append(queuePool, string(buf[1:]))
+		fmt.Println(info.GetName(), "new queue:", string(buf[1:]))
 	}
 	conn.Close()
 }
