@@ -1,5 +1,7 @@
 import os
+import json
 import time
+import random
 from mininet.topo import Topo
 from mininet.cli import CLI
 
@@ -192,7 +194,7 @@ def init(self, args):
         net.get('m11').cmd(os.path.join(gopath, 'bin', 'gochariots-maintainer') + ' 9130 2 1 > m11.log &')
 
         # Wait for controller and app running
-        time.sleep(2)
+        time.sleep(1)
 
         a01_ip = net.get('a01').IP()
         c01_ip = net.get('c01').IP()
@@ -255,6 +257,39 @@ def post(self, args):
         client = net.get('client')
     print(client.cmd('curl -i -XPOST -H "Content-Type: application/json" -d "@' + jsonfile + '" http://' + n.IP() + ':8080/record'))
 
+def random_post(self, args):
+    "random randomly post records with dependency"
+    "random num_records dependency_prob max_window"
+    args = args.split()
+    if (len(args) < 3):
+        print('random num_records dependency_prob max_window')
+        return
+    n = int(args[0])
+    dependency_prob = float(args[1])
+    max_window = int(args[2])
+    net = self.mn
+    url = [net.get('a01').IP()]
+    for i in range(n):
+        value = str(i + 1)
+        host_id = random.randint(0, len(url) - 1)
+        client = net.get('client' + str(host_id + 1))
+        sent = False
+        while sent == False:
+            if random.random() < dependency_prob:
+                key = 'low'
+                pretoid = max(0, i - random.randint(1, max_window))
+            else:
+                key = 'high'
+                pretoid = 0
+            payload = json.dumps({'tags': {key: value}, 'prehost': host_id, 'pretoid': pretoid}).replace('"', '\\"')
+            host = 'http://' + str(url[host_id]) + ':8080/record'
+            print('curl -i -XPOST -H "Content-Type: application/json" -d "' + payload + '" ' + host)
+            result = client.cmd('curl -i -XPOST -H "Content-Type: application/json" -d "' + payload + '" ' + host)
+            if result.startswith('HTTP/1.1 200 OK'):
+                sent = True
+            else:
+                time.sleep(3)
+
 def get(self, lid):
     "get gets the content of record"
     if lid == '':
@@ -268,6 +303,7 @@ def get(self, lid):
 CLI.do_init = init
 CLI.do_log = log
 CLI.do_post = post
+CLI.do_random_post = random_post
 CLI.do_get = get
 
 topos = {

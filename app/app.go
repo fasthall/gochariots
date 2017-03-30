@@ -50,7 +50,7 @@ func postRecord(c *gin.Context) {
 
 	// send to batcher
 	host := randomHost()
-	fmt.Println("POST ", jsonRecord, " to ", host)
+	fmt.Println("POST", jsonRecord, "to", host)
 	record := log.Record{
 		Host: info.ID,
 		Tags: jsonRecord.Tags,

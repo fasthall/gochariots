@@ -46,7 +46,8 @@ func main() {
 		// Listen for an incoming connection.
 		conn, err := ln.Accept()
 		if err != nil {
-			panic(err)
+			fmt.Println(info.GetName(), "Couldn't handle more connection", err)
+			continue
 		}
 		// Handle connections in a new goroutine.
 		go batcher.HandleRequest(conn)

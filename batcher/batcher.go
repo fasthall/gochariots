@@ -81,7 +81,6 @@ func Sweeper() {
 func HandleRequest(conn net.Conn) {
 	// Read the incoming connection into the buffer.
 	buf, err := ioutil.ReadAll(conn)
-	fmt.Println(string(buf))
 	if err != nil {
 		fmt.Println("Error during reading buffer")
 		panic(err)
