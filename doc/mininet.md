@@ -54,7 +54,7 @@ mininet> get 0 1
 
 To randomly post records to multiple data centers, modify [custom.py](../test/mininet/custom.py) line 272. The usage is:
 ```
-mininet> random_post num_records dependency_prob max_window margin')
+mininet> random_post num_records dependency_prob max_window margin
 ```
 `max_window` and `margin` need to be set carefully, otherwise the records may not be able to be appended due to dependency issue. For example, when `max_window = 3` and `margin = 5`, the 100th record may depend on record 92 to 94. 
 

@@ -72,5 +72,5 @@ To append to the shared log, send POST request to http://localhost:8080/record. 
 ## Design discussion
 
 * Currently sender(propogation) is bundled with maintainer. This eliminate the communication between sender and maintainer, but can't be scaled. If seperate them, sender can be scaled independently, but require extra communication.
-* Does token need to carry all records with unsatisfied dependencies? Currently it does.
+* Does token need to carry all records with unsatisfied dependencies? Currently it does that.
 * Batchers should be put behind a load balancer.

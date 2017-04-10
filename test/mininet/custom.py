@@ -262,18 +262,18 @@ def random_post(self, args):
     "random_post num_records dependency_prob max_window margin"
     args = args.split()
     if (len(args) < 4):
-        print('random num_records dependency_prob max_window margin')
+        print('random_post num_records dependency_prob max_window margin')
         return
     n = int(args[0])
     dependency_prob = float(args[1])
     max_window = int(args[2])
     margin = int(args[3])
     net = self.mn
-    url = [net.get('a01').IP()] # Add more app IPs if desired
+    url = [net.get('a01').IP(), net.get('a11').IP()] # Add more app IPs if desired
     for i in range(n):
         value = str(i + 1)
         host_id = random.randint(0, len(url) - 1)
-        client = net.get('client' + str(host_id + 1))
+        client = net.get('client' + str(host_id))
         sent = False
         while sent == False:
             if random.random() < dependency_prob:
@@ -289,7 +289,7 @@ def random_post(self, args):
             if result.startswith('HTTP/1.1 200 OK'):
                 sent = True
             else:
-                time.sleep(3)
+                time.sleep(1)
 
 def get(self, lid):
     "get gets the content of record"
