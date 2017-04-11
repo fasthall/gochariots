@@ -2,9 +2,9 @@ package maintainer
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
 	"net"
 	"os"
 	"path/filepath"
@@ -14,16 +14,18 @@ import (
 	"github.com/fasthall/gochariots/record"
 )
 
-var remoteBatchers []string
+// LastLId records the last LID maintained by this maintainer
 var LastLId int
+var remoteBatchers []string
 var path = "flstore"
 
+// InitLogMaintainer initializes the maintainer and assign the path name to store the records
 func InitLogMaintainer(p string) {
 	LastLId = 0
 	path = p
 	err := os.MkdirAll(path, os.ModePerm)
 	if err != nil {
-		fmt.Println("Couldn't access path", path)
+		log.Println(info.GetName(), "couldn't access path", path)
 		panic(err)
 	}
 }
@@ -39,7 +41,7 @@ func Append(r record.Record) error {
 	// if err != nil {
 	// 	return err
 	// }
-	fmt.Println("Wrote to", fpath)
+	log.Println(info.GetName(), "wrote record to", fpath)
 	LastLId = r.LId
 	if r.Host == info.ID {
 		Propagate(r)
@@ -61,12 +63,12 @@ func recordsArrival(records []record.Record) {
 	for _, record := range records {
 		err := Append(record)
 		if err != nil {
-			fmt.Println(err)
-			panic(err)
+			log.Println(info.GetName(), "couldn't append the record to the store")
 		}
 	}
 }
 
+// HandleRequest handles incoming connection
 func HandleRequest(conn net.Conn) {
 	for {
 		// Make a buffer to hold incoming data.
@@ -76,24 +78,25 @@ func HandleRequest(conn net.Conn) {
 		if err == io.EOF {
 			return
 		} else if err != nil {
-			fmt.Println("Error during reading buffer")
-			panic(err)
+			log.Println(info.GetName(), "couldn't read incoming buffer.")
+			log.Println(info.GetName(), err)
+			continue
 		}
 		if buf[0] == 'b' { // received remote batchers update
 			var batchers []string
 			err := json.Unmarshal(buf[1:l], &batchers)
 			remoteBatchers = batchers
 			if err != nil {
-				fmt.Println("Couldn't convert received bytes to string list")
-				panic(err)
+				log.Println(info.GetName(), "couldn't convert received bytes to string list:", string(buf[1:l]))
+				log.Panicln(err)
 			}
-			fmt.Println(info.GetName(), "received:", remoteBatchers)
+			log.Println(info.GetName(), "received remote batchers update:", remoteBatchers)
 		} else if buf[0] == 'r' {
 			records, err := record.ToRecordArray(buf[1:l])
 			if err != nil {
 				panic(err)
 			}
-			fmt.Println(info.GetName(), "received:", records)
+			log.Println(info.GetName(), "received records:", records)
 			recordsArrival(records)
 		}
 	}

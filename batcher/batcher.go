@@ -4,8 +4,8 @@ package batcher
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
+	"log"
 	"net"
 	"sync"
 	"time"
@@ -31,7 +31,7 @@ func InitBatcher(n int) {
 	}
 	filterHost = make([]string, numFilters)
 	filterConn = make([]net.Conn, numFilters)
-	fmt.Printf("%s is initialized with %d filter channels\n", info.GetName(), n)
+	log.Printf("%s is initialized with %d filter channels\n", info.GetName(), n)
 }
 
 // arrival buffers arriving records.
@@ -50,15 +50,10 @@ func arrival(record record.Record) {
 	mutex.Unlock()
 }
 
-func dialConn(dc int) {
+func dialConn(dc int) error {
 	var err error
 	filterConn[dc], err = net.Dial("tcp", filterHost[dc])
-	if err != nil {
-		fmt.Printf("Couldn't connect to filterHost[%d] %s\n", dc, filterHost[dc])
-		fmt.Println(err)
-	} else {
-		fmt.Printf("%s connected to filterHost[%d] %s\n", info.GetName(), dc, filterHost[dc])
-	}
+	return err
 }
 
 func sendToFilter(dc int) {
@@ -69,25 +64,42 @@ func sendToFilter(dc int) {
 	b := []byte{'r'}
 	jsonBytes, err := record.ToJSONArray(buffer[dc])
 	if err != nil {
-		fmt.Println("Couldn't convert buffer to records")
+		log.Panicln(info.GetName(), "couldn't convert buffer to records")
 	}
 	buffer[dc] = buffer[dc][:0]
 	if filterConn[dc] == nil {
-		dialConn(dc)
+		err = dialConn(dc)
+		if err != nil {
+			log.Printf("%s couldn't connect to filterHost[%d] %s\n", info.GetName(), dc, filterHost[dc])
+		} else {
+			log.Printf("%s is connected to filterHost[%d] %s\n", info.GetName(), dc, filterHost[dc])
+		}
 	}
+	cnt := 5
 	sent := false
 	for sent == false {
 		_, err := filterConn[dc].Write(append(b, jsonBytes...))
 		if err != nil {
-			dialConn(dc)
+			if cnt >= 0 {
+				cnt--
+				err = dialConn(dc)
+				if err != nil {
+					log.Printf("%s couldn't connect to filterHost[%d] %s, retrying...\n", info.GetName(), dc, filterHost[dc])
+				}
+			} else {
+				log.Printf("%s failed to connect to filterHost[%d] %s after retrying 5 times\n", info.GetName(), dc, filterHost[dc])
+				break
+			}
 		} else {
 			sent = true
+			log.Printf("%s sent to filterHost[%d] %s\n", info.GetName(), dc, filterHost[dc])
 		}
 	}
-	fmt.Println(info.GetName(), "sent to filter", filterHost[dc])
+
 	mutex.Unlock()
 }
 
+// Sweeper periodcally sends the buffer content to filters
 func Sweeper() {
 	for {
 		time.Sleep(100 * time.Millisecond)
@@ -97,6 +109,7 @@ func Sweeper() {
 	}
 }
 
+// HandleRequest handles incoming connection
 func HandleRequest(conn net.Conn) {
 	for {
 		// Read the incoming connection into the buffer.
@@ -105,25 +118,26 @@ func HandleRequest(conn net.Conn) {
 		if err == io.EOF {
 			return
 		} else if err != nil {
-			fmt.Println("Error during reading buffer")
-			panic(err)
+			log.Println(info.GetName(), "couldn't read incoming request")
+			log.Println(info.GetName(), err)
+			continue
 		}
 		if buf[0] == 'r' { // received records
 			record, err := record.ToRecord(buf[1:l])
 			if err != nil {
-				fmt.Println("Couldn't convert buffer to record")
-				panic(err)
+				log.Println(info.GetName(), "couldn't convert read buffer to record:", buf[1:l])
+				continue
 			}
-			fmt.Println(info.GetName(), "received:", record)
+			log.Println(info.GetName(), "received incoming record:", record)
 			arrival(record)
 		} else if buf[0] == 'f' { //received filter update
 			err := json.Unmarshal(buf[1:l], &filterHost)
 			if err != nil {
-				fmt.Println("Couldn't convert bytes to filter list")
-				fmt.Println("Bytes:", string(buf[1:l]))
-				panic(err)
+				log.Println(info.GetName(), "couldn't convert bytes to filter list:", string(buf[1:l]))
+				continue
+			} else {
+				log.Println(info.GetName(), "updates filter:", filterHost)
 			}
-			fmt.Println(info.GetName(), "update filter:", filterHost)
 		}
 	}
 }

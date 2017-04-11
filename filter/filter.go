@@ -4,11 +4,10 @@
 package filter
 
 import (
-	"fmt"
+	"io"
+	"log"
 	"math/rand"
 	"net"
-
-	"io"
 
 	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/record"
@@ -65,16 +64,11 @@ func arrival(records []record.Record) {
 	sendToQueue(queued)
 }
 
-func dialConn(queueID int) {
+func dialConn(queueID int) error {
 	host := queuePool[queueID]
 	var err error
 	queueConn[queueID], err = net.Dial("tcp", host)
-	if err != nil {
-		fmt.Println(info.GetName(), "couldn't connect to", host)
-		panic(err)
-	} else {
-		fmt.Printf("%s connected to queuePool[%d] %s\n", info.GetName(), queueID, queuePool[queueID])
-	}
+	return err
 }
 
 func sendToQueue(records []record.Record) {
@@ -85,20 +79,37 @@ func sendToQueue(records []record.Record) {
 	}
 	queueID := rand.Intn(len(queuePool))
 	if queueConn[queueID] == nil {
-		dialConn(queueID)
-	}
-	sent := false
-	for sent == false {
-		_, err = queueConn[queueID].Write(append(b, jsonBytes...))
+		err = dialConn(queueID)
 		if err != nil {
-			dialConn(queueID)
+			log.Printf("%s couldn't connect to queuePool[%d] %s\n", info.GetName(), queueID, queuePool[queueID])
 		} else {
-			sent = true
+			log.Printf("%s is connected to queuePool[%d] %s\n", info.GetName(), queueID, queuePool[queueID])
 		}
 	}
-	fmt.Println(info.GetName(), "sent to", queuePool[queueID])
+
+	cnt := 5
+	sent := false
+	for sent == false {
+		_, err := queueConn[queueID].Write(append(b, jsonBytes...))
+		if err != nil {
+			if cnt >= 0 {
+				cnt--
+				err = dialConn(queueID)
+				if err != nil {
+					log.Printf("%s couldn't connect to queuePool[%d] %s, retrying...\n", info.GetName(), queueID, queuePool[queueID])
+				}
+			} else {
+				log.Printf("%s failed to connect to queuePool[%d] %s after retrying 5 times\n", info.GetName(), queueID, queuePool[queueID])
+				break
+			}
+		} else {
+			sent = true
+			log.Printf("%s sent to queuePool[%d] %s\n", info.GetName(), queueID, queuePool[queueID])
+		}
+	}
 }
 
+// HandleRequest handles incoming connection
 func HandleRequest(conn net.Conn) {
 	for {
 		// Read the incoming connection into the buffer.
@@ -107,22 +118,22 @@ func HandleRequest(conn net.Conn) {
 		if err == io.EOF {
 			return
 		} else if err != nil {
-			fmt.Println("Error during reading buffer")
-			panic(err)
+			log.Println(info.GetName(), "couldn't read incoming buffer")
+			log.Println(info.GetName(), err)
+			continue
 		}
-		fmt.Println(info.GetName(), "received:", string(buf))
 		if buf[0] == 'r' { // received records
 			records, err := record.ToRecordArray(buf[1:l])
 			if err != nil {
-				fmt.Println("Couldn't convert buffer to record")
-				panic(err)
+				log.Println(info.GetName(), "couldn't convert buffer to record:", string(buf[1:l]))
+				continue
 			}
-			fmt.Println(info.GetName(), "received:", records)
+			log.Println(info.GetName(), "received incoming records:", records)
 			arrival(records)
 		} else if buf[0] == 'q' { // received queue hosts
 			queuePool = append(queuePool, string(buf[1:l]))
 			queueConn = make([]net.Conn, len(queuePool))
-			fmt.Println(info.GetName(), "new queue:", string(buf[1:]))
+			log.Println(info.GetName(), "received new queue update:", string(buf[1:]))
 		}
 	}
 }

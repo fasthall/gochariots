@@ -1,7 +1,7 @@
 package app
 
 import (
-	"fmt"
+	"log"
 	"math/rand"
 	"net"
 	"net/http"
@@ -75,7 +75,7 @@ func postRecord(c *gin.Context) {
 	if batcherConn[hostID] == nil {
 		err = dialConn(hostID)
 		if err != nil {
-			fmt.Println("Couldn't connect to the batcher.")
+			log.Printf("%s couldn't connect to the batcherPool[%d] %s", info.GetName(), hostID, batcherPool[hostID])
 			c.String(http.StatusServiceUnavailable, "Couldn't connect to the batcher")
 			return
 		}
@@ -89,10 +89,10 @@ func postRecord(c *gin.Context) {
 				cnt--
 				err = dialConn(hostID)
 				if err != nil {
-					fmt.Println("Couldn't connect to the batcher.")
+					log.Printf("%s couldn't connect to the batcherPool[%d] %s, retrying...", info.GetName(), hostID, batcherPool[hostID])
 				}
 			} else {
-				fmt.Println("Couldn't send record to the batcher.")
+				log.Printf("%s failed to connect to the batcherPool[%d] %s after retrying 5 times", info.GetName(), hostID, batcherPool[hostID])
 				c.String(http.StatusServiceUnavailable, "Couldn't connect to the batcher")
 				return
 			}

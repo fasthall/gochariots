@@ -2,8 +2,8 @@ package queue
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
+	"log"
 	"net"
 	"sort"
 	"sync"
@@ -39,8 +39,12 @@ func InitQueue(hasToken bool) {
 	if hasToken {
 		var token Token
 		token.InitToken(make([]int, info.NumDC), 0)
-		fmt.Println(token)
 		TokenArrival(token)
+	}
+	if hasToken {
+		log.Println(info.GetName(), "initialized with token")
+	} else {
+		log.Println(info.GetName(), "initialized without token")
 	}
 }
 
@@ -130,13 +134,10 @@ func assignLId(records []record.Record, lastLId int) int {
 	return lastLId
 }
 
-func dialNextQueue() {
+func dialNextQueue() error {
 	var err error
 	nextQueueConn, err = net.Dial("tcp", nextQueueHost)
-	if err != nil {
-		fmt.Println(info.GetName(), "couldn't connect to", nextQueueHost)
-		panic(err)
-	}
+	return err
 }
 
 // passToken sends the token to the next queue in the ring
@@ -148,35 +149,47 @@ func passToken(token *Token) {
 		b := []byte{'t'}
 		jsonBytes, err := json.Marshal(token)
 		if err != nil {
-			fmt.Println("Couldn't convert token to bytes")
-			panic(err)
+			log.Println(info.GetName(), "couldn't convert token to bytes:", token)
+			log.Panicln(err)
 		}
 		if nextQueueConn == nil {
-			dialNextQueue()
-		}
-		sent := false
-		for sent == false {
-			_, err = nextQueueConn.Write(append(b, jsonBytes...))
+			err = dialNextQueue()
 			if err != nil {
-				dialNextQueue()
+				log.Printf("%s couldn't connect to the next queue %s.\n", info.GetName(), nextQueueHost)
 			} else {
-				sent = true
+				log.Printf("%s is connected to the next queue %s.\n", info.GetName(), nextQueueHost)
 			}
 		}
-		if len(token.DeferredRecords) > 0 {
-			fmt.Println(info.GetName(), "sent to", nextQueueHost)
-			fmt.Println(string(jsonBytes))
+
+		cnt := 5
+		sent := false
+		for sent == false {
+			_, err := nextQueueConn.Write(append(b, jsonBytes...))
+			if err != nil {
+				if cnt >= 0 {
+					cnt--
+					err = dialNextQueue()
+					if err != nil {
+						log.Printf("%s couldn't connect to the next queue %s.\n", info.GetName(), nextQueueHost)
+					}
+				} else {
+					log.Printf("%s failed to connect to the next queue %s after retrying 5 times.\n", info.GetName(), nextQueueHost)
+					break
+				}
+			} else {
+				sent = true
+				if len(token.DeferredRecords) > 0 {
+					log.Println(info.GetName(), "sent the token to", nextQueueHost)
+				}
+			}
 		}
 	}
 }
 
-func dialLogMaintainer() {
+func dialLogMaintainer() error {
 	var err error
 	logMaintainerConn, err = net.Dial("tcp", logMaintainerHost)
-	if err != nil {
-		fmt.Println("Couldn't connect to", logMaintainerHost)
-		return
-	}
+	return err
 }
 
 // dispatchRecords sends the ready records to log maintainers
@@ -184,24 +197,41 @@ func dispatchRecords(records []record.Record) {
 	b := []byte{'r'}
 	jsonBytes, err := record.ToJSONArray(records)
 	if err != nil {
-		panic(err)
+		log.Println(info.GetName(), "couldn't convert records to bytes:", records)
+		return
 	}
 	if logMaintainerConn == nil {
-		dialLogMaintainer()
+		err = dialLogMaintainer()
+		if err != nil {
+			log.Printf("%s couldn't connect to log maintainer %s.\n", info.GetName(), logMaintainerHost)
+		} else {
+			log.Printf("%s is connected to log maintainer %s.\n", info.GetName(), logMaintainerHost)
+		}
 	}
+
+	cnt := 5
 	sent := false
 	for sent == false {
 		_, err = logMaintainerConn.Write(append(b, jsonBytes...))
 		if err != nil {
-			dialLogMaintainer()
+			if cnt >= 0 {
+				cnt--
+				err = dialLogMaintainer()
+				if err != nil {
+					log.Printf("%s couldn't connect to log maintainer %s.\n", info.GetName(), logMaintainerHost)
+				}
+			} else {
+				log.Printf("%s failed to connect to log maintainer %s after retrying 5 times.\n", info.GetName(), logMaintainerHost)
+				break
+			}
 		} else {
 			sent = true
+			log.Println(info.GetName(), "sent the records to", logMaintainerHost)
 		}
 	}
-	fmt.Println(info.GetName(), "sent to", logMaintainerHost)
-	fmt.Println(string(jsonBytes))
 }
 
+// HandleRequest handles incoming connection
 func HandleRequest(conn net.Conn) {
 	for {
 		// Read the incoming connection into the buffer.
@@ -211,16 +241,17 @@ func HandleRequest(conn net.Conn) {
 		if err == io.EOF {
 			return
 		} else if err != nil {
-			fmt.Println("Error during reading buffer")
-			panic(err)
+			log.Println(info.GetName(), "couldn't read incoming buffer.")
+			log.Println(info.GetName(), err)
+			continue
 		}
 		if buf[0] == 'r' { // received records
 			records, err := record.ToRecordArray(buf[1:l])
 			if err != nil {
-				fmt.Println("Couldn't convert received bytes to records:", string(buf))
-				panic(err)
+				log.Println(info.GetName(), "couldn't convert received bytes to records:", string(buf[1:l]))
+				continue
 			}
-			fmt.Println(info.GetName(), "received:", records)
+			log.Println(info.GetName(), "received records:", records)
 			recordsArrival(records)
 		} else if buf[0] == 'q' { // received next host update
 			nextQueueHost = string(buf[1:l])
@@ -228,24 +259,23 @@ func HandleRequest(conn net.Conn) {
 				nextQueueConn.Close()
 				nextQueueConn = nil
 			}
-			fmt.Println(info.GetName(), "set next host:", nextQueueHost)
+			log.Println(info.GetName(), "updates next queue host to:", nextQueueHost)
 		} else if buf[0] == 't' { // received token
 			var token Token
 			err := json.Unmarshal(buf[1:l], &token)
 			if err != nil {
-				fmt.Println("Couldn't convert received bytes to token:", string(buf))
-				panic(err)
+				log.Println(info.GetName(), "couldn't convert received bytes to token:", string(buf[1:l]))
+				log.Panicln(err)
 			}
 			TokenArrival(token)
 			if len(token.DeferredRecords) > 0 {
-				fmt.Println(info.GetName(), "received:", token)
+				log.Println(info.GetName(), "received token:", token)
 			}
 		} else if buf[0] == 'm' { // received maintainer update
 			var hosts []string
 			err := json.Unmarshal(buf[1:l], &hosts)
 			if err != nil {
-				fmt.Println("Couldn't convert received bytes to maintainer hosts")
-				panic(err)
+				log.Println(info.GetName(), "couldn't convert received bytes to maintainer hosts:", string(buf[1:l]))
 			}
 			if len(hosts) > 0 {
 				logMaintainerHost = hosts[0]
