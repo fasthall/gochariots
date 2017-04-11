@@ -10,11 +10,11 @@ import (
 	"time"
 
 	"github.com/fasthall/gochariots/info"
-	"github.com/fasthall/gochariots/log"
+	"github.com/fasthall/gochariots/record"
 )
 
-var buffered []map[int]log.Record
-var sameDCBuffered []log.Record
+var buffered []map[int]record.Record
+var sameDCBuffered []record.Record
 var logMaintainerConn net.Conn
 var logMaintainerHost string
 var nextQueueConn net.Conn
@@ -27,14 +27,14 @@ type queueHost int
 type Token struct {
 	MaxTOId         []int
 	LastLId         int
-	DeferredRecords []log.Record
+	DeferredRecords []record.Record
 }
 
 // InitQueue initializes the buffer and hashmap for queued records
 func InitQueue(hasToken bool) {
-	buffered = make([]map[int]log.Record, info.NumDC)
+	buffered = make([]map[int]record.Record, info.NumDC)
 	for i := range buffered {
-		buffered[i] = make(map[int]log.Record)
+		buffered[i] = make(map[int]record.Record)
 	}
 	if hasToken {
 		var token Token
@@ -51,7 +51,7 @@ func (token *Token) InitToken(maxTOId []int, lastLId int) {
 }
 
 // recordsArrival deals with the records received from filters
-func recordsArrival(records []log.Record) {
+func recordsArrival(records []record.Record) {
 	mutex.Lock()
 	for _, record := range records {
 		if record.Host == info.ID {
@@ -78,13 +78,13 @@ func TokenArrival(token Token) {
 			v := buffered[dc][k]
 			token.DeferredRecords = append(token.DeferredRecords, v)
 		}
-		buffered[dc] = map[int]log.Record{}
+		buffered[dc] = map[int]record.Record{}
 	}
 	token.DeferredRecords = append(token.DeferredRecords, sameDCBuffered...)
-	sameDCBuffered = []log.Record{}
+	sameDCBuffered = []record.Record{}
 
 	// put the deffered records with dependency satisfied into dispatch slice
-	dispatch := []log.Record{}
+	dispatch := []record.Record{}
 	head := 0
 	for i := 0; i < len(token.DeferredRecords); i++ {
 		v := token.DeferredRecords[i]
@@ -122,7 +122,7 @@ func TokenArrival(token Token) {
 
 // assignLId assigns LId to all the records to be sent to log maintainers
 // return the last LId assigned
-func assignLId(records []log.Record, lastLId int) int {
+func assignLId(records []record.Record, lastLId int) int {
 	for i := range records {
 		lastLId++
 		records[i].LId = lastLId
@@ -180,9 +180,9 @@ func dialLogMaintainer() {
 }
 
 // dispatchRecords sends the ready records to log maintainers
-func dispatchRecords(records []log.Record) {
+func dispatchRecords(records []record.Record) {
 	b := []byte{'r'}
-	jsonBytes, err := log.ToJSONArray(records)
+	jsonBytes, err := record.ToJSONArray(records)
 	if err != nil {
 		panic(err)
 	}
@@ -215,7 +215,7 @@ func HandleRequest(conn net.Conn) {
 			panic(err)
 		}
 		if buf[0] == 'r' { // received records
-			records, err := log.ToRecordArray(buf[1:l])
+			records, err := record.ToRecordArray(buf[1:l])
 			if err != nil {
 				fmt.Println("Couldn't convert received bytes to records:", string(buf))
 				panic(err)

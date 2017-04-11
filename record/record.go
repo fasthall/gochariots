@@ -1,6 +1,6 @@
-// Package log provides the functions of log mainteiners in Chariots.
+// Package record provides the functions of log mainteiners in Chariots.
 // It will be implemented using FLStore, but it's currently a mocked in-memory log for prototyping.
-package log
+package record
 
 import "encoding/json"
 

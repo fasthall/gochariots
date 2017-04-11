@@ -8,8 +8,8 @@ import (
 	"strconv"
 
 	"github.com/fasthall/gochariots/info"
-	"github.com/fasthall/gochariots/log"
 	"github.com/fasthall/gochariots/maintainer"
+	"github.com/fasthall/gochariots/record"
 	"github.com/gin-gonic/gin"
 )
 
@@ -57,16 +57,16 @@ func postRecord(c *gin.Context) {
 	}
 
 	// send to batcher
-	record := log.Record{
+	r := record.Record{
 		Host: info.ID,
 		Tags: jsonRecord.Tags,
-		Pre: log.Causality{
+		Pre: record.Causality{
 			Host: jsonRecord.PreHost,
 			TOId: jsonRecord.PreTOId,
 		},
 	}
 	b := []byte{'r'}
-	jsonBytes, err := log.ToJSON(record)
+	jsonBytes, err := record.ToJSON(r)
 	if err != nil {
 		panic(err)
 	}

@@ -11,7 +11,7 @@ import (
 	"strconv"
 
 	"github.com/fasthall/gochariots/info"
-	"github.com/fasthall/gochariots/log"
+	"github.com/fasthall/gochariots/record"
 )
 
 var remoteBatchers []string
@@ -28,36 +28,36 @@ func InitLogMaintainer(p string) {
 	}
 }
 
-// Append appends a new record to the log store.
-func Append(record log.Record) error {
-	_, err := log.ToJSON(record)
+// Append appends a new record to the maintainer.
+func Append(r record.Record) error {
+	_, err := record.ToJSON(r)
 	if err != nil {
 		return err
 	}
-	fpath := filepath.Join(path, strconv.Itoa(record.LId))
+	fpath := filepath.Join(path, strconv.Itoa(r.LId))
 	// err = ioutil.WriteFile(fpath, b, 0644)
 	// if err != nil {
 	// 	return err
 	// }
 	fmt.Println("Wrote to", fpath)
-	LastLId = record.LId
-	if record.Host == info.ID {
-		Propagate(record)
+	LastLId = r.LId
+	if r.Host == info.ID {
+		Propagate(r)
 	}
 	return nil
 }
 
-// ReadByLId reads from the log store according to LId.
-func ReadByLId(LId int) (log.Record, error) {
+// ReadByLId reads from the maintainer according to LId.
+func ReadByLId(LId int) (record.Record, error) {
 	fpath := filepath.Join(path, strconv.Itoa(LId))
 	b, err := ioutil.ReadFile(fpath)
 	if err != nil {
-		return log.Record{}, err
+		return record.Record{}, err
 	}
-	return log.ToRecord(b)
+	return record.ToRecord(b)
 }
 
-func recordsArrival(records []log.Record) {
+func recordsArrival(records []record.Record) {
 	for _, record := range records {
 		err := Append(record)
 		if err != nil {
@@ -89,7 +89,7 @@ func HandleRequest(conn net.Conn) {
 			}
 			fmt.Println(info.GetName(), "received:", remoteBatchers)
 		} else if buf[0] == 'r' {
-			records, err := log.ToRecordArray(buf[1:l])
+			records, err := record.ToRecordArray(buf[1:l])
 			if err != nil {
 				panic(err)
 			}

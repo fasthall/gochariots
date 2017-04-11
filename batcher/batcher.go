@@ -11,13 +11,13 @@ import (
 	"time"
 
 	"github.com/fasthall/gochariots/info"
-	"github.com/fasthall/gochariots/log"
+	"github.com/fasthall/gochariots/record"
 )
 
 const bufferSize int = 32
 
 var mutex sync.Mutex
-var buffer [][]log.Record
+var buffer [][]record.Record
 var filterConn []net.Conn
 var filterHost []string
 var numFilters int
@@ -25,9 +25,9 @@ var numFilters int
 // InitBatcher allocates n buffers, where n is the number of filters
 func InitBatcher(n int) {
 	numFilters = n
-	buffer = make([][]log.Record, numFilters)
+	buffer = make([][]record.Record, numFilters)
 	for i := range buffer {
-		buffer[i] = make([]log.Record, 0, bufferSize)
+		buffer[i] = make([]record.Record, 0, bufferSize)
 	}
 	filterHost = make([]string, numFilters)
 	filterConn = make([]net.Conn, numFilters)
@@ -38,7 +38,7 @@ func InitBatcher(n int) {
 // Upon records arrive, depends on where the record origins it goes to a certain buffer.
 // When a buffer is full, all the records in the buffer will be sent to the corresponding filter.
 // BUG(fasthall) In Arrival(), the mechanism to match thre record and filter needs to be done. Currently the number of filters needs to be equal to datacenters.
-func arrival(record log.Record) {
+func arrival(record record.Record) {
 	mutex.Lock()
 	dc := record.Host
 	buffer[dc] = append(buffer[dc], record)
@@ -67,7 +67,7 @@ func sendToFilter(dc int) {
 	}
 	mutex.Lock()
 	b := []byte{'r'}
-	jsonBytes, err := log.ToJSONArray(buffer[dc])
+	jsonBytes, err := record.ToJSONArray(buffer[dc])
 	if err != nil {
 		fmt.Println("Couldn't convert buffer to records")
 	}
@@ -109,7 +109,7 @@ func HandleRequest(conn net.Conn) {
 			panic(err)
 		}
 		if buf[0] == 'r' { // received records
-			record, err := log.ToRecord(buf[1:l])
+			record, err := record.ToRecord(buf[1:l])
 			if err != nil {
 				fmt.Println("Couldn't convert buffer to record")
 				panic(err)

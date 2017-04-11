@@ -11,13 +11,13 @@ import (
 	"io"
 
 	"github.com/fasthall/gochariots/info"
-	"github.com/fasthall/gochariots/log"
+	"github.com/fasthall/gochariots/record"
 )
 
 var queueConn []net.Conn
 var queuePool []string
 var nextTOId []int
-var buffer []log.Record
+var buffer []record.Record
 
 // InitFilter Initializes all the expected TOId as 1
 func InitFilter(n int) {
@@ -25,14 +25,14 @@ func InitFilter(n int) {
 	for i := range nextTOId {
 		nextTOId[i] = 1
 	}
-	buffer = make([]log.Record, 0)
+	buffer = make([]record.Record, 0)
 }
 
 // arrival deals with the records the filter received.
 // If the TOId is the same as expected, the record will be forwared to the queue.
 // If the TOId is larger than expected, the record will be buffered.
-func arrival(records []log.Record) {
-	queued := []log.Record{}
+func arrival(records []record.Record) {
+	queued := []record.Record{}
 	for _, record := range records {
 		if record.Host == info.ID {
 			// this record is from the same datacenter, the TOId hasn't been generated yet
@@ -77,9 +77,9 @@ func dialConn(queueID int) {
 	}
 }
 
-func sendToQueue(records []log.Record) {
+func sendToQueue(records []record.Record) {
 	b := []byte{'r'}
-	jsonBytes, err := log.ToJSONArray(records)
+	jsonBytes, err := record.ToJSONArray(records)
 	if err != nil {
 		panic(err)
 	}
@@ -112,7 +112,7 @@ func HandleRequest(conn net.Conn) {
 		}
 		fmt.Println(info.GetName(), "received:", string(buf))
 		if buf[0] == 'r' { // received records
-			records, err := log.ToRecordArray(buf[1:l])
+			records, err := record.ToRecordArray(buf[1:l])
 			if err != nil {
 				fmt.Println("Couldn't convert buffer to record")
 				panic(err)
