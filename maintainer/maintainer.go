@@ -3,6 +3,7 @@ package maintainer
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net"
 	"os"
@@ -29,15 +30,15 @@ func InitLogMaintainer(p string) {
 
 // Append appends a new record to the log store.
 func Append(record log.Record) error {
-	b, err := log.ToJSON(record)
+	_, err := log.ToJSON(record)
 	if err != nil {
 		return err
 	}
 	fpath := filepath.Join(path, strconv.Itoa(record.LId))
-	err = ioutil.WriteFile(fpath, b, 0644)
-	if err != nil {
-		return err
-	}
+	// err = ioutil.WriteFile(fpath, b, 0644)
+	// if err != nil {
+	// 	return err
+	// }
 	fmt.Println("Wrote to", fpath)
 	LastLId = record.LId
 	if record.Host == info.ID {
@@ -67,29 +68,33 @@ func recordsArrival(records []log.Record) {
 }
 
 func HandleRequest(conn net.Conn) {
-	// Make a buffer to hold incoming data.
-	buf, err := ioutil.ReadAll(conn)
-	// Read the incoming connection into the buffer.
-	if err != nil {
-		fmt.Println("Error during reading buffer")
-		panic(err)
-	}
-	if buf[0] == 'b' { // received remote batchers update
-		var batchers []string
-		err := json.Unmarshal(buf[1:], &batchers)
-		remoteBatchers = batchers
-		if err != nil {
-			fmt.Println("Couldn't convert received bytes to string list")
+	for {
+		// Make a buffer to hold incoming data.
+		buf := make([]byte, 2048)
+		l, err := conn.Read(buf)
+		// Read the incoming connection into the buffer.
+		if err == io.EOF {
+			return
+		} else if err != nil {
+			fmt.Println("Error during reading buffer")
 			panic(err)
 		}
-		fmt.Println(info.GetName(), "received:", remoteBatchers)
-	} else if buf[0] == 'r' {
-		records, err := log.ToRecordArray(buf[1:])
-		if err != nil {
-			panic(err)
+		if buf[0] == 'b' { // received remote batchers update
+			var batchers []string
+			err := json.Unmarshal(buf[1:l], &batchers)
+			remoteBatchers = batchers
+			if err != nil {
+				fmt.Println("Couldn't convert received bytes to string list")
+				panic(err)
+			}
+			fmt.Println(info.GetName(), "received:", remoteBatchers)
+		} else if buf[0] == 'r' {
+			records, err := log.ToRecordArray(buf[1:l])
+			if err != nil {
+				panic(err)
+			}
+			fmt.Println(info.GetName(), "received:", records)
+			recordsArrival(records)
 		}
-		fmt.Println(info.GetName(), "received:", records)
-		recordsArrival(records)
 	}
-	conn.Close()
 }

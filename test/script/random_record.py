@@ -39,4 +39,4 @@ if __name__ == '__main__':
             result = send_json(payload, host_id)
             code = result.status_code
             if code == 503:
-                time.sleep(3)
+                time.sleep(1)

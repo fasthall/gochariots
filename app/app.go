@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+var batcherConn []net.Conn
 var batcherPool []string
 
 type JsonRecord struct {
@@ -32,6 +33,7 @@ func Run(port string) {
 
 func addBatcher(c *gin.Context) {
 	batcherPool = append(batcherPool, c.Query("host"))
+	batcherConn = make([]net.Conn, len(batcherPool))
 	c.String(http.StatusOK, c.Query("host")+" added\n")
 }
 
@@ -39,6 +41,12 @@ func getBatchers(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"batchers": batcherPool,
 	})
+}
+
+func dialConn(hostID int) error {
+	var err error
+	batcherConn[hostID], err = net.Dial("tcp", batcherPool[hostID])
+	return err
 }
 
 func postRecord(c *gin.Context) {
@@ -49,8 +57,6 @@ func postRecord(c *gin.Context) {
 	}
 
 	// send to batcher
-	host := randomHost()
-	fmt.Println("POST", jsonRecord, "to", host)
 	record := log.Record{
 		Host: info.ID,
 		Tags: jsonRecord.Tags,
@@ -65,18 +71,34 @@ func postRecord(c *gin.Context) {
 		panic(err)
 	}
 
-	conn, err := net.Dial("tcp", host)
-	if err != nil {
-		fmt.Println("Couldn't connect to the batcher.")
-		c.String(http.StatusServiceUnavailable, "Couldn't connect to the batcher")
-		return
+	hostID := rand.Intn(len(batcherPool))
+	if batcherConn[hostID] == nil {
+		err = dialConn(hostID)
+		if err != nil {
+			fmt.Println("Couldn't connect to the batcher.")
+			c.String(http.StatusServiceUnavailable, "Couldn't connect to the batcher")
+			return
+		}
 	}
-	defer conn.Close()
-	_, err = conn.Write(append(b, jsonBytes...))
-	if err != nil {
-		fmt.Println("Couldn't send record to the batcher.")
-		c.String(http.StatusServiceUnavailable, "Couldn't connect to the batcher")
-		return
+	cnt := 5
+	sent := false
+	for sent == false {
+		_, err = batcherConn[hostID].Write(append(b, jsonBytes...))
+		if err != nil {
+			if cnt >= 0 {
+				cnt--
+				err = dialConn(hostID)
+				if err != nil {
+					fmt.Println("Couldn't connect to the batcher.")
+				}
+			} else {
+				fmt.Println("Couldn't send record to the batcher.")
+				c.String(http.StatusServiceUnavailable, "Couldn't connect to the batcher")
+				return
+			}
+		} else {
+			sent = true
+		}
 	}
 }
 
@@ -104,8 +126,4 @@ func getRecord(c *gin.Context) {
 		"Causality": record.Pre,
 		"Tags":      record.Tags,
 	})
-}
-
-func randomHost() string {
-	return batcherPool[rand.Intn(len(batcherPool))]
 }

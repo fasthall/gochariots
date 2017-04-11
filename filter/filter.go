@@ -5,14 +5,16 @@ package filter
 
 import (
 	"fmt"
-	"io/ioutil"
 	"math/rand"
 	"net"
+
+	"io"
 
 	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/log"
 )
 
+var queueConn []net.Conn
 var queuePool []string
 var nextTOId []int
 var buffer []log.Record
@@ -63,41 +65,64 @@ func arrival(records []log.Record) {
 	sendToQueue(queued)
 }
 
+func dialConn(queueID int) {
+	host := queuePool[queueID]
+	var err error
+	queueConn[queueID], err = net.Dial("tcp", host)
+	if err != nil {
+		fmt.Println(info.GetName(), "couldn't connect to", host)
+		panic(err)
+	} else {
+		fmt.Printf("%s connected to queuePool[%d] %s\n", info.GetName(), queueID, queuePool[queueID])
+	}
+}
+
 func sendToQueue(records []log.Record) {
 	b := []byte{'r'}
 	jsonBytes, err := log.ToJSONArray(records)
 	if err != nil {
 		panic(err)
 	}
-	host := queuePool[rand.Intn(len(queuePool))]
-	conn, err := net.Dial("tcp", host)
-	defer conn.Close()
-	if err != nil {
-		fmt.Println(info.GetName(), "couldn't connect to", host)
-		panic(err)
+	queueID := rand.Intn(len(queuePool))
+	if queueConn[queueID] == nil {
+		dialConn(queueID)
 	}
-	conn.Write(append(b, jsonBytes...))
-	fmt.Println(info.GetName(), "sent to", host)
+	sent := false
+	for sent == false {
+		_, err = queueConn[queueID].Write(append(b, jsonBytes...))
+		if err != nil {
+			dialConn(queueID)
+		} else {
+			sent = true
+		}
+	}
+	fmt.Println(info.GetName(), "sent to", queuePool[queueID])
 }
 
 func HandleRequest(conn net.Conn) {
-	// Read the incoming connection into the buffer.
-	buf, err := ioutil.ReadAll(conn)
-	if err != nil {
-		fmt.Println("Error during reading buffer")
-		panic(err)
-	}
-	if buf[0] == 'r' { // received records
-		records, err := log.ToRecordArray(buf[1:])
-		if err != nil {
-			fmt.Println("Couldn't convert buffer to record")
+	for {
+		// Read the incoming connection into the buffer.
+		buf := make([]byte, 2048)
+		l, err := conn.Read(buf)
+		if err == io.EOF {
+			return
+		} else if err != nil {
+			fmt.Println("Error during reading buffer")
 			panic(err)
 		}
-		fmt.Println(info.GetName(), "received:", records)
-		arrival(records)
-	} else if buf[0] == 'q' { // received queue hosts
-		queuePool = append(queuePool, string(buf[1:]))
-		fmt.Println(info.GetName(), "new queue:", string(buf[1:]))
+		fmt.Println(info.GetName(), "received:", string(buf))
+		if buf[0] == 'r' { // received records
+			records, err := log.ToRecordArray(buf[1:l])
+			if err != nil {
+				fmt.Println("Couldn't convert buffer to record")
+				panic(err)
+			}
+			fmt.Println(info.GetName(), "received:", records)
+			arrival(records)
+		} else if buf[0] == 'q' { // received queue hosts
+			queuePool = append(queuePool, string(buf[1:l]))
+			queueConn = make([]net.Conn, len(queuePool))
+			fmt.Println(info.GetName(), "new queue:", string(buf[1:]))
+		}
 	}
-	conn.Close()
 }
