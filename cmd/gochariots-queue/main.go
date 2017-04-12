@@ -27,7 +27,7 @@ func main() {
 	}
 	info.InitChariots(numDc, dcID)
 	info.SetName("queue" + os.Args[1])
-	info.WritePID()
+	info.RedirectLog(info.GetName() + ".log")
 	queue.InitQueue(os.Args[4] == "true")
 	ln, err := net.Listen("tcp", ":"+os.Args[1])
 	if err != nil {

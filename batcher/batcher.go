@@ -60,6 +60,12 @@ func sendToFilter(dc int) {
 	if len(buffer[dc]) == 0 {
 		return
 	}
+	start := time.Now()
+	defer func() {
+		elapsed := time.Since(start)
+		log.Printf("TIMESTAMP %s:sendToFilter took %s\n", info.GetName(), elapsed)
+	}()
+
 	mutex.Lock()
 	b := []byte{'r'}
 	jsonBytes, err := record.ToJSONArray(buffer[dc])
@@ -102,7 +108,6 @@ func sendToFilter(dc int) {
 // Sweeper periodcally sends the buffer content to filters
 func Sweeper() {
 	for {
-		time.Sleep(100 * time.Millisecond)
 		for i := range buffer {
 			sendToFilter(i)
 		}
@@ -123,6 +128,7 @@ func HandleRequest(conn net.Conn) {
 			continue
 		}
 		if buf[0] == 'r' { // received records
+			start := time.Now()
 			record, err := record.ToRecord(buf[1:l])
 			if err != nil {
 				log.Println(info.GetName(), "couldn't convert read buffer to record:", buf[1:l])
@@ -130,6 +136,8 @@ func HandleRequest(conn net.Conn) {
 			}
 			log.Println(info.GetName(), "received incoming record:", record)
 			arrival(record)
+			elapsed := time.Since(start)
+			log.Printf("TIMESTAMP %s:HandleRequest took %s\n", info.GetName(), elapsed)
 		} else if buf[0] == 'f' { //received filter update
 			err := json.Unmarshal(buf[1:l], &filterHost)
 			if err != nil {

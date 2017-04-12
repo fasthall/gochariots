@@ -8,6 +8,7 @@ import (
 	"log"
 	"math/rand"
 	"net"
+	"time"
 
 	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/record"
@@ -123,6 +124,7 @@ func HandleRequest(conn net.Conn) {
 			continue
 		}
 		if buf[0] == 'r' { // received records
+			start := time.Now()
 			records, err := record.ToRecordArray(buf[1:l])
 			if err != nil {
 				log.Println(info.GetName(), "couldn't convert buffer to record:", string(buf[1:l]))
@@ -130,6 +132,7 @@ func HandleRequest(conn net.Conn) {
 			}
 			log.Println(info.GetName(), "received incoming records:", records)
 			arrival(records)
+			log.Printf("TIMESTAMP %s:HandleRequest took %s\n", info.GetName(), time.Since(start))
 		} else if buf[0] == 'q' { // received queue hosts
 			queuePool = append(queuePool, string(buf[1:l]))
 			queueConn = make([]net.Conn, len(queuePool))

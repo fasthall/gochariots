@@ -25,6 +25,6 @@ func main() {
 	}
 	info.InitChariots(numDc, dcID)
 	info.SetName("controller" + os.Args[1])
-	info.WritePID()
+	info.RedirectLog(info.GetName() + ".log")
 	info.StartController(os.Args[1])
 }

@@ -26,6 +26,6 @@ func main() {
 	}
 	info.InitChariots(numDc, dcID)
 	info.SetName("app" + os.Args[1])
-	info.WritePID()
+	info.RedirectLog(info.GetName() + ".log")
 	app.Run(os.Args[1])
 }

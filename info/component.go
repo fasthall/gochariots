@@ -1,5 +1,11 @@
 package info
 
+import (
+	"fmt"
+	"log"
+	"os"
+)
+
 // Name is the name of this running component
 var name string
 
@@ -11,6 +17,11 @@ func GetName() string {
 	return name
 }
 
-func WritePID() {
-	// ioutil.WriteFile(name+".pid", []byte(strconv.Itoa(os.Getpid())+"\n"), 0644)
+func RedirectLog(name string) {
+	f, err := os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		fmt.Printf("Error opening log file %s\n", name)
+	} else {
+		log.SetOutput(f)
+	}
 }

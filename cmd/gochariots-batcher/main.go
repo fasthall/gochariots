@@ -28,7 +28,7 @@ func main() {
 	}
 	info.InitChariots(numDc, dcID)
 	info.SetName("batcher" + os.Args[1])
-	info.WritePID()
+	info.RedirectLog(info.GetName() + ".log")
 	n, err := strconv.Atoi(os.Args[2])
 	if err != nil {
 		fmt.Println("Usage: gochariots-batcher port num_datacenters")

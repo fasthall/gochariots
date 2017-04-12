@@ -13,6 +13,7 @@ import (
 	"github.com/fasthall/gochariots/record"
 )
 
+var lastTime time.Time
 var buffered []map[int]record.Record
 var sameDCBuffered []record.Record
 var logMaintainerConn net.Conn
@@ -142,7 +143,7 @@ func dialNextQueue() error {
 
 // passToken sends the token to the next queue in the ring
 func passToken(token *Token) {
-	time.Sleep(500 * time.Millisecond)
+	// time.Sleep(500 * time.Millisecond)
 	if nextQueueHost == "" {
 		TokenArrival(*token)
 	} else {
@@ -229,6 +230,7 @@ func dispatchRecords(records []record.Record) {
 			log.Println(info.GetName(), "sent the records to", logMaintainerHost)
 		}
 	}
+	log.Printf("TIMESTAMP %s:record in queue %s\n", info.GetName(), time.Since(lastTime))
 }
 
 // HandleRequest handles incoming connection
@@ -246,6 +248,7 @@ func HandleRequest(conn net.Conn) {
 			continue
 		}
 		if buf[0] == 'r' { // received records
+			lastTime = time.Now()
 			records, err := record.ToRecordArray(buf[1:l])
 			if err != nil {
 				log.Println(info.GetName(), "couldn't convert received bytes to records:", string(buf[1:l]))

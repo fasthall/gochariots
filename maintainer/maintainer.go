@@ -16,7 +16,6 @@ import (
 
 // LastLId records the last LID maintained by this maintainer
 var LastLId int
-var remoteBatchers []string
 var path = "flstore"
 
 // InitLogMaintainer initializes the maintainer and assign the path name to store the records
@@ -32,15 +31,15 @@ func InitLogMaintainer(p string) {
 
 // Append appends a new record to the maintainer.
 func Append(r record.Record) error {
-	_, err := record.ToJSON(r)
+	b, err := record.ToJSON(r)
 	if err != nil {
 		return err
 	}
 	fpath := filepath.Join(path, strconv.Itoa(r.LId))
-	// err = ioutil.WriteFile(fpath, b, 0644)
-	// if err != nil {
-	// 	return err
-	// }
+	err = ioutil.WriteFile(fpath, b, 0644)
+	if err != nil {
+		return err
+	}
 	log.Println(info.GetName(), "wrote record to", fpath)
 	LastLId = r.LId
 	if r.Host == info.ID {
@@ -86,6 +85,7 @@ func HandleRequest(conn net.Conn) {
 			var batchers []string
 			err := json.Unmarshal(buf[1:l], &batchers)
 			remoteBatchers = batchers
+			remoteBatchersConn = make([]net.Conn, len(remoteBatchers))
 			if err != nil {
 				log.Println(info.GetName(), "couldn't convert received bytes to string list:", string(buf[1:l]))
 				log.Panicln(err)

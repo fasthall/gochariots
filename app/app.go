@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/maintainer"
@@ -44,12 +45,22 @@ func getBatchers(c *gin.Context) {
 }
 
 func dialConn(hostID int) error {
+	start := time.Now()
+	defer func() {
+		elapsed := time.Since(start)
+		log.Printf("TIMESTAMP %s:dialConn took %s\n", info.GetName(), elapsed)
+	}()
 	var err error
 	batcherConn[hostID], err = net.Dial("tcp", batcherPool[hostID])
 	return err
 }
 
 func postRecord(c *gin.Context) {
+	start := time.Now()
+	defer func() {
+		elapsed := time.Since(start)
+		log.Printf("TIMESTAMP %s:postRecord took %s\n", info.GetName(), elapsed)
+	}()
 	var jsonRecord JsonRecord
 	err := c.Bind(&jsonRecord)
 	if err != nil {

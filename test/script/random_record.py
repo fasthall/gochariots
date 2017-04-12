@@ -24,6 +24,7 @@ if __name__ == '__main__':
     max_window = int(sys.argv[3])
     margin = int(sys.argv[4])
     for i in range(n):
+        print(i)
         time.sleep(0.1)
         if random.random() < dependency_prob:
             key = 'low'
@@ -39,4 +40,5 @@ if __name__ == '__main__':
             result = send_json(payload, host_id)
             code = result.status_code
             if code == 503:
+                print(503)
                 time.sleep(1)
