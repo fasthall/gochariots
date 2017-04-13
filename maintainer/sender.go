@@ -1,6 +1,7 @@
 package maintainer
 
 import (
+	"encoding/binary"
 	"log"
 	"net"
 
@@ -23,13 +24,15 @@ func dialRemoteBatchers(dc int) error {
 func Propagate(r record.Record) {
 	for dc, host := range remoteBatchers {
 		if dc != info.ID && host != "" {
-			log.Printf("%s is propagatin record to remoteBatchers[%d] %s", info.GetName(), dc, host)
-			b := []byte{'r'}
+			log.Printf("%s is propagating record to remoteBatchers[%d] %s", info.GetName(), dc, host)
 			jsonBytes, err := record.ToJSON(r)
 			if err != nil {
 				log.Println(info.GetName(), "couldn't convert record to bytes:", r)
 				log.Panicln(err)
 			}
+			b := make([]byte, 5)
+			b[4] = byte('r')
+			binary.BigEndian.PutUint32(b, uint32(len(jsonBytes)+1))
 
 			if remoteBatchersConn[dc] == nil {
 				err = dialRemoteBatchers(dc)
@@ -56,6 +59,7 @@ func Propagate(r record.Record) {
 					}
 				} else {
 					sent = true
+					log.Println(string(append(b, append(jsonBytes, byte('\n'))...)))
 					log.Println(info.GetName(), "propagates to", host, r)
 				}
 

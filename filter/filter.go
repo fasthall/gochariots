@@ -4,10 +4,12 @@
 package filter
 
 import (
+	"encoding/binary"
 	"io"
 	"log"
 	"math/rand"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/fasthall/gochariots/info"
@@ -18,6 +20,7 @@ var queueConn []net.Conn
 var queuePool []string
 var nextTOId []int
 var buffer []record.Record
+var mutex sync.Mutex
 
 // InitFilter Initializes all the expected TOId as 1
 func InitFilter(n int) {
@@ -25,15 +28,19 @@ func InitFilter(n int) {
 	for i := range nextTOId {
 		nextTOId[i] = 1
 	}
+	mutex.Lock()
 	buffer = make([]record.Record, 0)
+	mutex.Unlock()
 }
 
 // arrival deals with the records the filter received.
 // If the TOId is the same as expected, the record will be forwared to the queue.
 // If the TOId is larger than expected, the record will be buffered.
 func arrival(records []record.Record) {
+	mutex.Lock()
 	queued := []record.Record{}
 	for _, record := range records {
+		log.Println(record)
 		if record.Host == info.ID {
 			// this record is from the same datacenter, the TOId hasn't been generated yet
 			if record.TOId == 0 {
@@ -63,6 +70,7 @@ func arrival(records []record.Record) {
 		}
 	}
 	sendToQueue(queued)
+	mutex.Unlock()
 }
 
 func dialConn(queueID int) error {
@@ -73,11 +81,13 @@ func dialConn(queueID int) error {
 }
 
 func sendToQueue(records []record.Record) {
-	b := []byte{'r'}
 	jsonBytes, err := record.ToJSONArray(records)
 	if err != nil {
 		panic(err)
 	}
+	b := make([]byte, 5)
+	b[4] = byte('r')
+	binary.BigEndian.PutUint32(b, uint32(len(jsonBytes)+1))
 	queueID := rand.Intn(len(queuePool))
 	if queueConn[queueID] == nil {
 		err = dialConn(queueID)
@@ -114,27 +124,36 @@ func sendToQueue(records []record.Record) {
 func HandleRequest(conn net.Conn) {
 	for {
 		// Read the incoming connection into the buffer.
-		buf := make([]byte, 2048)
-		l, err := conn.Read(buf)
+		lenbuf := make([]byte, 4)
+		_, err := conn.Read(lenbuf)
 		if err == io.EOF {
-			return
+			break
 		} else if err != nil {
-			log.Println(info.GetName(), "couldn't read incoming buffer")
+			log.Println(info.GetName(), "couldn't read incoming request")
 			log.Println(info.GetName(), err)
-			continue
+			break
+		}
+		buf := make([]byte, binary.BigEndian.Uint32(lenbuf))
+		_, err = conn.Read(buf)
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			log.Println(info.GetName(), "couldn't read incoming request")
+			log.Println(info.GetName(), err)
+			break
 		}
 		if buf[0] == 'r' { // received records
 			start := time.Now()
-			records, err := record.ToRecordArray(buf[1:l])
+			records, err := record.ToRecordArray(buf[1:])
 			if err != nil {
-				log.Println(info.GetName(), "couldn't convert buffer to record:", string(buf[1:l]))
+				log.Println(info.GetName(), "couldn't convert buffer to record:", string(buf[1:]))
 				continue
 			}
 			log.Println(info.GetName(), "received incoming records:", records)
 			arrival(records)
 			log.Printf("TIMESTAMP %s:HandleRequest took %s\n", info.GetName(), time.Since(start))
 		} else if buf[0] == 'q' { // received queue hosts
-			queuePool = append(queuePool, string(buf[1:l]))
+			queuePool = append(queuePool, string(buf[1:]))
 			queueConn = make([]net.Conn, len(queuePool))
 			log.Println(info.GetName(), "received new queue update:", string(buf[1:]))
 		}

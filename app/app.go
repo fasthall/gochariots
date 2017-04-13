@@ -1,6 +1,7 @@
 package app
 
 import (
+	"encoding/binary"
 	"log"
 	"math/rand"
 	"net"
@@ -76,11 +77,15 @@ func postRecord(c *gin.Context) {
 			TOId: jsonRecord.PreTOId,
 		},
 	}
-	b := []byte{'r'}
 	jsonBytes, err := record.ToJSON(r)
 	if err != nil {
-		panic(err)
+		log.Panicln(info.GetName(), "couldn't convert record to bytes")
+		c.String(http.StatusBadRequest, "Couldn't convert record to bytes")
+		return
 	}
+	b := make([]byte, 5)
+	b[4] = byte('r')
+	binary.BigEndian.PutUint32(b, uint32(len(jsonBytes)+1))
 
 	hostID := rand.Intn(len(batcherPool))
 	if batcherConn[hostID] == nil {

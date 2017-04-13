@@ -1,6 +1,7 @@
 package queue
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"io"
 	"log"
@@ -72,6 +73,7 @@ func recordsArrival(records []record.Record) {
 // For each deferred records in the token, check if the current max TOId in shared log satisfies the dependency.
 // If so, the deferred records are sent to the log maintainers.
 func TokenArrival(token Token) {
+	mutex.Lock()
 	// append buffered records to the token in order
 	for dc := range buffered {
 		keys := []int{}
@@ -85,6 +87,7 @@ func TokenArrival(token Token) {
 		}
 		buffered[dc] = map[int]record.Record{}
 	}
+	mutex.Unlock()
 	token.DeferredRecords = append(token.DeferredRecords, sameDCBuffered...)
 	sameDCBuffered = []record.Record{}
 
@@ -147,12 +150,14 @@ func passToken(token *Token) {
 	if nextQueueHost == "" {
 		TokenArrival(*token)
 	} else {
-		b := []byte{'t'}
 		jsonBytes, err := json.Marshal(token)
 		if err != nil {
 			log.Println(info.GetName(), "couldn't convert token to bytes:", token)
 			log.Panicln(err)
 		}
+		b := make([]byte, 5)
+		b[4] = byte('t')
+		binary.BigEndian.PutUint32(b, uint32(len(jsonBytes)+1))
 		if nextQueueConn == nil {
 			err = dialNextQueue()
 			if err != nil {
@@ -195,12 +200,14 @@ func dialLogMaintainer() error {
 
 // dispatchRecords sends the ready records to log maintainers
 func dispatchRecords(records []record.Record) {
-	b := []byte{'r'}
 	jsonBytes, err := record.ToJSONArray(records)
 	if err != nil {
 		log.Println(info.GetName(), "couldn't convert records to bytes:", records)
 		return
 	}
+	b := make([]byte, 5)
+	b[4] = byte('r')
+	binary.BigEndian.PutUint32(b, uint32(len(jsonBytes)+1))
 	if logMaintainerConn == nil {
 		err = dialLogMaintainer()
 		if err != nil {
@@ -237,27 +244,36 @@ func dispatchRecords(records []record.Record) {
 func HandleRequest(conn net.Conn) {
 	for {
 		// Read the incoming connection into the buffer.
-		buf := make([]byte, 2048)
-		// buf, err := ioutil.ReadAll(conn)
-		l, err := conn.Read(buf)
+		lenbuf := make([]byte, 4)
+		_, err := conn.Read(lenbuf)
 		if err == io.EOF {
-			return
+			break
 		} else if err != nil {
-			log.Println(info.GetName(), "couldn't read incoming buffer.")
+			log.Println(info.GetName(), "couldn't read incoming request")
 			log.Println(info.GetName(), err)
-			continue
+			break
+		}
+		buf := make([]byte, binary.BigEndian.Uint32(lenbuf))
+		_, err = conn.Read(buf)
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			log.Println(info.GetName(), "couldn't read incoming request")
+			log.Println(info.GetName(), err)
+			break
 		}
 		if buf[0] == 'r' { // received records
+			log.Println(string(buf))
 			lastTime = time.Now()
-			records, err := record.ToRecordArray(buf[1:l])
+			records, err := record.ToRecordArray(buf[1:])
 			if err != nil {
-				log.Println(info.GetName(), "couldn't convert received bytes to records:", string(buf[1:l]))
+				log.Println(info.GetName(), "couldn't convert received bytes to records:", string(buf[1:]))
 				continue
 			}
 			log.Println(info.GetName(), "received records:", records)
 			recordsArrival(records)
 		} else if buf[0] == 'q' { // received next host update
-			nextQueueHost = string(buf[1:l])
+			nextQueueHost = string(buf[1:])
 			if nextQueueConn != nil {
 				nextQueueConn.Close()
 				nextQueueConn = nil
@@ -265,9 +281,9 @@ func HandleRequest(conn net.Conn) {
 			log.Println(info.GetName(), "updates next queue host to:", nextQueueHost)
 		} else if buf[0] == 't' { // received token
 			var token Token
-			err := json.Unmarshal(buf[1:l], &token)
+			err := json.Unmarshal(buf[1:], &token)
 			if err != nil {
-				log.Println(info.GetName(), "couldn't convert received bytes to token:", string(buf[1:l]))
+				log.Println(info.GetName(), "couldn't convert received bytes to token:", string(buf[1:]))
 				log.Panicln(err)
 			}
 			TokenArrival(token)
@@ -276,9 +292,9 @@ func HandleRequest(conn net.Conn) {
 			}
 		} else if buf[0] == 'm' { // received maintainer update
 			var hosts []string
-			err := json.Unmarshal(buf[1:l], &hosts)
+			err := json.Unmarshal(buf[1:], &hosts)
 			if err != nil {
-				log.Println(info.GetName(), "couldn't convert received bytes to maintainer hosts:", string(buf[1:l]))
+				log.Println(info.GetName(), "couldn't convert received bytes to maintainer hosts:", string(buf[1:]))
 			}
 			if len(hosts) > 0 {
 				logMaintainerHost = hosts[0]

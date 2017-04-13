@@ -1,6 +1,7 @@
 package info
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"log"
 	"net"
@@ -55,12 +56,14 @@ func addFilter(c *gin.Context) {
 			log.Panicln(GetName(), "failing to update cluster may cause unexpected error")
 		}
 		defer conn.Close()
-		b := []byte{'f'}
 		jsonBytes, err := json.Marshal(filters)
 		if err != nil {
 			log.Println(GetName(), "couldn't convert filter list to bytes:", filters)
 			log.Panicln(GetName(), "failing to update cluster may cause unexpected error")
 		}
+		b := make([]byte, 5)
+		b[4] = byte('f')
+		binary.BigEndian.PutUint32(b, uint32(len(jsonBytes)+1))
 		_, err = conn.Write(append(b, jsonBytes...))
 		if err != nil {
 			log.Printf("%s couldn't send filter list to batchers[%d] %s", GetName(), i, host)
@@ -87,7 +90,9 @@ func addQueue(c *gin.Context) {
 			log.Panicln(GetName(), "failing to update cluster may cause unexpected error")
 		}
 		defer conn.Close()
-		b := []byte{'q'}
+		b := make([]byte, 5)
+		b[4] = byte('q')
+		binary.BigEndian.PutUint32(b, uint32(len(queues[(i+1)%len(queues)])+1))
 		_, err = conn.Write(append(b, []byte(queues[(i+1)%len(queues)])...))
 		if err != nil {
 			log.Printf("%s couldn't send next queue host to queues[%d] %s", GetName(), i, host)
@@ -103,7 +108,9 @@ func addQueue(c *gin.Context) {
 			log.Panicln(GetName(), "failing to update cluster may cause unexpected error")
 		}
 		defer conn.Close()
-		b := []byte{'q'}
+		b := make([]byte, 5)
+		b[4] = byte('q')
+		binary.BigEndian.PutUint32(b, uint32(len(c.Query("host"))+1))
 		_, err = conn.Write(append(b, []byte(c.Query("host"))...))
 		if err != nil {
 			log.Printf("%s couldn't send new queue host to filters[%d] %s", GetName(), i, host)
@@ -118,8 +125,10 @@ func addQueue(c *gin.Context) {
 		log.Panicln(GetName(), "failing to update cluster may cause unexpected error")
 	}
 	defer conn.Close()
-	b := []byte{'m'}
 	jsonBytes, err := json.Marshal(maintainers)
+	b := make([]byte, 5)
+	b[4] = byte('m')
+	binary.BigEndian.PutUint32(b, uint32(len(jsonBytes)+1))
 	_, err = conn.Write(append(b, jsonBytes...))
 	if err != nil {
 		log.Printf("%s couldn't send maintainer list to new queue %s", GetName(), c.Query("host"))
@@ -143,8 +152,10 @@ func addMaintainer(c *gin.Context) {
 			log.Panicln(GetName(), "failing to update cluster may cause unexpected error")
 		}
 		defer conn.Close()
-		b := []byte{'m'}
 		jsonBytes, err := json.Marshal(maintainers)
+		b := make([]byte, 5)
+		b[4] = byte('m')
+		binary.BigEndian.PutUint32(b, uint32(len(jsonBytes)+1))
 		_, err = conn.Write(append(b, jsonBytes...))
 		if err != nil {
 			log.Printf("%s couldn't send maintainer list to queues[%d] %s", GetName(), i, host)
@@ -178,8 +189,10 @@ func addRemoteBatcher(c *gin.Context) {
 			log.Panicln(GetName(), "failing to update cluster may cause unexpected error")
 		}
 		defer conn.Close()
-		b := []byte{'b'}
 		jsonBytes, err := json.Marshal(remoteBatcher)
+		b := make([]byte, 5)
+		b[4] = byte('b')
+		binary.BigEndian.PutUint32(b, uint32(len(jsonBytes)+1))
 		_, err = conn.Write(append(b, jsonBytes...))
 		if err != nil {
 			log.Printf("%s couldn't send remoteBatcher to maintainers[%d] %s", GetName(), i, host)

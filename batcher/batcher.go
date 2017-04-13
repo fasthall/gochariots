@@ -3,6 +3,7 @@
 package batcher
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"io"
 	"log"
@@ -67,11 +68,14 @@ func sendToFilter(dc int) {
 	}()
 
 	mutex.Lock()
-	b := []byte{'r'}
 	jsonBytes, err := record.ToJSONArray(buffer[dc])
 	if err != nil {
 		log.Panicln(info.GetName(), "couldn't convert buffer to records")
 	}
+	b := make([]byte, 5)
+	b[4] = byte('r')
+	binary.BigEndian.PutUint32(b, uint32(len(jsonBytes)+1))
+
 	buffer[dc] = buffer[dc][:0]
 	if filterConn[dc] == nil {
 		err = dialConn(dc)
@@ -118,20 +122,29 @@ func Sweeper() {
 func HandleRequest(conn net.Conn) {
 	for {
 		// Read the incoming connection into the buffer.
-		buf := make([]byte, 2048)
-		l, err := conn.Read(buf)
+		lenbuf := make([]byte, 4)
+		_, err := conn.Read(lenbuf)
 		if err == io.EOF {
-			return
+			break
 		} else if err != nil {
 			log.Println(info.GetName(), "couldn't read incoming request")
 			log.Println(info.GetName(), err)
-			continue
+			break
+		}
+		buf := make([]byte, binary.BigEndian.Uint32(lenbuf))
+		_, err = conn.Read(buf)
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			log.Println(info.GetName(), "couldn't read incoming request")
+			log.Println(info.GetName(), err)
+			break
 		}
 		if buf[0] == 'r' { // received records
 			start := time.Now()
-			record, err := record.ToRecord(buf[1:l])
+			record, err := record.ToRecord(buf[1:])
 			if err != nil {
-				log.Println(info.GetName(), "couldn't convert read buffer to record:", buf[1:l])
+				log.Println(info.GetName(), "couldn't convert read buffer to record:", string(buf[1:]))
 				continue
 			}
 			log.Println(info.GetName(), "received incoming record:", record)
@@ -139,9 +152,9 @@ func HandleRequest(conn net.Conn) {
 			elapsed := time.Since(start)
 			log.Printf("TIMESTAMP %s:HandleRequest took %s\n", info.GetName(), elapsed)
 		} else if buf[0] == 'f' { //received filter update
-			err := json.Unmarshal(buf[1:l], &filterHost)
+			err := json.Unmarshal(buf[1:], &filterHost)
 			if err != nil {
-				log.Println(info.GetName(), "couldn't convert bytes to filter list:", string(buf[1:l]))
+				log.Println(info.GetName(), "couldn't convert bytes to filter list:", string(buf[1:]))
 				continue
 			} else {
 				log.Println(info.GetName(), "updates filter:", filterHost)

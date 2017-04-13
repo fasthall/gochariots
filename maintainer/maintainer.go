@@ -1,6 +1,7 @@
 package maintainer
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"io"
 	"io/ioutil"
@@ -71,30 +72,39 @@ func recordsArrival(records []record.Record) {
 func HandleRequest(conn net.Conn) {
 	for {
 		// Make a buffer to hold incoming data.
-		buf := make([]byte, 2048)
-		l, err := conn.Read(buf)
-		// Read the incoming connection into the buffer.
+		lenbuf := make([]byte, 4)
+		_, err := conn.Read(lenbuf)
 		if err == io.EOF {
-			return
+			break
 		} else if err != nil {
-			log.Println(info.GetName(), "couldn't read incoming buffer.")
+			log.Println(info.GetName(), "couldn't read incoming request")
 			log.Println(info.GetName(), err)
-			continue
+			break
+		}
+		buf := make([]byte, binary.BigEndian.Uint32(lenbuf))
+		_, err = conn.Read(buf)
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			log.Println(info.GetName(), "couldn't read incoming request")
+			log.Println(info.GetName(), err)
+			break
 		}
 		if buf[0] == 'b' { // received remote batchers update
 			var batchers []string
-			err := json.Unmarshal(buf[1:l], &batchers)
+			err := json.Unmarshal(buf[1:], &batchers)
 			remoteBatchers = batchers
 			remoteBatchersConn = make([]net.Conn, len(remoteBatchers))
 			if err != nil {
-				log.Println(info.GetName(), "couldn't convert received bytes to string list:", string(buf[1:l]))
+				log.Println(info.GetName(), "couldn't convert received bytes to string list:", string(buf[1:]))
 				log.Panicln(err)
 			}
 			log.Println(info.GetName(), "received remote batchers update:", remoteBatchers)
 		} else if buf[0] == 'r' {
-			records, err := record.ToRecordArray(buf[1:l])
+			records, err := record.ToRecordArray(buf[1:])
 			if err != nil {
-				panic(err)
+				log.Println(info.GetName(), "couldn't convert received bytes to records:", string(buf[1:]))
+				log.Panicln(err)
 			}
 			log.Println(info.GetName(), "received records:", records)
 			recordsArrival(records)
