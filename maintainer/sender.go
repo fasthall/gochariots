@@ -2,6 +2,7 @@ package maintainer
 
 import (
 	"encoding/binary"
+	"errors"
 	"log"
 	"net"
 
@@ -45,7 +46,11 @@ func Propagate(r record.Record) {
 			cnt := 5
 			sent := false
 			for sent == false {
-				_, err = remoteBatchersConn[dc].Write(append(b, jsonBytes...))
+				if remoteBatchersConn[dc] != nil {
+					_, err = remoteBatchersConn[dc].Write(append(b, jsonBytes...))
+				} else {
+					err = errors.New("batcherConn[hostID] == nil")
+				}
 				if err != nil {
 					if cnt >= 0 {
 						cnt--

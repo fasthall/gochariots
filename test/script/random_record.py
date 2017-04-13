@@ -3,6 +3,7 @@ import json
 import time
 import random
 import requests
+import _thread
 
 url = ['http://localhost:8080/record', 'http://localhost:8180/record']
 
@@ -25,7 +26,6 @@ if __name__ == '__main__':
     margin = int(sys.argv[4])
     for i in range(n):
         print(i)
-        time.sleep(0.1)
         if random.random() < dependency_prob:
             key = 'low'
             pretoid = int(max(0, (i - random.randint(1, max_window) - margin) / len(url)))
@@ -34,11 +34,8 @@ if __name__ == '__main__':
             pretoid = 0
         host_id = random.randint(0, len(url) - 1)
         # host_id = i % 2
-        code = 503
-        while code == 503:
-            payload = build_json(key, str(i + 1), host_id, pretoid)
-            result = send_json(payload, host_id)
-            code = result.status_code
-            if code == 503:
-                print(503)
-                time.sleep(1)
+        payload = build_json(key, str(i + 1), host_id, pretoid)
+        # result = send_json(payload, host_id)
+        # code = result.status_code
+        _thread.start_new_thread(send_json, (payload, host_id))
+        

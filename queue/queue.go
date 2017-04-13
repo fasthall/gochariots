@@ -3,6 +3,7 @@ package queue
 import (
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"io"
 	"log"
 	"net"
@@ -171,7 +172,12 @@ func passToken(token *Token) {
 		cnt := 5
 		sent := false
 		for sent == false {
-			_, err := nextQueueConn.Write(append(b, jsonBytes...))
+			var err error
+			if nextQueueConn != nil {
+				_, err = nextQueueConn.Write(append(b, jsonBytes...))
+			} else {
+				err = errors.New("batcherConn[hostID] == nil")
+			}
 			if err != nil {
 				if cnt >= 0 {
 					cnt--
@@ -222,7 +228,11 @@ func dispatchRecords(records []record.Record) {
 	cnt := 5
 	sent := false
 	for sent == false {
-		_, err = logMaintainerConn.Write(append(b, jsonBytes...))
+		if logMaintainerConn != nil {
+			_, err = logMaintainerConn.Write(append(b, jsonBytes...))
+		} else {
+			err = errors.New("batcherConn[hostID] == nil")
+		}
 		if err != nil {
 			if cnt >= 0 {
 				cnt--

@@ -2,6 +2,7 @@ package app
 
 import (
 	"encoding/binary"
+	"errors"
 	"log"
 	"math/rand"
 	"net"
@@ -89,7 +90,11 @@ func postRecord(c *gin.Context) {
 	cnt := 5
 	sent := false
 	for sent == false {
-		_, err = batcherConn[hostID].Write(append(b, jsonBytes...))
+		if batcherConn[hostID] != nil {
+			_, err = batcherConn[hostID].Write(append(b, jsonBytes...))
+		} else {
+			err = errors.New("batcherConn[hostID] == nil")
+		}
 		info.LogTimestamp("sendToBatcher")
 		if err != nil {
 			if cnt >= 0 {

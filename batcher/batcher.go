@@ -5,6 +5,7 @@ package batcher
 import (
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"io"
 	"log"
 	"net"
@@ -84,7 +85,12 @@ func sendToFilter(dc int) {
 	cnt := 5
 	sent := false
 	for sent == false {
-		_, err := filterConn[dc].Write(append(b, jsonBytes...))
+		var err error
+		if filterConn[dc] != nil {
+			_, err = filterConn[dc].Write(append(b, jsonBytes...))
+		} else {
+			err = errors.New("batcherConn[hostID] == nil")
+		}
 		if err != nil {
 			if cnt >= 0 {
 				cnt--

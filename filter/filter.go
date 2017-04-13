@@ -5,6 +5,7 @@ package filter
 
 import (
 	"encoding/binary"
+	"errors"
 	"io"
 	"log"
 	"math/rand"
@@ -103,7 +104,12 @@ func sendToQueue(records []record.Record) {
 	cnt := 5
 	sent := false
 	for sent == false {
-		_, err := queueConn[queueID].Write(append(b, jsonBytes...))
+		var err error
+		if queueConn[queueID] != nil {
+			_, err = queueConn[queueID].Write(append(b, jsonBytes...))
+		} else {
+			err = errors.New("batcherConn[hostID] == nil")
+		}
 		if err != nil {
 			if cnt >= 0 {
 				cnt--
