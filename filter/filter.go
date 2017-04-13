@@ -37,6 +37,7 @@ func InitFilter(n int) {
 // If the TOId is the same as expected, the record will be forwared to the queue.
 // If the TOId is larger than expected, the record will be buffered.
 func arrival(records []record.Record) {
+	info.LogTimestamp("arrival")
 	mutex.Lock()
 	queued := []record.Record{}
 	for _, record := range records {
@@ -81,6 +82,7 @@ func dialConn(queueID int) error {
 }
 
 func sendToQueue(records []record.Record) {
+	info.LogTimestamp("sendToQueue")
 	jsonBytes, err := record.ToJSONArray(records)
 	if err != nil {
 		panic(err)
@@ -143,6 +145,7 @@ func HandleRequest(conn net.Conn) {
 			break
 		}
 		if buf[0] == 'r' { // received records
+			info.LogTimestamp("HandleRequest")
 			start := time.Now()
 			records, err := record.ToRecordArray(buf[1:])
 			if err != nil {

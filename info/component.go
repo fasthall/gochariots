@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 )
 
 // Name is the name of this running component
@@ -24,4 +25,8 @@ func RedirectLog(name string) {
 	} else {
 		log.SetOutput(f)
 	}
+}
+
+func LogTimestamp(action string) {
+	log.Println(action, time.Now())
 }

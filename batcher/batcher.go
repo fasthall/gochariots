@@ -15,7 +15,7 @@ import (
 	"github.com/fasthall/gochariots/record"
 )
 
-const bufferSize int = 32
+const bufferSize int = 256
 
 var mutex sync.Mutex
 var buffer [][]record.Record
@@ -61,11 +61,7 @@ func sendToFilter(dc int) {
 	if len(buffer[dc]) == 0 {
 		return
 	}
-	start := time.Now()
-	defer func() {
-		elapsed := time.Since(start)
-		log.Printf("TIMESTAMP %s:sendToFilter took %s\n", info.GetName(), elapsed)
-	}()
+	info.LogTimestamp("sendToFilter")
 
 	mutex.Lock()
 	jsonBytes, err := record.ToJSONArray(buffer[dc])
@@ -112,6 +108,7 @@ func sendToFilter(dc int) {
 // Sweeper periodcally sends the buffer content to filters
 func Sweeper() {
 	for {
+		time.Sleep(1 * time.Millisecond)
 		for i := range buffer {
 			sendToFilter(i)
 		}
@@ -141,6 +138,7 @@ func HandleRequest(conn net.Conn) {
 			break
 		}
 		if buf[0] == 'r' { // received records
+			info.LogTimestamp("HandleRequest")
 			start := time.Now()
 			record, err := record.ToRecord(buf[1:])
 			if err != nil {

@@ -58,6 +58,7 @@ func (token *Token) InitToken(maxTOId []int, lastLId int) {
 
 // recordsArrival deals with the records received from filters
 func recordsArrival(records []record.Record) {
+	info.LogTimestamp("recordsArrival")
 	mutex.Lock()
 	for _, record := range records {
 		if record.Host == info.ID {
@@ -200,6 +201,7 @@ func dialLogMaintainer() error {
 
 // dispatchRecords sends the ready records to log maintainers
 func dispatchRecords(records []record.Record) {
+	info.LogTimestamp("dispatchRecords")
 	jsonBytes, err := record.ToJSONArray(records)
 	if err != nil {
 		log.Println(info.GetName(), "couldn't convert records to bytes:", records)
@@ -263,7 +265,7 @@ func HandleRequest(conn net.Conn) {
 			break
 		}
 		if buf[0] == 'r' { // received records
-			log.Println(string(buf))
+			info.LogTimestamp("HandleRequest")
 			lastTime = time.Now()
 			records, err := record.ToRecordArray(buf[1:])
 			if err != nil {

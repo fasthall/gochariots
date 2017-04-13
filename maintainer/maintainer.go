@@ -32,6 +32,7 @@ func InitLogMaintainer(p string) {
 
 // Append appends a new record to the maintainer.
 func Append(r record.Record) error {
+	info.LogTimestamp("Append")
 	b, err := record.ToJSON(r)
 	if err != nil {
 		return err
@@ -60,6 +61,7 @@ func ReadByLId(LId int) (record.Record, error) {
 }
 
 func recordsArrival(records []record.Record) {
+	info.LogTimestamp("recordsArrival")
 	for _, record := range records {
 		err := Append(record)
 		if err != nil {
@@ -101,6 +103,7 @@ func HandleRequest(conn net.Conn) {
 			}
 			log.Println(info.GetName(), "received remote batchers update:", remoteBatchers)
 		} else if buf[0] == 'r' {
+			info.LogTimestamp("HandleRequest")
 			records, err := record.ToRecordArray(buf[1:])
 			if err != nil {
 				log.Println(info.GetName(), "couldn't convert received bytes to records:", string(buf[1:]))

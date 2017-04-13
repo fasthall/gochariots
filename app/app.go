@@ -7,7 +7,6 @@ import (
 	"net"
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/maintainer"
@@ -46,22 +45,13 @@ func getBatchers(c *gin.Context) {
 }
 
 func dialConn(hostID int) error {
-	start := time.Now()
-	defer func() {
-		elapsed := time.Since(start)
-		log.Printf("TIMESTAMP %s:dialConn took %s\n", info.GetName(), elapsed)
-	}()
 	var err error
 	batcherConn[hostID], err = net.Dial("tcp", batcherPool[hostID])
 	return err
 }
 
 func postRecord(c *gin.Context) {
-	start := time.Now()
-	defer func() {
-		elapsed := time.Since(start)
-		log.Printf("TIMESTAMP %s:postRecord took %s\n", info.GetName(), elapsed)
-	}()
+	info.LogTimestamp("postRecord")
 	var jsonRecord JsonRecord
 	err := c.Bind(&jsonRecord)
 	if err != nil {
@@ -91,21 +81,24 @@ func postRecord(c *gin.Context) {
 	if batcherConn[hostID] == nil {
 		err = dialConn(hostID)
 		if err != nil {
-			log.Printf("%s couldn't connect to the batcherPool[%d] %s", info.GetName(), hostID, batcherPool[hostID])
-			c.String(http.StatusServiceUnavailable, "Couldn't connect to the batcher")
-			return
+			log.Printf("%s couldn't connect to batcherPool[%d] %s\n", info.GetName(), hostID, batcherPool[hostID])
+		} else {
+			log.Printf("%s is connected to batcherPool[%d] %s\n", info.GetName(), hostID, batcherPool[hostID])
 		}
 	}
 	cnt := 5
 	sent := false
 	for sent == false {
 		_, err = batcherConn[hostID].Write(append(b, jsonBytes...))
+		info.LogTimestamp("sendToBatcher")
 		if err != nil {
 			if cnt >= 0 {
 				cnt--
 				err = dialConn(hostID)
 				if err != nil {
 					log.Printf("%s couldn't connect to the batcherPool[%d] %s, retrying...", info.GetName(), hostID, batcherPool[hostID])
+				} else {
+					log.Printf("%s is connected to batcherPool[%d] %s\n", info.GetName(), hostID, batcherPool[hostID])
 				}
 			} else {
 				log.Printf("%s failed to connect to the batcherPool[%d] %s after retrying 5 times", info.GetName(), hostID, batcherPool[hostID])
@@ -114,6 +107,7 @@ func postRecord(c *gin.Context) {
 			}
 		} else {
 			sent = true
+			log.Printf("%s sent to batcherPool[%d] %s\n", info.GetName(), hostID, batcherPool[hostID])
 		}
 	}
 }
