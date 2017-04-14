@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"sync"
 
 	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/maintainer"
@@ -17,6 +18,7 @@ import (
 
 var batcherConn []net.Conn
 var batcherPool []string
+var mutex sync.Mutex
 
 type JsonRecord struct {
 	Tags    map[string]string `json:"tags"`
@@ -46,8 +48,10 @@ func getBatchers(c *gin.Context) {
 }
 
 func dialConn(hostID int) error {
+	mutex.Lock()
 	var err error
 	batcherConn[hostID], err = net.Dial("tcp", batcherPool[hostID])
+	mutex.Unlock()
 	return err
 }
 
@@ -115,6 +119,7 @@ func postRecord(c *gin.Context) {
 			log.Printf("%s sent to batcherPool[%d] %s\n", info.GetName(), hostID, batcherPool[hostID])
 		}
 	}
+	c.String(http.StatusOK, "Record posted")
 }
 
 func getRecord(c *gin.Context) {

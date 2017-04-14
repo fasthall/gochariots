@@ -64,10 +64,8 @@ To append to the shared log, send POST request to http://localhost:8080/record. 
 
 ## Issues (TODO)
 
-* Batcher doesn't survive DDOS
 * Queue currently only uses the first maintainer.
 * Need a way to notify queue about the LId mapping of maintainers.
-* Needs to keep connection between queues open.
 
 ## Design discussion
 

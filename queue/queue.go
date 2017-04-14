@@ -16,13 +16,14 @@ import (
 )
 
 var lastTime time.Time
+var bufMutex sync.Mutex
 var buffered []map[int]record.Record
 var sameDCBuffered []record.Record
+var connMutex sync.Mutex
 var logMaintainerConn net.Conn
 var logMaintainerHost string
 var nextQueueConn net.Conn
 var nextQueueHost string
-var mutex sync.Mutex
 
 type queueHost int
 
@@ -60,7 +61,7 @@ func (token *Token) InitToken(maxTOId []int, lastLId int) {
 // recordsArrival deals with the records received from filters
 func recordsArrival(records []record.Record) {
 	info.LogTimestamp("recordsArrival")
-	mutex.Lock()
+	bufMutex.Lock()
 	for _, record := range records {
 		if record.Host == info.ID {
 			sameDCBuffered = append(sameDCBuffered, record)
@@ -68,14 +69,14 @@ func recordsArrival(records []record.Record) {
 			buffered[record.Host][record.TOId] = record
 		}
 	}
-	mutex.Unlock()
+	bufMutex.Unlock()
 }
 
 // TokenArrival function deals with token received.
 // For each deferred records in the token, check if the current max TOId in shared log satisfies the dependency.
 // If so, the deferred records are sent to the log maintainers.
 func TokenArrival(token Token) {
-	mutex.Lock()
+	bufMutex.Lock()
 	// append buffered records to the token in order
 	for dc := range buffered {
 		keys := []int{}
@@ -89,7 +90,7 @@ func TokenArrival(token Token) {
 		}
 		buffered[dc] = map[int]record.Record{}
 	}
-	mutex.Unlock()
+	bufMutex.Unlock()
 	token.DeferredRecords = append(token.DeferredRecords, sameDCBuffered...)
 	sameDCBuffered = []record.Record{}
 
@@ -141,8 +142,10 @@ func assignLId(records []record.Record, lastLId int) int {
 }
 
 func dialNextQueue() error {
+	connMutex.Lock()
 	var err error
 	nextQueueConn, err = net.Dial("tcp", nextQueueHost)
+	connMutex.Unlock()
 	return err
 }
 
@@ -200,8 +203,10 @@ func passToken(token *Token) {
 }
 
 func dialLogMaintainer() error {
+	connMutex.Lock()
 	var err error
 	logMaintainerConn, err = net.Dial("tcp", logMaintainerHost)
+	connMutex.Unlock()
 	return err
 }
 

@@ -18,8 +18,9 @@ import (
 
 const bufferSize int = 256
 
-var mutex sync.Mutex
+var bufMutex sync.Mutex
 var buffer [][]record.Record
+var connMutex sync.Mutex
 var filterConn []net.Conn
 var filterHost []string
 var numFilters int
@@ -41,7 +42,7 @@ func InitBatcher(n int) {
 // When a buffer is full, all the records in the buffer will be sent to the corresponding filter.
 // BUG(fasthall) In Arrival(), the mechanism to match thre record and filter needs to be done. Currently the number of filters needs to be equal to datacenters.
 func arrival(record record.Record) {
-	mutex.Lock()
+	bufMutex.Lock()
 	dc := record.Host
 	buffer[dc] = append(buffer[dc], record)
 
@@ -49,12 +50,14 @@ func arrival(record record.Record) {
 	if len(buffer[dc]) == cap(buffer[dc]) {
 		sendToFilter(dc)
 	}
-	mutex.Unlock()
+	bufMutex.Unlock()
 }
 
 func dialConn(dc int) error {
+	connMutex.Lock()
 	var err error
 	filterConn[dc], err = net.Dial("tcp", filterHost[dc])
+	connMutex.Unlock()
 	return err
 }
 
@@ -64,7 +67,7 @@ func sendToFilter(dc int) {
 	}
 	info.LogTimestamp("sendToFilter")
 
-	mutex.Lock()
+	bufMutex.Lock()
 	jsonBytes, err := record.ToJSONArray(buffer[dc])
 	if err != nil {
 		log.Panicln(info.GetName(), "couldn't convert buffer to records")
@@ -108,7 +111,7 @@ func sendToFilter(dc int) {
 		}
 	}
 
-	mutex.Unlock()
+	bufMutex.Unlock()
 }
 
 // Sweeper periodcally sends the buffer content to filters

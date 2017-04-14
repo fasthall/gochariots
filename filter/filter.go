@@ -17,11 +17,12 @@ import (
 	"github.com/fasthall/gochariots/record"
 )
 
+var connMutex sync.Mutex
 var queueConn []net.Conn
 var queuePool []string
 var nextTOId []int
+var bufMutex sync.Mutex
 var buffer []record.Record
-var mutex sync.Mutex
 
 // InitFilter Initializes all the expected TOId as 1
 func InitFilter(n int) {
@@ -29,9 +30,9 @@ func InitFilter(n int) {
 	for i := range nextTOId {
 		nextTOId[i] = 1
 	}
-	mutex.Lock()
+	bufMutex.Lock()
 	buffer = make([]record.Record, 0)
-	mutex.Unlock()
+	bufMutex.Unlock()
 }
 
 // arrival deals with the records the filter received.
@@ -39,10 +40,9 @@ func InitFilter(n int) {
 // If the TOId is larger than expected, the record will be buffered.
 func arrival(records []record.Record) {
 	info.LogTimestamp("arrival")
-	mutex.Lock()
+	bufMutex.Lock()
 	queued := []record.Record{}
 	for _, record := range records {
-		log.Println(record)
 		if record.Host == info.ID {
 			// this record is from the same datacenter, the TOId hasn't been generated yet
 			if record.TOId == 0 {
@@ -72,13 +72,15 @@ func arrival(records []record.Record) {
 		}
 	}
 	sendToQueue(queued)
-	mutex.Unlock()
+	bufMutex.Unlock()
 }
 
 func dialConn(queueID int) error {
 	host := queuePool[queueID]
+	connMutex.Lock()
 	var err error
 	queueConn[queueID], err = net.Dial("tcp", host)
+	connMutex.Unlock()
 	return err
 }
 
