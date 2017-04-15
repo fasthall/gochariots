@@ -77,10 +77,8 @@ func arrival(records []record.Record) {
 
 func dialConn(queueID int) error {
 	host := queuePool[queueID]
-	connMutex.Lock()
 	var err error
 	queueConn[queueID], err = net.Dial("tcp", host)
-	connMutex.Unlock()
 	return err
 }
 
@@ -94,6 +92,7 @@ func sendToQueue(records []record.Record) {
 	b[4] = byte('r')
 	binary.BigEndian.PutUint32(b, uint32(len(jsonBytes)+1))
 	queueID := rand.Intn(len(queuePool))
+	connMutex.Lock()
 	if queueConn[queueID] == nil {
 		err = dialConn(queueID)
 		if err != nil {
@@ -102,16 +101,19 @@ func sendToQueue(records []record.Record) {
 			log.Printf("%s is connected to queuePool[%d] %s\n", info.GetName(), queueID, queuePool[queueID])
 		}
 	}
+	connMutex.Unlock()
 
 	cnt := 5
 	sent := false
 	for sent == false {
 		var err error
+		connMutex.Lock()
 		if queueConn[queueID] != nil {
 			_, err = queueConn[queueID].Write(append(b, jsonBytes...))
 		} else {
 			err = errors.New("batcherConn[hostID] == nil")
 		}
+		connMutex.Unlock()
 		if err != nil {
 			if cnt >= 0 {
 				cnt--

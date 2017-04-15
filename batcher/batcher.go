@@ -54,10 +54,8 @@ func arrival(record record.Record) {
 }
 
 func dialConn(dc int) error {
-	connMutex.Lock()
 	var err error
 	filterConn[dc], err = net.Dial("tcp", filterHost[dc])
-	connMutex.Unlock()
 	return err
 }
 
@@ -77,6 +75,7 @@ func sendToFilter(dc int) {
 	binary.BigEndian.PutUint32(b, uint32(len(jsonBytes)+1))
 
 	buffer[dc] = buffer[dc][:0]
+	connMutex.Lock()
 	if filterConn[dc] == nil {
 		err = dialConn(dc)
 		if err != nil {
@@ -85,15 +84,18 @@ func sendToFilter(dc int) {
 			log.Printf("%s is connected to filterHost[%d] %s\n", info.GetName(), dc, filterHost[dc])
 		}
 	}
+	connMutex.Unlock()
 	cnt := 5
 	sent := false
 	for sent == false {
 		var err error
+		connMutex.Lock()
 		if filterConn[dc] != nil {
 			_, err = filterConn[dc].Write(append(b, jsonBytes...))
 		} else {
 			err = errors.New("batcherConn[hostID] == nil")
 		}
+		connMutex.Unlock()
 		if err != nil {
 			if cnt >= 0 {
 				cnt--

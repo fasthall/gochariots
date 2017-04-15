@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"net"
+	"sync"
 
 	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/record"
@@ -12,6 +13,7 @@ import (
 
 var lastSendLId int
 var lastSentTOId int
+var connMutex sync.Mutex
 var remoteBatchersConn []net.Conn
 var remoteBatchers []string
 
@@ -35,6 +37,7 @@ func Propagate(r record.Record) {
 			b[4] = byte('r')
 			binary.BigEndian.PutUint32(b, uint32(len(jsonBytes)+1))
 
+			connMutex.Lock()
 			if remoteBatchersConn[dc] == nil {
 				err = dialRemoteBatchers(dc)
 				if err != nil {
@@ -43,14 +46,17 @@ func Propagate(r record.Record) {
 					log.Printf("%s is connected to remoteBatchers[%d] %s\n", info.GetName(), dc, host)
 				}
 			}
+			connMutex.Unlock()
 			cnt := 5
 			sent := false
 			for sent == false {
+				connMutex.Lock()
 				if remoteBatchersConn[dc] != nil {
 					_, err = remoteBatchersConn[dc].Write(append(b, jsonBytes...))
 				} else {
 					err = errors.New("batcherConn[hostID] == nil")
 				}
+				connMutex.Unlock()
 				if err != nil {
 					if cnt >= 0 {
 						cnt--

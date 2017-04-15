@@ -64,6 +64,7 @@ To append to the shared log, send POST request to http://localhost:8080/record. 
 
 ## Issues (TODO)
 
+* For unknown reason, maintainer probably couldn't read whole buffer from queue in once.
 * Queue currently only uses the first maintainer.
 * Need a way to notify queue about the LId mapping of maintainers.
 

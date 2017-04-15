@@ -15,6 +15,8 @@ import (
 	"github.com/fasthall/gochariots/record"
 )
 
+const dispatchSize int = 1024
+
 var lastTime time.Time
 var bufMutex sync.Mutex
 var buffered []map[int]record.Record
@@ -126,7 +128,13 @@ func TokenArrival(token Token) {
 		// assign LId and send to log maintainers
 		lastID := assignLId(dispatch, token.LastLId)
 		token.LastLId = lastID
-		dispatchRecords(dispatch)
+		for i := 0; i < len(dispatch); i += dispatchSize {
+			if i+dispatchSize < len(dispatch) {
+				dispatchRecords(dispatch[i : i+dispatchSize])
+			} else {
+				dispatchRecords(dispatch[i:])
+			}
+		}
 	}
 	go passToken(&token)
 }
@@ -151,7 +159,7 @@ func dialNextQueue() error {
 
 // passToken sends the token to the next queue in the ring
 func passToken(token *Token) {
-	// time.Sleep(500 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 	if nextQueueHost == "" {
 		TokenArrival(*token)
 	} else {
@@ -166,9 +174,9 @@ func passToken(token *Token) {
 		if nextQueueConn == nil {
 			err = dialNextQueue()
 			if err != nil {
-				log.Printf("%s couldn't connect to the next queue %s.\n", info.GetName(), nextQueueHost)
+				log.Printf("%s couldn't connect to the next queue %s\n", info.GetName(), nextQueueHost)
 			} else {
-				log.Printf("%s is connected to the next queue %s.\n", info.GetName(), nextQueueHost)
+				log.Printf("%s is connected to the next queue %s\n", info.GetName(), nextQueueHost)
 			}
 		}
 
@@ -186,10 +194,10 @@ func passToken(token *Token) {
 					cnt--
 					err = dialNextQueue()
 					if err != nil {
-						log.Printf("%s couldn't connect to the next queue %s.\n", info.GetName(), nextQueueHost)
+						log.Printf("%s couldn't connect to the next queue %s\n", info.GetName(), nextQueueHost)
 					}
 				} else {
-					log.Printf("%s failed to connect to the next queue %s after retrying 5 times.\n", info.GetName(), nextQueueHost)
+					log.Printf("%s failed to connect to the next queue %s after retrying 5 times\n", info.GetName(), nextQueueHost)
 					break
 				}
 			} else {
@@ -203,10 +211,8 @@ func passToken(token *Token) {
 }
 
 func dialLogMaintainer() error {
-	connMutex.Lock()
 	var err error
 	logMaintainerConn, err = net.Dial("tcp", logMaintainerHost)
-	connMutex.Unlock()
 	return err
 }
 
@@ -221,37 +227,42 @@ func dispatchRecords(records []record.Record) {
 	b := make([]byte, 5)
 	b[4] = byte('r')
 	binary.BigEndian.PutUint32(b, uint32(len(jsonBytes)+1))
+	connMutex.Lock()
 	if logMaintainerConn == nil {
 		err = dialLogMaintainer()
 		if err != nil {
-			log.Printf("%s couldn't connect to log maintainer %s.\n", info.GetName(), logMaintainerHost)
+			log.Printf("%s couldn't connect to log maintainer %s\n", info.GetName(), logMaintainerHost)
+			log.Println(err)
 		} else {
-			log.Printf("%s is connected to log maintainer %s.\n", info.GetName(), logMaintainerHost)
+			log.Printf("%s is connected to log maintainer %s\n", info.GetName(), logMaintainerHost)
 		}
 	}
+	connMutex.Unlock()
 
 	cnt := 5
 	sent := false
 	for sent == false {
+		connMutex.Lock()
 		if logMaintainerConn != nil {
 			_, err = logMaintainerConn.Write(append(b, jsonBytes...))
 		} else {
 			err = errors.New("batcherConn[hostID] == nil")
 		}
+		connMutex.Unlock()
 		if err != nil {
 			if cnt >= 0 {
 				cnt--
 				err = dialLogMaintainer()
 				if err != nil {
-					log.Printf("%s couldn't connect to log maintainer %s.\n", info.GetName(), logMaintainerHost)
+					log.Printf("%s couldn't connect to log maintainer %s\n", info.GetName(), logMaintainerHost)
 				}
 			} else {
-				log.Printf("%s failed to connect to log maintainer %s after retrying 5 times.\n", info.GetName(), logMaintainerHost)
+				log.Printf("%s failed to connect to log maintainer %s after retrying 5 times\n", info.GetName(), logMaintainerHost)
 				break
 			}
 		} else {
 			sent = true
-			log.Println(info.GetName(), "sent the records to", logMaintainerHost)
+			log.Println(info.GetName(), "sent the records to", logMaintainerHost, string(jsonBytes))
 		}
 	}
 	log.Printf("TIMESTAMP %s:record in queue %s\n", info.GetName(), time.Since(lastTime))

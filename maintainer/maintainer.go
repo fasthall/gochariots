@@ -84,7 +84,7 @@ func HandleRequest(conn net.Conn) {
 			break
 		}
 		buf := make([]byte, binary.BigEndian.Uint32(lenbuf))
-		_, err = conn.Read(buf)
+		l, err := conn.Read(buf)
 		if err == io.EOF {
 			break
 		} else if err != nil {
@@ -107,7 +107,7 @@ func HandleRequest(conn net.Conn) {
 			records, err := record.ToRecordArray(buf[1:])
 			if err != nil {
 				log.Println(info.GetName(), "couldn't convert received bytes to records:", string(buf[1:]))
-				log.Panicln(err)
+				log.Panicln(binary.BigEndian.Uint32(lenbuf), len(buf), l, err)
 			}
 			log.Println(info.GetName(), "received records:", records)
 			recordsArrival(records)

@@ -18,7 +18,7 @@ import (
 
 var batcherConn []net.Conn
 var batcherPool []string
-var mutex sync.Mutex
+var connMutex sync.Mutex
 
 type JsonRecord struct {
 	Tags    map[string]string `json:"tags"`
@@ -48,10 +48,8 @@ func getBatchers(c *gin.Context) {
 }
 
 func dialConn(hostID int) error {
-	mutex.Lock()
 	var err error
 	batcherConn[hostID], err = net.Dial("tcp", batcherPool[hostID])
-	mutex.Unlock()
 	return err
 }
 
@@ -83,6 +81,7 @@ func postRecord(c *gin.Context) {
 	binary.BigEndian.PutUint32(b, uint32(len(jsonBytes)+1))
 
 	hostID := rand.Intn(len(batcherPool))
+	connMutex.Lock()
 	if batcherConn[hostID] == nil {
 		err = dialConn(hostID)
 		if err != nil {
@@ -91,14 +90,17 @@ func postRecord(c *gin.Context) {
 			log.Printf("%s is connected to batcherPool[%d] %s\n", info.GetName(), hostID, batcherPool[hostID])
 		}
 	}
+	connMutex.Unlock()
 	cnt := 5
 	sent := false
 	for sent == false {
+		connMutex.Lock()
 		if batcherConn[hostID] != nil {
 			_, err = batcherConn[hostID].Write(append(b, jsonBytes...))
 		} else {
 			err = errors.New("batcherConn[hostID] == nil")
 		}
+		connMutex.Unlock()
 		info.LogTimestamp("sendToBatcher")
 		if err != nil {
 			if cnt >= 0 {
