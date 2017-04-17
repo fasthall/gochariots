@@ -15,7 +15,7 @@ import (
 	"github.com/fasthall/gochariots/record"
 )
 
-const dispatchSize int = 1024
+const dispatchSize int = 32
 
 var lastTime time.Time
 var bufMutex sync.Mutex
@@ -281,13 +281,22 @@ func HandleRequest(conn net.Conn) {
 			log.Println(info.GetName(), err)
 			break
 		}
-		buf := make([]byte, binary.BigEndian.Uint32(lenbuf))
-		_, err = conn.Read(buf)
-		if err == io.EOF {
-			break
-		} else if err != nil {
-			log.Println(info.GetName(), "couldn't read incoming request")
-			log.Println(info.GetName(), err)
+		totalLength := int(binary.BigEndian.Uint32(lenbuf))
+		head := 0
+		buf := make([]byte, totalLength)
+		for totalLength > 0 {
+			l, err := conn.Read(buf[head:])
+			if err == io.EOF {
+				break
+			} else if err != nil {
+				log.Println(info.GetName(), "couldn't read incoming request")
+				log.Println(info.GetName(), err)
+				break
+			} else {
+				totalLength -= l
+			}
+		}
+		if totalLength > 0 {
 			break
 		}
 		if buf[0] == 'r' { // received records

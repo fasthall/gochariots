@@ -1,8 +1,9 @@
 #!/bin/sh
 
+mkdir logs
 
 # Cluster A
-nohup gochariots-app 8080 2 0  > $0.log &
+nohup gochariots-app 8080 2 0  > logs/$0.log &
 nohup gochariots-controller 8081 2 0  >> $0.log &
 
 sleep 1

@@ -33,15 +33,15 @@ func InitLogMaintainer(p string) {
 // Append appends a new record to the maintainer.
 func Append(r record.Record) error {
 	info.LogTimestamp("Append")
-	b, err := record.ToJSON(r)
-	if err != nil {
-		return err
-	}
+	// b, err := record.ToJSON(r)
+	// if err != nil {
+	// 	return err
+	// }
 	fpath := filepath.Join(path, strconv.Itoa(r.LId))
-	err = ioutil.WriteFile(fpath, b, 0644)
-	if err != nil {
-		return err
-	}
+	// err = ioutil.WriteFile(fpath, b, 0644)
+	// if err != nil {
+	// 	return err
+	// }
 	log.Println(info.GetName(), "wrote record to", fpath)
 	LastLId = r.LId
 	if r.Host == info.ID {
@@ -83,13 +83,22 @@ func HandleRequest(conn net.Conn) {
 			log.Println(info.GetName(), err)
 			break
 		}
-		buf := make([]byte, binary.BigEndian.Uint32(lenbuf))
-		l, err := conn.Read(buf)
-		if err == io.EOF {
-			break
-		} else if err != nil {
-			log.Println(info.GetName(), "couldn't read incoming request")
-			log.Println(info.GetName(), err)
+		totalLength := int(binary.BigEndian.Uint32(lenbuf))
+		head := 0
+		buf := make([]byte, totalLength)
+		for totalLength > 0 {
+			l, err := conn.Read(buf[head:])
+			if err == io.EOF {
+				break
+			} else if err != nil {
+				log.Println(info.GetName(), "couldn't read incoming request")
+				log.Println(info.GetName(), err)
+				break
+			} else {
+				totalLength -= l
+			}
+		}
+		if totalLength > 0 {
 			break
 		}
 		if buf[0] == 'b' { // received remote batchers update
@@ -107,7 +116,7 @@ func HandleRequest(conn net.Conn) {
 			records, err := record.ToRecordArray(buf[1:])
 			if err != nil {
 				log.Println(info.GetName(), "couldn't convert received bytes to records:", string(buf[1:]))
-				log.Panicln(binary.BigEndian.Uint32(lenbuf), len(buf), l, err)
+				log.Panicln(binary.BigEndian.Uint32(lenbuf), len(buf), err)
 			}
 			log.Println(info.GetName(), "received records:", records)
 			recordsArrival(records)

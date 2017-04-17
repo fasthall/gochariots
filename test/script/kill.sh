@@ -1,5 +1,5 @@
 #!/bin/sh
 
-rm -rf *.pid *.log flstore/
+rm -rf *.pid logs/ flstore/
 
 kill $(ps -A | grep gochariots | awk '{print $1;}')

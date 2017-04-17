@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path"
 	"time"
 )
 
@@ -19,7 +20,8 @@ func GetName() string {
 }
 
 func RedirectLog(name string) {
-	f, err := os.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	filepath := path.Join("logs", name)
+	f, err := os.OpenFile(filepath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		fmt.Printf("Error opening log file %s\n", name)
 	} else {
