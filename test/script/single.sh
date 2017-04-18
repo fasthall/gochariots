@@ -2,7 +2,7 @@
 
 mkdir logs
 nohup gochariots-app 8080 1 0 > logs/$0.log &
-nohup gochariots-controller 8081 1 0  > /dev/null &
+nohup gochariots-controller 8081 1 0 > /dev/null &
 nohup gochariots-batcher 9000 1 0 > /dev/null &
 nohup gochariots-filter 9010 1 0 > /dev/null &
 nohup gochariots-queue 9020 1 0 true > /dev/null &

@@ -3,7 +3,6 @@ import json
 import time
 import random
 import requests
-import _thread
 
 url = ['http://localhost:8080/record', 'http://localhost:8180/record']
 
@@ -37,5 +36,5 @@ if __name__ == '__main__':
         payload = build_json(key, str(i + 1), host_id, pretoid)
         # result = send_json(payload, host_id)
         # code = result.status_code
-        _thread.start_new_thread(send_json, (payload, host_id))
+        send_json(payload, host_id)
         

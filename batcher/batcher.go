@@ -40,7 +40,7 @@ func InitBatcher(n int) {
 // arrival buffers arriving records.
 // Upon records arrive, depends on where the record origins it goes to a certain buffer.
 // When a buffer is full, all the records in the buffer will be sent to the corresponding filter.
-// BUG(fasthall) In Arrival(), the mechanism to match thre record and filter needs to be done. Currently the number of filters needs to be equal to datacenters.
+// BUG(fasthall) In Arrival(), the mechanism to match the record and filter needs to be done. Currently the number of filters needs to be equal to datacenters.
 func arrival(record record.Record) {
 	bufMutex.Lock()
 	dc := record.Host
@@ -65,7 +65,6 @@ func sendToFilter(dc int) {
 	}
 	info.LogTimestamp("sendToFilter")
 
-	bufMutex.Lock()
 	jsonBytes, err := record.ToJSONArray(buffer[dc])
 	if err != nil {
 		log.Panicln(info.GetName(), "couldn't convert buffer to records")
@@ -112,17 +111,17 @@ func sendToFilter(dc int) {
 			log.Printf("%s sent to filterHost[%d] %s\n", info.GetName(), dc, filterHost[dc])
 		}
 	}
-
-	bufMutex.Unlock()
 }
 
 // Sweeper periodcally sends the buffer content to filters
 func Sweeper() {
 	for {
-		time.Sleep(1 * time.Millisecond)
+		time.Sleep(10 * time.Millisecond)
+		bufMutex.Lock()
 		for i := range buffer {
 			sendToFilter(i)
 		}
+		bufMutex.Unlock()
 	}
 }
 

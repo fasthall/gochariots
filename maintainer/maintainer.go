@@ -15,6 +15,8 @@ import (
 	"github.com/fasthall/gochariots/record"
 )
 
+const batchSize int = 1000
+
 // LastLId records the last LID maintained by this maintainer
 var LastLId int
 var path = "flstore"
@@ -96,9 +98,11 @@ func HandleRequest(conn net.Conn) {
 				break
 			} else {
 				totalLength -= l
+				head += l
 			}
 		}
 		if totalLength > 0 {
+			log.Println(info.GetName(), "couldn't read whole request")
 			break
 		}
 		if buf[0] == 'b' { // received remote batchers update
@@ -120,6 +124,12 @@ func HandleRequest(conn net.Conn) {
 			}
 			log.Println(info.GetName(), "received records:", records)
 			recordsArrival(records)
+		} else {
+			log.Println(info.GetName(), "couldn't understand", string(buf))
 		}
 	}
+}
+
+func AssignToMaintainer(LId, numMaintainers int) int {
+	return ((LId - 1) / batchSize) % numMaintainers
 }

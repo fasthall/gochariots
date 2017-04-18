@@ -12,18 +12,17 @@ import (
 	"time"
 
 	"github.com/fasthall/gochariots/info"
+	"github.com/fasthall/gochariots/maintainer"
 	"github.com/fasthall/gochariots/record"
 )
-
-const dispatchSize int = 32
 
 var lastTime time.Time
 var bufMutex sync.Mutex
 var buffered []map[int]record.Record
 var sameDCBuffered []record.Record
 var connMutex sync.Mutex
-var logMaintainerConn net.Conn
-var logMaintainerHost string
+var logMaintainerConn []net.Conn
+var logMaintainerHost []string
 var nextQueueConn net.Conn
 var nextQueueHost string
 
@@ -92,9 +91,9 @@ func TokenArrival(token Token) {
 		}
 		buffered[dc] = map[int]record.Record{}
 	}
-	bufMutex.Unlock()
 	token.DeferredRecords = append(token.DeferredRecords, sameDCBuffered...)
 	sameDCBuffered = []record.Record{}
+	bufMutex.Unlock()
 
 	// put the deffered records with dependency satisfied into dispatch slice
 	dispatch := []record.Record{}
@@ -128,11 +127,14 @@ func TokenArrival(token Token) {
 		// assign LId and send to log maintainers
 		lastID := assignLId(dispatch, token.LastLId)
 		token.LastLId = lastID
-		for i := 0; i < len(dispatch); i += dispatchSize {
-			if i+dispatchSize < len(dispatch) {
-				dispatchRecords(dispatch[i : i+dispatchSize])
-			} else {
-				dispatchRecords(dispatch[i:])
+		toDispatch := make([][]record.Record, len(logMaintainerConn))
+		for _, r := range dispatch {
+			id := maintainer.AssignToMaintainer(r.LId, len(logMaintainerConn))
+			toDispatch[id] = append(toDispatch[id], r)
+		}
+		for id, t := range toDispatch {
+			if len(t) > 0 {
+				dispatchRecords(t, id)
 			}
 		}
 	}
@@ -210,14 +212,14 @@ func passToken(token *Token) {
 	}
 }
 
-func dialLogMaintainer() error {
+func dialLogMaintainer(maintainerID int) error {
 	var err error
-	logMaintainerConn, err = net.Dial("tcp", logMaintainerHost)
+	logMaintainerConn[maintainerID], err = net.Dial("tcp", logMaintainerHost[maintainerID])
 	return err
 }
 
 // dispatchRecords sends the ready records to log maintainers
-func dispatchRecords(records []record.Record) {
+func dispatchRecords(records []record.Record, maintainerID int) {
 	info.LogTimestamp("dispatchRecords")
 	jsonBytes, err := record.ToJSONArray(records)
 	if err != nil {
@@ -228,8 +230,8 @@ func dispatchRecords(records []record.Record) {
 	b[4] = byte('r')
 	binary.BigEndian.PutUint32(b, uint32(len(jsonBytes)+1))
 	connMutex.Lock()
-	if logMaintainerConn == nil {
-		err = dialLogMaintainer()
+	if logMaintainerConn[maintainerID] == nil {
+		err = dialLogMaintainer(maintainerID)
 		if err != nil {
 			log.Printf("%s couldn't connect to log maintainer %s\n", info.GetName(), logMaintainerHost)
 			log.Println(err)
@@ -243,8 +245,8 @@ func dispatchRecords(records []record.Record) {
 	sent := false
 	for sent == false {
 		connMutex.Lock()
-		if logMaintainerConn != nil {
-			_, err = logMaintainerConn.Write(append(b, jsonBytes...))
+		if logMaintainerConn[maintainerID] != nil {
+			_, err = logMaintainerConn[maintainerID].Write(append(b, jsonBytes...))
 		} else {
 			err = errors.New("batcherConn[hostID] == nil")
 		}
@@ -252,7 +254,7 @@ func dispatchRecords(records []record.Record) {
 		if err != nil {
 			if cnt >= 0 {
 				cnt--
-				err = dialLogMaintainer()
+				err = dialLogMaintainer(maintainerID)
 				if err != nil {
 					log.Printf("%s couldn't connect to log maintainer %s\n", info.GetName(), logMaintainerHost)
 				}
@@ -262,7 +264,7 @@ func dispatchRecords(records []record.Record) {
 			}
 		} else {
 			sent = true
-			log.Println(info.GetName(), "sent the records to", logMaintainerHost, string(jsonBytes))
+			log.Println(info.GetName(), "sent the records to", logMaintainerHost[maintainerID], string(jsonBytes))
 		}
 	}
 	log.Printf("TIMESTAMP %s:record in queue %s\n", info.GetName(), time.Since(lastTime))
@@ -328,18 +330,11 @@ func HandleRequest(conn net.Conn) {
 				log.Println(info.GetName(), "received token:", token)
 			}
 		} else if buf[0] == 'm' { // received maintainer update
-			var hosts []string
-			err := json.Unmarshal(buf[1:], &hosts)
+			err := json.Unmarshal(buf[1:], &logMaintainerHost)
 			if err != nil {
 				log.Println(info.GetName(), "couldn't convert received bytes to maintainer hosts:", string(buf[1:]))
 			}
-			if len(hosts) > 0 {
-				logMaintainerHost = hosts[0]
-				if logMaintainerConn != nil {
-					logMaintainerConn.Close()
-					logMaintainerConn = nil
-				}
-			}
+			logMaintainerConn = make([]net.Conn, len(logMaintainerHost))
 		}
 	}
 }
