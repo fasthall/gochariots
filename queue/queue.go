@@ -296,9 +296,11 @@ func HandleRequest(conn net.Conn) {
 				break
 			} else {
 				totalLength -= l
+				head += l
 			}
 		}
 		if totalLength > 0 {
+			log.Println(info.GetName(), "couldn't read whole request")
 			break
 		}
 		if buf[0] == 'r' { // received records
