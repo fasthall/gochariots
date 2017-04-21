@@ -127,9 +127,9 @@ func Sweeper() {
 
 // HandleRequest handles incoming connection
 func HandleRequest(conn net.Conn) {
+	lenbuf := make([]byte, 4)
+	buf := make([]byte, 1024*1024*32)
 	for {
-		// Read the incoming connection into the buffer.
-		lenbuf := make([]byte, 4)
 		_, err := conn.Read(lenbuf)
 		if err == io.EOF {
 			break
@@ -139,10 +139,10 @@ func HandleRequest(conn net.Conn) {
 			break
 		}
 		totalLength := int(binary.BigEndian.Uint32(lenbuf))
+		remain := totalLength
 		head := 0
-		buf := make([]byte, totalLength)
-		for totalLength > 0 {
-			l, err := conn.Read(buf[head:])
+		for remain > 0 {
+			l, err := conn.Read(buf[head : head+remain])
 			if err == io.EOF {
 				break
 			} else if err != nil {
@@ -150,30 +150,31 @@ func HandleRequest(conn net.Conn) {
 				log.Println(info.GetName(), err)
 				break
 			} else {
-				totalLength -= l
+				remain -= l
 				head += l
 			}
 		}
-		if totalLength > 0 {
-			log.Println(info.GetName(), "couldn't read whole request")
+		if remain != 0 {
+			log.Println(info.GetName(), "couldn't read incoming request", remain)
 			break
 		}
 		if buf[0] == 'r' { // received records
 			info.LogTimestamp("HandleRequest")
 			start := time.Now()
-			record, err := record.ToRecord(buf[1:])
+			var r record.Record
+			err := record.ToRecord(buf[1:totalLength], &r)
 			if err != nil {
-				log.Println(info.GetName(), "couldn't convert read buffer to record:", string(buf[1:]))
+				log.Println(info.GetName(), "couldn't convert read buffer to record:", string(buf[1:totalLength]))
 				continue
 			}
-			log.Println(info.GetName(), "received incoming record:", string(buf[1:]))
-			arrival(record)
+			log.Println(info.GetName(), "received incoming record:", string(buf[1:totalLength]))
+			arrival(r)
 			elapsed := time.Since(start)
 			log.Printf("TIMESTAMP %s:HandleRequest took %s\n", info.GetName(), elapsed)
 		} else if buf[0] == 'f' { //received filter update
-			err := json.Unmarshal(buf[1:], &filterHost)
+			err := json.Unmarshal(buf[1:totalLength], &filterHost)
 			if err != nil {
-				log.Println(info.GetName(), "couldn't convert bytes to filter list:", string(buf[1:]))
+				log.Println(info.GetName(), "couldn't convert bytes to filter list:", string(buf[1:totalLength]))
 				continue
 			} else {
 				log.Println(info.GetName(), "updates filter:", filterHost)

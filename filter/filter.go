@@ -134,9 +134,9 @@ func sendToQueue(records []record.Record) {
 
 // HandleRequest handles incoming connection
 func HandleRequest(conn net.Conn) {
+	lenbuf := make([]byte, 4)
+	buf := make([]byte, 1024*1024*32)
 	for {
-		// Read the incoming connection into the buffer.
-		lenbuf := make([]byte, 4)
 		_, err := conn.Read(lenbuf)
 		if err == io.EOF {
 			break
@@ -146,10 +146,10 @@ func HandleRequest(conn net.Conn) {
 			break
 		}
 		totalLength := int(binary.BigEndian.Uint32(lenbuf))
+		remain := totalLength
 		head := 0
-		buf := make([]byte, totalLength)
-		for totalLength > 0 {
-			l, err := conn.Read(buf[head:])
+		for remain > 0 {
+			l, err := conn.Read(buf[head : head+remain])
 			if err == io.EOF {
 				break
 			} else if err != nil {
@@ -157,29 +157,29 @@ func HandleRequest(conn net.Conn) {
 				log.Println(info.GetName(), err)
 				break
 			} else {
-				totalLength -= l
+				remain -= l
 				head += l
 			}
 		}
-		if totalLength > 0 {
-			log.Println(info.GetName(), "couldn't read whole request")
+		if remain != 0 {
+			log.Println(info.GetName(), "couldn't read incoming request", remain)
 			break
 		}
 		if buf[0] == 'r' { // received records
 			info.LogTimestamp("HandleRequest")
 			start := time.Now()
-			records, err := record.ToRecordArray(buf[1:])
+			records, err := record.ToRecordArray(buf[1:totalLength])
 			if err != nil {
-				log.Println(info.GetName(), "couldn't convert buffer to record:", string(buf[1:]))
+				log.Println(info.GetName(), "couldn't convert buffer to record:", string(buf[1:totalLength]))
 				continue
 			}
 			log.Println(info.GetName(), "received incoming records:", records)
 			arrival(records)
 			log.Printf("TIMESTAMP %s:HandleRequest took %s\n", info.GetName(), time.Since(start))
 		} else if buf[0] == 'q' { // received queue hosts
-			queuePool = append(queuePool, string(buf[1:]))
+			queuePool = append(queuePool, string(buf[1:totalLength]))
 			queueConn = make([]net.Conn, len(queuePool))
-			log.Println(info.GetName(), "received new queue update:", string(buf[1:]))
+			log.Println(info.GetName(), "received new queue update:", string(buf[1:totalLength]))
 		}
 	}
 }

@@ -59,7 +59,9 @@ func ReadByLId(LId int) (record.Record, error) {
 	if err != nil {
 		return record.Record{}, err
 	}
-	return record.ToRecord(b)
+	var r record.Record
+	err = record.ToRecord(b, &r)
+	return r, err
 }
 
 func recordsArrival(records []record.Record) {
@@ -74,9 +76,9 @@ func recordsArrival(records []record.Record) {
 
 // HandleRequest handles incoming connection
 func HandleRequest(conn net.Conn) {
+	lenbuf := make([]byte, 4)
+	buf := make([]byte, 1024*1024*32)
 	for {
-		// Make a buffer to hold incoming data.
-		lenbuf := make([]byte, 4)
 		_, err := conn.Read(lenbuf)
 		if err == io.EOF {
 			break
@@ -86,10 +88,10 @@ func HandleRequest(conn net.Conn) {
 			break
 		}
 		totalLength := int(binary.BigEndian.Uint32(lenbuf))
+		remain := totalLength
 		head := 0
-		buf := make([]byte, totalLength)
-		for totalLength > 0 {
-			l, err := conn.Read(buf[head:])
+		for remain > 0 {
+			l, err := conn.Read(buf[head : head+remain])
 			if err == io.EOF {
 				break
 			} else if err != nil {
@@ -97,29 +99,29 @@ func HandleRequest(conn net.Conn) {
 				log.Println(info.GetName(), err)
 				break
 			} else {
-				totalLength -= l
+				remain -= l
 				head += l
 			}
 		}
-		if totalLength > 0 {
-			log.Println(info.GetName(), "couldn't read whole request")
+		if remain != 0 {
+			log.Println(info.GetName(), "couldn't read incoming request", remain)
 			break
 		}
 		if buf[0] == 'b' { // received remote batchers update
 			var batchers []string
-			err := json.Unmarshal(buf[1:], &batchers)
+			err := json.Unmarshal(buf[1:totalLength], &batchers)
 			remoteBatchers = batchers
 			remoteBatchersConn = make([]net.Conn, len(remoteBatchers))
 			if err != nil {
-				log.Println(info.GetName(), "couldn't convert received bytes to string list:", string(buf[1:]))
+				log.Println(info.GetName(), "couldn't convert received bytes to string list:", string(buf[1:totalLength]))
 				log.Panicln(err)
 			}
 			log.Println(info.GetName(), "received remote batchers update:", remoteBatchers)
 		} else if buf[0] == 'r' {
 			info.LogTimestamp("HandleRequest")
-			records, err := record.ToRecordArray(buf[1:])
+			records, err := record.ToRecordArray(buf[1:totalLength])
 			if err != nil {
-				log.Println(info.GetName(), "couldn't convert received bytes to records:", string(buf[1:]))
+				log.Println(info.GetName(), "couldn't convert received bytes to records:", string(buf[1:totalLength]))
 				log.Panicln(binary.BigEndian.Uint32(lenbuf), len(buf), err)
 			}
 			log.Println(info.GetName(), "received records:", records)

@@ -272,9 +272,9 @@ func dispatchRecords(records []record.Record, maintainerID int) {
 
 // HandleRequest handles incoming connection
 func HandleRequest(conn net.Conn) {
+	lenbuf := make([]byte, 4)
+	buf := make([]byte, 1024*1024*32)
 	for {
-		// Read the incoming connection into the buffer.
-		lenbuf := make([]byte, 4)
 		_, err := conn.Read(lenbuf)
 		if err == io.EOF {
 			break
@@ -284,10 +284,10 @@ func HandleRequest(conn net.Conn) {
 			break
 		}
 		totalLength := int(binary.BigEndian.Uint32(lenbuf))
+		remain := totalLength
 		head := 0
-		buf := make([]byte, totalLength)
-		for totalLength > 0 {
-			l, err := conn.Read(buf[head:])
+		for remain > 0 {
+			l, err := conn.Read(buf[head : head+remain])
 			if err == io.EOF {
 				break
 			} else if err != nil {
@@ -295,26 +295,26 @@ func HandleRequest(conn net.Conn) {
 				log.Println(info.GetName(), err)
 				break
 			} else {
-				totalLength -= l
+				remain -= l
 				head += l
 			}
 		}
-		if totalLength > 0 {
-			log.Println(info.GetName(), "couldn't read whole request")
+		if remain != 0 {
+			log.Println(info.GetName(), "couldn't read incoming request", remain)
 			break
 		}
 		if buf[0] == 'r' { // received records
 			info.LogTimestamp("HandleRequest")
 			lastTime = time.Now()
-			records, err := record.ToRecordArray(buf[1:])
+			records, err := record.ToRecordArray(buf[1:totalLength])
 			if err != nil {
-				log.Println(info.GetName(), "couldn't convert received bytes to records:", string(buf[1:]))
+				log.Println(info.GetName(), "couldn't convert received bytes to records:", string(buf[1:totalLength]))
 				continue
 			}
 			log.Println(info.GetName(), "received records:", records)
 			recordsArrival(records)
 		} else if buf[0] == 'q' { // received next host update
-			nextQueueHost = string(buf[1:])
+			nextQueueHost = string(buf[1:totalLength])
 			if nextQueueConn != nil {
 				nextQueueConn.Close()
 				nextQueueConn = nil
@@ -322,9 +322,9 @@ func HandleRequest(conn net.Conn) {
 			log.Println(info.GetName(), "updates next queue host to:", nextQueueHost)
 		} else if buf[0] == 't' { // received token
 			var token Token
-			err := json.Unmarshal(buf[1:], &token)
+			err := json.Unmarshal(buf[1:totalLength], &token)
 			if err != nil {
-				log.Println(info.GetName(), "couldn't convert received bytes to token:", string(buf[1:]))
+				log.Println(info.GetName(), "couldn't convert received bytes to token:", string(buf[1:totalLength]))
 				log.Panicln(err)
 			}
 			TokenArrival(token)
@@ -332,9 +332,9 @@ func HandleRequest(conn net.Conn) {
 				log.Println(info.GetName(), "received token:", token)
 			}
 		} else if buf[0] == 'm' { // received maintainer update
-			err := json.Unmarshal(buf[1:], &logMaintainerHost)
+			err := json.Unmarshal(buf[1:totalLength], &logMaintainerHost)
 			if err != nil {
-				log.Println(info.GetName(), "couldn't convert received bytes to maintainer hosts:", string(buf[1:]))
+				log.Println(info.GetName(), "couldn't convert received bytes to maintainer hosts:", string(buf[1:totalLength]))
 			}
 			logMaintainerConn = make([]net.Conn, len(logMaintainerHost))
 		}
