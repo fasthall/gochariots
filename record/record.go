@@ -2,7 +2,10 @@
 // It will be implemented using FLStore, but it's currently a mocked in-memory log for prototyping.
 package record
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"time"
+)
 
 // Record represents a single record in the shared log.
 // 	Host: The datacenter where the record origins
@@ -10,11 +13,12 @@ import "encoding/json"
 //	TOId: The total order of the record in the origining datacenter
 //	Tags: Consist of keys and values
 type Record struct {
-	Host int
-	TOId int
-	LId  int
-	Tags map[string]string
-	Pre  Causality
+	Timestamp time.Time
+	Host      int
+	TOId      int
+	LId       int
+	Tags      map[string]string
+	Pre       Causality
 }
 
 // Causality structure is used in Record structure. It shows the record which should present before.

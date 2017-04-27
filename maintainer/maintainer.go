@@ -35,15 +35,15 @@ func InitLogMaintainer(p string) {
 // Append appends a new record to the maintainer.
 func Append(r record.Record) error {
 	info.LogTimestamp("Append")
-	// b, err := record.ToJSON(r)
-	// if err != nil {
-	// 	return err
-	// }
+	b, err := record.ToJSON(r)
+	if err != nil {
+		return err
+	}
 	fpath := filepath.Join(path, strconv.Itoa(r.LId))
-	// err = ioutil.WriteFile(fpath, b, 0644)
-	// if err != nil {
-	// 	return err
-	// }
+	err = ioutil.WriteFile(fpath, b, 0644)
+	if err != nil {
+		return err
+	}
 	log.Println(info.GetName(), "wrote record to", fpath)
 	LastLId = r.LId
 	if r.Host == info.ID {

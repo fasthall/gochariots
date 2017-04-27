@@ -41,10 +41,11 @@ func InitBatcher(n int) {
 // Upon records arrive, depends on where the record origins it goes to a certain buffer.
 // When a buffer is full, all the records in the buffer will be sent to the corresponding filter.
 // BUG(fasthall) In Arrival(), the mechanism to match the record and filter needs to be done. Currently the number of filters needs to be equal to datacenters.
-func arrival(record record.Record) {
+func arrival(r record.Record) {
+	r.Timestamp = time.Now()
 	bufMutex.Lock()
-	dc := record.Host
-	buffer[dc] = append(buffer[dc], record)
+	dc := r.Host
+	buffer[dc] = append(buffer[dc], r)
 
 	// if the buffer is full, send all records to the filter
 	if len(buffer[dc]) == cap(buffer[dc]) {
