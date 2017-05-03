@@ -7,7 +7,7 @@ import requests
 url = ['http://localhost:8080/record', 'http://localhost:8180/record']
 
 def build_json(key, value, prehost, pretoid):
-    payload = {'tags': {key: value}, 'prehost': prehost, 'pretoid': pretoid}
+    payload = {'tags': {key: value}, 'prehost': prehost, 'pretoid': pretoid, 'pretags': {}}
     return json.dumps(payload)
 
 def send_json(payload, host_id):

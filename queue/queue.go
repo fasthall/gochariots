@@ -94,29 +94,42 @@ func TokenArrival(token Token) {
 	token.DeferredRecords = append(token.DeferredRecords, sameDCBuffered...)
 	sameDCBuffered = []record.Record{}
 	bufMutex.Unlock()
-
+	log.Println("WTF", token.DeferredRecords)
 	// put the deffered records with dependency satisfied into dispatch slice
 	dispatch := []record.Record{}
 	head := 0
-	for i := 0; i < len(token.DeferredRecords); i++ {
-		v := token.DeferredRecords[i]
-		if v.Host != info.ID {
+	for _, r := range token.DeferredRecords {
+		if r.Host != info.ID {
 			// default value of TOId is 0 so no need to check if the record has dependency or not
-			if v.TOId == token.MaxTOId[v.Host]+1 && v.Pre.TOId <= token.MaxTOId[v.Pre.Host] {
-				dispatch = append(dispatch, v)
-				token.MaxTOId[v.Host] = v.TOId
+			if r.TOId == token.MaxTOId[r.Host]+1 && r.Pre.TOId <= token.MaxTOId[r.Pre.Host] {
+				dispatch = append(dispatch, r)
+				token.MaxTOId[r.Host] = r.TOId
 			} else {
-				token.DeferredRecords[head] = v
+				token.DeferredRecords[head] = r
 				head++
 			}
 		} else {
 			// if it's from the same DC, TOId needs to be assigned
-			if v.Pre.TOId <= token.MaxTOId[v.Pre.Host] {
-				v.TOId = token.MaxTOId[v.Host] + 1
-				dispatch = append(dispatch, v)
-				token.MaxTOId[v.Host] = v.TOId
+			if len(r.Pre.Tags) > 0 {
+				lids := []int{}
+				for maintainerID := range logMaintainerConn {
+					lids = append(lids, AskIndexer(r.Pre.Tags, maintainerID)...)
+				}
+				log.Println(lids)
+				if len(lids) > 0 {
+					r.TOId = token.MaxTOId[r.Host] + 1
+					dispatch = append(dispatch, r)
+					token.MaxTOId[r.Host] = r.TOId
+				} else {
+					token.DeferredRecords[head] = r
+					head++
+				}
+			} else if r.Pre.TOId <= token.MaxTOId[r.Pre.Host] {
+				r.TOId = token.MaxTOId[r.Host] + 1
+				dispatch = append(dispatch, r)
+				token.MaxTOId[r.Host] = r.TOId
 			} else {
-				token.DeferredRecords[head] = v
+				token.DeferredRecords[head] = r
 				head++
 			}
 		}
@@ -248,7 +261,7 @@ func dispatchRecords(records []record.Record, maintainerID int) {
 		if logMaintainerConn[maintainerID] != nil {
 			_, err = logMaintainerConn[maintainerID].Write(append(b, jsonBytes...))
 		} else {
-			err = errors.New("batcherConn[hostID] == nil")
+			err = errors.New("logMaintainerConn[hostID] == nil")
 		}
 		connMutex.Unlock()
 		if err != nil {
@@ -270,6 +283,75 @@ func dispatchRecords(records []record.Record, maintainerID int) {
 	log.Printf("TIMESTAMP %s:record in queue %s\n", info.GetName(), time.Since(lastTime))
 }
 
+func AskIndexer(tags map[string]string, maintainerID int) []int {
+	tmp, err := json.Marshal(tags)
+	if err != nil {
+		log.Println(info.GetName(), "couldn't convert tags to bytes:", tags)
+		return nil
+	}
+	b := make([]byte, 5)
+	b[4] = byte('i')
+	binary.BigEndian.PutUint32(b, uint32(len(tmp)+1))
+
+	connMutex.Lock()
+	if logMaintainerConn[maintainerID] == nil {
+		err := dialLogMaintainer(maintainerID)
+		if err != nil {
+			log.Printf("%s couldn't connect to log maintainer %s\n", info.GetName(), logMaintainerHost)
+			log.Println(err)
+		} else {
+			log.Printf("%s is connected to log maintainer %s\n", info.GetName(), logMaintainerHost)
+		}
+	}
+	connMutex.Unlock()
+
+	cnt := 5
+	sent := false
+	for sent == false {
+		connMutex.Lock()
+		if logMaintainerConn[maintainerID] != nil {
+			_, err = logMaintainerConn[maintainerID].Write(append(b, tmp...))
+		} else {
+			err = errors.New("logMaintainerConn[hostID] == nil")
+		}
+		connMutex.Unlock()
+		if err != nil {
+			if cnt >= 0 {
+				cnt--
+				err = dialLogMaintainer(maintainerID)
+				if err != nil {
+					log.Printf("%s couldn't connect to log maintainer %s\n", info.GetName(), logMaintainerHost)
+				}
+			} else {
+				log.Printf("%s failed to connect to log maintainer %s after retrying 5 times\n", info.GetName(), logMaintainerHost)
+				break
+			}
+		} else {
+			sent = true
+		}
+	}
+	lenbuf := make([]byte, 4)
+	_, err = logMaintainerConn[maintainerID].Read(lenbuf)
+	if err != nil {
+		log.Println(info.GetName(), "couldn't read response from indexer")
+		return nil
+	}
+	totalLength := int(binary.BigEndian.Uint32(lenbuf))
+	buf := make([]byte, totalLength)
+	_, err = logMaintainerConn[maintainerID].Read(buf)
+	if err != nil {
+		log.Println(info.GetName(), "couldn't read response from indexer")
+		return nil
+	}
+	var lids []int
+	err = json.Unmarshal(buf, &lids)
+	if err != nil {
+		log.Println(info.GetName(), "couldn't read response from indexer")
+		return nil
+	}
+	return lids
+}
+
 // HandleRequest handles incoming connection
 func HandleRequest(conn net.Conn) {
 	lenbuf := make([]byte, 4)
@@ -284,6 +366,9 @@ func HandleRequest(conn net.Conn) {
 			break
 		}
 		totalLength := int(binary.BigEndian.Uint32(lenbuf))
+		if totalLength > cap(buf) {
+			buf = make([]byte, totalLength)
+		}
 		remain := totalLength
 		head := 0
 		for remain > 0 {

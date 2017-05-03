@@ -24,6 +24,7 @@ type JsonRecord struct {
 	Tags    map[string]string `json:"tags"`
 	PreHost int               `json:"prehost"`
 	PreTOId int               `json:"pretoid"`
+	PreTags map[string]string `json:"pretags"`
 }
 
 func Run(port string) {
@@ -68,6 +69,7 @@ func postRecord(c *gin.Context) {
 		Pre: record.Causality{
 			Host: jsonRecord.PreHost,
 			TOId: jsonRecord.PreTOId,
+			Tags: jsonRecord.PreTags,
 		},
 	}
 	jsonBytes, err := record.ToJSON(r)
@@ -133,7 +135,7 @@ func getRecord(c *gin.Context) {
 		})
 		return
 	}
-	record, err := maintainer.ReadByLId(lid)
+	r, err := maintainer.ReadByLId(lid)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
 			"message": "Record not found",
@@ -142,10 +144,10 @@ func getRecord(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"LId":       record.LId,
-		"Host":      record.Host,
-		"TOId":      record.TOId,
-		"Causality": record.Pre,
-		"Tags":      record.Tags,
+		"LId":       r.LId,
+		"Host":      r.Host,
+		"TOId":      r.TOId,
+		"Causality": r.Pre,
+		"Tags":      r.Tags,
 	})
 }

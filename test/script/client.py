@@ -3,7 +3,7 @@ import time
 import socket
 
 batchers = [('localhost', 9000)]
-payload = '{"Host":0,"TOId":0,"LId":0,"Tags":{"from":"id"},"Pre":{"Host":0,"TOId":0}}'
+payload = '{"Host":0,"TOId":0,"LId":0,"Tags":{"from":"id"},"Pre":{"Host":0,"TOId":0,"Tags":{"prekey":"prevalue"}}}'
 
 def build(conn, id):
     tmp = payload.replace('from', str(conn)).replace('id', str(id))

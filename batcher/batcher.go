@@ -140,6 +140,9 @@ func HandleRequest(conn net.Conn) {
 			break
 		}
 		totalLength := int(binary.BigEndian.Uint32(lenbuf))
+		if totalLength > cap(buf) {
+			buf = make([]byte, totalLength)
+		}
 		remain := totalLength
 		head := 0
 		for remain > 0 {
