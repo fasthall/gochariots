@@ -4,12 +4,12 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"io"
-	"io/ioutil"
 	"log"
 	"net"
 	"os"
 	"path/filepath"
-	"strconv"
+
+	"fmt"
 
 	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/record"
@@ -20,15 +20,20 @@ const batchSize int = 1000
 // LastLId records the last LID maintained by this maintainer
 var LastLId int
 var path = "flstore"
+var f *os.File
 
 // InitLogMaintainer initializes the maintainer and assign the path name to store the records
 func InitLogMaintainer(p string) {
 	LastLId = 0
-	path = p
 	err := os.MkdirAll(path, os.ModePerm)
 	if err != nil {
 		log.Println(info.GetName(), "couldn't access path", path)
-		panic(err)
+		log.Panicln(err)
+	}
+	f, err = os.Create(filepath.Join(path, p))
+	if err != nil {
+		log.Println(info.GetName(), "couldn't create file", p)
+		log.Panicln(err)
 	}
 }
 
@@ -39,12 +44,18 @@ func Append(r record.Record) error {
 	if err != nil {
 		return err
 	}
-	fpath := filepath.Join(path, strconv.Itoa(r.LId))
-	err = ioutil.WriteFile(fpath, b, 0644)
+	lenbuf := make([]byte, 4)
+	binary.BigEndian.PutUint32(lenbuf, uint32(len(b)))
+	lid := r.LId
+	_, err = f.WriteAt(lenbuf, int64(512*lid))
 	if err != nil {
 		return err
 	}
-	log.Println(info.GetName(), "wrote record to", fpath)
+	_, err = f.WriteAt(b, int64(512*lid+4))
+	if err != nil {
+		return err
+	}
+	log.Println(info.GetName(), "wrote record ", lid)
 	LastLId = r.LId
 	if r.Host == info.ID {
 		Propagate(r)
@@ -53,14 +64,20 @@ func Append(r record.Record) error {
 }
 
 // ReadByLId reads from the maintainer according to LId.
-func ReadByLId(LId int) (record.Record, error) {
-	fpath := filepath.Join(path, strconv.Itoa(LId))
-	b, err := ioutil.ReadFile(fpath)
+func ReadByLId(lid int) (record.Record, error) {
+	lenbuf := make([]byte, 4)
+	_, err := f.ReadAt(lenbuf, int64(512*lid))
+	if err != nil {
+		return record.Record{}, err
+	}
+	length := int(binary.BigEndian.Uint32(lenbuf))
+	buf := make([]byte, length)
+	_, err = f.ReadAt(buf, int64(512*lid+4))
 	if err != nil {
 		return record.Record{}, err
 	}
 	var r record.Record
-	err = record.ToRecord(b, &r)
+	err = record.ToRecord(buf, &r)
 	return r, err
 }
 
@@ -126,6 +143,14 @@ func HandleRequest(conn net.Conn) {
 			}
 			log.Println(info.GetName(), "received records:", records)
 			recordsArrival(records)
+		} else if buf[0] == 'l' {
+			lid := int(binary.BigEndian.Uint32(buf[1:totalLength]))
+			r, err := ReadByLId(lid)
+			if err != nil {
+				conn.Write([]byte(fmt.Sprint(err)))
+			} else {
+				conn.Write([]byte(fmt.Sprint(r)))
+			}
 		} else {
 			log.Println(info.GetName(), "couldn't understand", string(buf))
 		}

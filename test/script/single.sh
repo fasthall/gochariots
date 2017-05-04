@@ -1,5 +1,7 @@
 #!/bin/sh
 
+sh kill.sh
+
 mkdir logs
 nohup gochariots-app 8080 1 0 > logs/$0.log &
 nohup gochariots-controller 8081 1 0 > /dev/null &
