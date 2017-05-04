@@ -64,7 +64,7 @@ func sendToFilter(dc int) {
 	if len(buffer[dc]) == 0 {
 		return
 	}
-	info.LogTimestamp("sendToFilter")
+	// info.LogTimestamp("sendToFilter")
 
 	bytes, err := record.ToGobArray(buffer[dc])
 	if err != nil {
