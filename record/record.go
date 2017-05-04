@@ -3,6 +3,8 @@
 package record
 
 import (
+	"bytes"
+	"encoding/gob"
 	"encoding/json"
 	"time"
 )
@@ -29,13 +31,8 @@ type Causality struct {
 }
 
 // ToJSON encodes a record into bytes
-func ToJSON(record Record) ([]byte, error) {
-	return json.Marshal(record)
-}
-
-// ToRecord decodes bytes into record
-func ToRecord(b []byte, r *Record) error {
-	return json.Unmarshal(b, &r)
+func ToJSON(r Record) ([]byte, error) {
+	return json.Marshal(r)
 }
 
 // ToJSONArray encodes slice of records into JSON array
@@ -43,9 +40,40 @@ func ToJSONArray(records []Record) ([]byte, error) {
 	return json.Marshal(records)
 }
 
-// ToRecordArray decodes json bytes into slice of records
-func ToRecordArray(b []byte) ([]Record, error) {
-	var records []Record
-	err := json.Unmarshal(b, &records)
-	return records, err
+// JSONToRecord decodes bytes into record
+func JSONToRecord(b []byte, r *Record) error {
+	return json.Unmarshal(b, &r)
+}
+
+// JSONToRecordArray decodes json bytes into slice of records
+func JSONToRecordArray(b []byte, records *[]Record) error {
+	return json.Unmarshal(b, &records)
+}
+
+// ToGob encodes a record into gob bytes
+func ToGob(r Record) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := gob.NewEncoder(&buf)
+	err := enc.Encode(r)
+	return buf.Bytes(), err
+}
+
+// GobToRecord decodes gob bytes into record
+func GobToRecord(b []byte, r *Record) error {
+	dec := gob.NewDecoder(bytes.NewBuffer(b))
+	return dec.Decode(&r)
+}
+
+// ToGob encodes a record into gob bytes
+func ToGobArray(records []Record) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := gob.NewEncoder(&buf)
+	err := enc.Encode(records)
+	return buf.Bytes(), err
+}
+
+// GobToRecord decodes gob bytes into record
+func GobToRecordArray(b []byte, r *[]Record) error {
+	dec := gob.NewDecoder(bytes.NewBuffer(b))
+	return dec.Decode(&r)
 }

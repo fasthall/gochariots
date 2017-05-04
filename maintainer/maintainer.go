@@ -80,7 +80,7 @@ func ReadByLId(lid int) (record.Record, error) {
 		return record.Record{}, err
 	}
 	var r record.Record
-	err = record.ToRecord(buf, &r)
+	err = record.JSONToRecord(buf, &r)
 	return r, err
 }
 
@@ -169,7 +169,8 @@ func HandleRequest(conn net.Conn) {
 			log.Println(info.GetName(), "received remote batchers update:", remoteBatchers)
 		} else if buf[0] == 'r' { // received records from queue
 			// info.LogTimestamp("HandleRequest")
-			records, err := record.ToRecordArray(buf[1:totalLength])
+			records := []record.Record{}
+			err := record.GobToRecordArray(buf[1:totalLength], &records)
 			if err != nil {
 				log.Println(info.GetName(), "couldn't convert received bytes to records:", string(buf[1:totalLength]))
 				log.Panicln(binary.BigEndian.Uint32(lenbuf), len(buf), err)

@@ -176,14 +176,14 @@ func passToken(token *Token) {
 	if nextQueueHost == "" {
 		TokenArrival(*token)
 	} else {
-		jsonBytes, err := json.Marshal(token)
+		bytes, err := json.Marshal(token)
 		if err != nil {
 			log.Println(info.GetName(), "couldn't convert token to bytes:", token)
 			log.Panicln(err)
 		}
 		b := make([]byte, 5)
 		b[4] = byte('t')
-		binary.BigEndian.PutUint32(b, uint32(len(jsonBytes)+1))
+		binary.BigEndian.PutUint32(b, uint32(len(bytes)+1))
 		if nextQueueConn == nil {
 			err = dialNextQueue()
 			if err != nil {
@@ -198,7 +198,7 @@ func passToken(token *Token) {
 		for sent == false {
 			var err error
 			if nextQueueConn != nil {
-				_, err = nextQueueConn.Write(append(b, jsonBytes...))
+				_, err = nextQueueConn.Write(append(b, bytes...))
 			} else {
 				err = errors.New("batcherConn[hostID] == nil")
 			}
@@ -232,14 +232,14 @@ func dialLogMaintainer(maintainerID int) error {
 // dispatchRecords sends the ready records to log maintainers
 func dispatchRecords(records []record.Record, maintainerID int) {
 	// info.LogTimestamp("dispatchRecords")
-	jsonBytes, err := record.ToJSONArray(records)
+	bytes, err := record.ToGobArray(records)
 	if err != nil {
 		log.Println(info.GetName(), "couldn't convert records to bytes:", records)
 		return
 	}
 	b := make([]byte, 5)
 	b[4] = byte('r')
-	binary.BigEndian.PutUint32(b, uint32(len(jsonBytes)+1))
+	binary.BigEndian.PutUint32(b, uint32(len(bytes)+1))
 	connMutex.Lock()
 	if logMaintainerConn[maintainerID] == nil {
 		err = dialLogMaintainer(maintainerID)
@@ -257,7 +257,7 @@ func dispatchRecords(records []record.Record, maintainerID int) {
 	for sent == false {
 		connMutex.Lock()
 		if logMaintainerConn[maintainerID] != nil {
-			_, err = logMaintainerConn[maintainerID].Write(append(b, jsonBytes...))
+			_, err = logMaintainerConn[maintainerID].Write(append(b, bytes...))
 		} else {
 			err = errors.New("logMaintainerConn[hostID] == nil")
 		}
@@ -275,7 +275,7 @@ func dispatchRecords(records []record.Record, maintainerID int) {
 			}
 		} else {
 			sent = true
-			// log.Println(info.GetName(), "sent the records to", logMaintainerHost[maintainerID], string(jsonBytes))
+			// log.Println(info.GetName(), "sent the records to", logMaintainerHost[maintainerID], string(bytes))
 		}
 	}
 	// log.Printf("TIMESTAMP %s:record in queue %s\n", info.GetName(), time.Since(lastTime))
@@ -389,7 +389,8 @@ func HandleRequest(conn net.Conn) {
 		if buf[0] == 'r' { // received records
 			// info.LogTimestamp("HandleRequest")
 			lastTime = time.Now()
-			records, err := record.ToRecordArray(buf[1:totalLength])
+			records := []record.Record{}
+			err := record.GobToRecordArray(buf[1:totalLength], &records)
 			if err != nil {
 				log.Println(info.GetName(), "couldn't convert received bytes to records:", string(buf[1:totalLength]))
 				continue
