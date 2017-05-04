@@ -65,6 +65,8 @@ To append to the shared log, send POST request to http://localhost:8080/record. 
 ## Issues (TODO)
 
 * Preallocated buffer may not be big enough.
+* Indexing hash collision needs to be checked.
+* Multiple tag read support.
 
 ## Design discussion
 
