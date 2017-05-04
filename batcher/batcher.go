@@ -109,7 +109,7 @@ func sendToFilter(dc int) {
 			}
 		} else {
 			sent = true
-			log.Printf("%s sent to filterHost[%d] %s\n", info.GetName(), dc, filterHost[dc])
+			// log.Printf("%s sent to filterHost[%d] %s\n", info.GetName(), dc, filterHost[dc])
 		}
 	}
 }
@@ -166,7 +166,7 @@ func HandleRequest(conn net.Conn) {
 			// info.LogTimestamp("HandleRequest")
 			// start := time.Now()
 			var r record.Record
-			err := record.ToRecord(buf[1:totalLength], &r)
+			err := record.JSONToRecord(buf[1:totalLength], &r)
 			if err != nil {
 				log.Println(info.GetName(), "couldn't convert read buffer to record:", string(buf[1:totalLength]))
 				continue

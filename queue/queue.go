@@ -389,7 +389,8 @@ func HandleRequest(conn net.Conn) {
 		if buf[0] == 'r' { // received records
 			// info.LogTimestamp("HandleRequest")
 			lastTime = time.Now()
-			records, err := record.ToRecordArray(buf[1:totalLength])
+			records := []record.Record{}
+			err := record.JSONToRecordArray(buf[1:totalLength], &records)
 			if err != nil {
 				log.Println(info.GetName(), "couldn't convert received bytes to records:", string(buf[1:totalLength]))
 				continue
