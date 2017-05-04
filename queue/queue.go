@@ -114,7 +114,6 @@ func TokenArrival(token Token) {
 				for maintainerID := range logMaintainerConn {
 					lids = append(lids, AskIndexer(r.Pre.Tags, maintainerID)...)
 				}
-				log.Println(lids)
 				if len(lids) > 0 {
 					r.TOId = token.MaxTOId[r.Host] + 1
 					dispatch = append(dispatch, r)
