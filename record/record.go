@@ -35,8 +35,7 @@ func ToJSON(record Record) ([]byte, error) {
 
 // ToRecord decodes bytes into record
 func ToRecord(b []byte, r *Record) error {
-	err := json.Unmarshal(b, &r)
-	return err
+	return json.Unmarshal(b, &r)
 }
 
 // ToJSONArray encodes slice of records into JSON array

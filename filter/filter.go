@@ -11,7 +11,6 @@ import (
 	"math/rand"
 	"net"
 	"sync"
-	"time"
 
 	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/record"
@@ -39,7 +38,7 @@ func InitFilter(n int) {
 // If the TOId is the same as expected, the record will be forwared to the queue.
 // If the TOId is larger than expected, the record will be buffered.
 func arrival(records []record.Record) {
-	info.LogTimestamp("arrival")
+	// info.LogTimestamp("arrival")
 	bufMutex.Lock()
 	queued := []record.Record{}
 	for _, record := range records {
@@ -83,7 +82,7 @@ func dialConn(queueID int) error {
 }
 
 func sendToQueue(records []record.Record) {
-	info.LogTimestamp("sendToQueue")
+	// info.LogTimestamp("sendToQueue")
 	jsonBytes, err := record.ToJSONArray(records)
 	if err != nil {
 		panic(err)
@@ -127,7 +126,7 @@ func sendToQueue(records []record.Record) {
 			}
 		} else {
 			sent = true
-			log.Printf("%s sent to queuePool[%d] %s\n", info.GetName(), queueID, queuePool[queueID])
+			// log.Printf("%s sent to queuePool[%d] %s\n", info.GetName(), queueID, queuePool[queueID])
 		}
 	}
 }
@@ -169,16 +168,16 @@ func HandleRequest(conn net.Conn) {
 			break
 		}
 		if buf[0] == 'r' { // received records
-			info.LogTimestamp("HandleRequest")
-			start := time.Now()
+			// info.LogTimestamp("HandleRequest")
+			// start := time.Now()
 			records, err := record.ToRecordArray(buf[1:totalLength])
 			if err != nil {
 				log.Println(info.GetName(), "couldn't convert buffer to record:", string(buf[1:totalLength]))
 				continue
 			}
-			log.Println(info.GetName(), "received incoming records:", records)
+			// log.Println(info.GetName(), "received incoming records:", records)
 			arrival(records)
-			log.Printf("TIMESTAMP %s:HandleRequest took %s\n", info.GetName(), time.Since(start))
+			// log.Printf("TIMESTAMP %s:HandleRequest took %s\n", info.GetName(), time.Since(start))
 		} else if buf[0] == 'q' { // received queue hosts
 			queuePool = append(queuePool, string(buf[1:totalLength]))
 			queueConn = make([]net.Conn, len(queuePool))

@@ -163,18 +163,18 @@ func HandleRequest(conn net.Conn) {
 			break
 		}
 		if buf[0] == 'r' { // received records
-			info.LogTimestamp("HandleRequest")
-			start := time.Now()
+			// info.LogTimestamp("HandleRequest")
+			// start := time.Now()
 			var r record.Record
 			err := record.ToRecord(buf[1:totalLength], &r)
 			if err != nil {
 				log.Println(info.GetName(), "couldn't convert read buffer to record:", string(buf[1:totalLength]))
 				continue
 			}
-			log.Println(info.GetName(), "received incoming record:", string(buf[1:totalLength]))
+			// log.Println(info.GetName(), "received incoming record:", string(buf[1:totalLength]))
 			arrival(r)
-			elapsed := time.Since(start)
-			log.Printf("TIMESTAMP %s:HandleRequest took %s\n", info.GetName(), elapsed)
+			// elapsed := time.Since(start)
+			// log.Printf("TIMESTAMP %s:HandleRequest took %s\n", info.GetName(), elapsed)
 		} else if buf[0] == 'f' { //received filter update
 			err := json.Unmarshal(buf[1:totalLength], &filterHost)
 			if err != nil {

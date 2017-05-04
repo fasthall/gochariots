@@ -39,7 +39,7 @@ func InitLogMaintainer(p string) {
 
 // Append appends a new record to the maintainer.
 func Append(r record.Record) error {
-	info.LogTimestamp("Append")
+	// info.LogTimestamp("Append")
 	b, err := record.ToJSON(r)
 	if err != nil {
 		return err
@@ -55,7 +55,7 @@ func Append(r record.Record) error {
 	if err != nil {
 		return err
 	}
-	log.Println(info.GetName(), "wrote record ", lid)
+	// log.Println(info.GetName(), "wrote record ", lid)
 	for tag, value := range r.Tags {
 		index.Insert(tag, value, r.LId)
 	}
@@ -112,7 +112,7 @@ func ReadByTag(tag, value string) ([]record.Record, error) {
 }
 
 func recordsArrival(records []record.Record) {
-	info.LogTimestamp("recordsArrival")
+	// info.LogTimestamp("recordsArrival")
 	for _, record := range records {
 		err := Append(record)
 		if err != nil {
@@ -168,13 +168,13 @@ func HandleRequest(conn net.Conn) {
 			}
 			log.Println(info.GetName(), "received remote batchers update:", remoteBatchers)
 		} else if buf[0] == 'r' { // received records from queue
-			info.LogTimestamp("HandleRequest")
+			// info.LogTimestamp("HandleRequest")
 			records, err := record.ToRecordArray(buf[1:totalLength])
 			if err != nil {
 				log.Println(info.GetName(), "couldn't convert received bytes to records:", string(buf[1:totalLength]))
 				log.Panicln(binary.BigEndian.Uint32(lenbuf), len(buf), err)
 			}
-			log.Println(info.GetName(), "received records:", records)
+			// log.Println(info.GetName(), "received records:", records)
 			recordsArrival(records)
 		} else if buf[0] == 'g' { // get records by tags
 			var tags map[string]string

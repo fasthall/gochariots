@@ -61,7 +61,7 @@ func (token *Token) InitToken(maxTOId []int, lastLId int) {
 
 // recordsArrival deals with the records received from filters
 func recordsArrival(records []record.Record) {
-	info.LogTimestamp("recordsArrival")
+	// info.LogTimestamp("recordsArrival")
 	bufMutex.Lock()
 	for _, record := range records {
 		if record.Host == info.ID {
@@ -215,9 +215,9 @@ func passToken(token *Token) {
 				}
 			} else {
 				sent = true
-				if len(token.DeferredRecords) > 0 {
-					log.Println(info.GetName(), "sent the token to", nextQueueHost)
-				}
+				// if len(token.DeferredRecords) > 0 {
+				// 	log.Println(info.GetName(), "sent the token to", nextQueueHost)
+				// }
 			}
 		}
 	}
@@ -231,7 +231,7 @@ func dialLogMaintainer(maintainerID int) error {
 
 // dispatchRecords sends the ready records to log maintainers
 func dispatchRecords(records []record.Record, maintainerID int) {
-	info.LogTimestamp("dispatchRecords")
+	// info.LogTimestamp("dispatchRecords")
 	jsonBytes, err := record.ToJSONArray(records)
 	if err != nil {
 		log.Println(info.GetName(), "couldn't convert records to bytes:", records)
@@ -275,10 +275,10 @@ func dispatchRecords(records []record.Record, maintainerID int) {
 			}
 		} else {
 			sent = true
-			log.Println(info.GetName(), "sent the records to", logMaintainerHost[maintainerID], string(jsonBytes))
+			// log.Println(info.GetName(), "sent the records to", logMaintainerHost[maintainerID], string(jsonBytes))
 		}
 	}
-	log.Printf("TIMESTAMP %s:record in queue %s\n", info.GetName(), time.Since(lastTime))
+	// log.Printf("TIMESTAMP %s:record in queue %s\n", info.GetName(), time.Since(lastTime))
 }
 
 func AskIndexer(tags map[string]string, maintainerID int) []int {
@@ -387,14 +387,14 @@ func HandleRequest(conn net.Conn) {
 			break
 		}
 		if buf[0] == 'r' { // received records
-			info.LogTimestamp("HandleRequest")
+			// info.LogTimestamp("HandleRequest")
 			lastTime = time.Now()
 			records, err := record.ToRecordArray(buf[1:totalLength])
 			if err != nil {
 				log.Println(info.GetName(), "couldn't convert received bytes to records:", string(buf[1:totalLength]))
 				continue
 			}
-			log.Println(info.GetName(), "received records:", records)
+			// log.Println(info.GetName(), "received records:", records)
 			recordsArrival(records)
 		} else if buf[0] == 'q' { // received next host update
 			nextQueueHost = string(buf[1:totalLength])
@@ -411,9 +411,9 @@ func HandleRequest(conn net.Conn) {
 				log.Panicln(err)
 			}
 			TokenArrival(token)
-			if len(token.DeferredRecords) > 0 {
-				log.Println(info.GetName(), "received token:", token)
-			}
+			// if len(token.DeferredRecords) > 0 {
+			// 	log.Println(info.GetName(), "received token:", token)
+			// }
 		} else if buf[0] == 'm' { // received maintainer update
 			err := json.Unmarshal(buf[1:totalLength], &logMaintainerHost)
 			if err != nil {
