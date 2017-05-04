@@ -170,7 +170,7 @@ func HandleRequest(conn net.Conn) {
 		} else if buf[0] == 'r' { // received records from queue
 			// info.LogTimestamp("HandleRequest")
 			records := []record.Record{}
-			err := record.JSONToRecordArray(buf[1:totalLength], &records)
+			err := record.GobToRecordArray(buf[1:totalLength], &records)
 			if err != nil {
 				log.Println(info.GetName(), "couldn't convert received bytes to records:", string(buf[1:totalLength]))
 				log.Panicln(binary.BigEndian.Uint32(lenbuf), len(buf), err)

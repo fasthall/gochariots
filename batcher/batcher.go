@@ -66,13 +66,13 @@ func sendToFilter(dc int) {
 	}
 	info.LogTimestamp("sendToFilter")
 
-	jsonBytes, err := record.ToJSONArray(buffer[dc])
+	bytes, err := record.ToGobArray(buffer[dc])
 	if err != nil {
 		log.Panicln(info.GetName(), "couldn't convert buffer to records")
 	}
 	b := make([]byte, 5)
 	b[4] = byte('r')
-	binary.BigEndian.PutUint32(b, uint32(len(jsonBytes)+1))
+	binary.BigEndian.PutUint32(b, uint32(len(bytes)+1))
 
 	buffer[dc] = buffer[dc][:0]
 	connMutex.Lock()
@@ -91,7 +91,7 @@ func sendToFilter(dc int) {
 		var err error
 		connMutex.Lock()
 		if filterConn[dc] != nil {
-			_, err = filterConn[dc].Write(append(b, jsonBytes...))
+			_, err = filterConn[dc].Write(append(b, bytes...))
 		} else {
 			err = errors.New("batcherConn[hostID] == nil")
 		}
