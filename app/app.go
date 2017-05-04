@@ -135,6 +135,7 @@ func getRecord(c *gin.Context) {
 		})
 		return
 	}
+	// shouldn't be called like this, app should directly ask remote maintainer
 	r, err := maintainer.ReadByLId(lid)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{

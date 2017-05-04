@@ -28,7 +28,7 @@ func main() {
 	info.InitChariots(numDc, dcID)
 	info.SetName("maintainer" + os.Args[1])
 	info.RedirectLog(info.GetName() + ".log")
-	maintainer.InitLogMaintainer("flstore/" + info.GetName())
+	maintainer.InitLogMaintainer(info.GetName())
 	ln, err := net.Listen("tcp", ":"+os.Args[1])
 	if err != nil {
 		fmt.Println(info.GetName() + "couldn't listen on port " + os.Args[1])

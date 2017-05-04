@@ -94,7 +94,6 @@ func TokenArrival(token Token) {
 	token.DeferredRecords = append(token.DeferredRecords, sameDCBuffered...)
 	sameDCBuffered = []record.Record{}
 	bufMutex.Unlock()
-	log.Println("WTF", token.DeferredRecords)
 	// put the deffered records with dependency satisfied into dispatch slice
 	dispatch := []record.Record{}
 	head := 0

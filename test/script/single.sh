@@ -10,7 +10,7 @@ nohup gochariots-filter 9010 1 0 > /dev/null &
 nohup gochariots-queue 9020 1 0 true > /dev/null &
 nohup gochariots-maintainer 9030 1 0 > /dev/null &
 
-sleep 1
+sleep 2
 
 curl -XPOST localhost:8080/batcher?host=localhost:9000 &> /dev/null
 curl -XPOST localhost:8081/batcher?host=localhost:9000 &> /dev/null
