@@ -83,13 +83,13 @@ func dialConn(queueID int) error {
 
 func sendToQueue(records []record.Record) {
 	// info.LogTimestamp("sendToQueue")
-	bytes, err := record.ToGobArray(records)
+	jsonBytes, err := record.ToJSONArray(records)
 	if err != nil {
 		panic(err)
 	}
 	b := make([]byte, 5)
 	b[4] = byte('r')
-	binary.BigEndian.PutUint32(b, uint32(len(bytes)+1))
+	binary.BigEndian.PutUint32(b, uint32(len(jsonBytes)+1))
 	queueID := rand.Intn(len(queuePool))
 	connMutex.Lock()
 	if queueConn[queueID] == nil {
@@ -108,7 +108,7 @@ func sendToQueue(records []record.Record) {
 		var err error
 		connMutex.Lock()
 		if queueConn[queueID] != nil {
-			_, err = queueConn[queueID].Write(append(b, bytes...))
+			_, err = queueConn[queueID].Write(append(b, jsonBytes...))
 		} else {
 			err = errors.New("batcherConn[hostID] == nil")
 		}
@@ -170,8 +170,7 @@ func HandleRequest(conn net.Conn) {
 		if buf[0] == 'r' { // received records
 			// info.LogTimestamp("HandleRequest")
 			// start := time.Now()
-			records := []record.Record{}
-			err := record.GobToRecordArray(buf[1:totalLength], &records)
+			records, err := record.ToRecordArray(buf[1:totalLength])
 			if err != nil {
 				log.Println(info.GetName(), "couldn't convert buffer to record:", string(buf[1:totalLength]))
 				continue

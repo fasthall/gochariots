@@ -43,9 +43,10 @@ func InitBatcher(n int) {
 // BUG(fasthall) In Arrival(), the mechanism to match the record and filter needs to be done. Currently the number of filters needs to be equal to datacenters.
 func arrival(r record.Record) {
 	r.Timestamp = time.Now()
-	dc := r.Host
 	bufMutex.Lock()
+	dc := r.Host
 	buffer[dc] = append(buffer[dc], r)
+
 	// if the buffer is full, send all records to the filter
 	if len(buffer[dc]) == cap(buffer[dc]) {
 		sendToFilter(dc)
@@ -63,14 +64,15 @@ func sendToFilter(dc int) {
 	if len(buffer[dc]) == 0 {
 		return
 	}
-	// info.LogTimestamp("sendToFilter")
+	info.LogTimestamp("sendToFilter")
 
-	bytes, err := record.ToGobArray(buffer[dc])
+	jsonBytes, err := record.ToJSONArray(buffer[dc])
 	if err != nil {
 		log.Panicln(info.GetName(), "couldn't convert buffer to records")
 	}
-	b := []byte{0, 0, 0, 0, 'r'}
-	binary.BigEndian.PutUint32(b, uint32(len(bytes)+1))
+	b := make([]byte, 5)
+	b[4] = byte('r')
+	binary.BigEndian.PutUint32(b, uint32(len(jsonBytes)+1))
 
 	buffer[dc] = buffer[dc][:0]
 	connMutex.Lock()
@@ -89,7 +91,7 @@ func sendToFilter(dc int) {
 		var err error
 		connMutex.Lock()
 		if filterConn[dc] != nil {
-			_, err = filterConn[dc].Write(append(b, bytes...))
+			_, err = filterConn[dc].Write(append(b, jsonBytes...))
 		} else {
 			err = errors.New("batcherConn[hostID] == nil")
 		}
@@ -107,7 +109,7 @@ func sendToFilter(dc int) {
 			}
 		} else {
 			sent = true
-			// log.Printf("%s sent to filterHost[%d] %s\n", info.GetName(), dc, filterHost[dc])
+			log.Printf("%s sent to filterHost[%d] %s\n", info.GetName(), dc, filterHost[dc])
 		}
 	}
 }
@@ -115,12 +117,12 @@ func sendToFilter(dc int) {
 // Sweeper periodcally sends the buffer content to filters
 func Sweeper() {
 	for {
-		time.Sleep(1 * time.Second)
+		time.Sleep(10 * time.Millisecond)
+		bufMutex.Lock()
 		for i := range buffer {
-			bufMutex.Lock()
 			sendToFilter(i)
-			bufMutex.Unlock()
 		}
+		bufMutex.Unlock()
 	}
 }
 
@@ -164,7 +166,7 @@ func HandleRequest(conn net.Conn) {
 			// info.LogTimestamp("HandleRequest")
 			// start := time.Now()
 			var r record.Record
-			err := record.JSONToRecord(buf[1:totalLength], &r)
+			err := record.ToRecord(buf[1:totalLength], &r)
 			if err != nil {
 				log.Println(info.GetName(), "couldn't convert read buffer to record:", string(buf[1:totalLength]))
 				continue
