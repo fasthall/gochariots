@@ -131,7 +131,7 @@ func HandleRequest(conn net.Conn) {
 	lenbuf := make([]byte, 4)
 	buf := make([]byte, 1024*1024*32)
 	for {
-		_, err := conn.Read(lenbuf)
+		ll, err := conn.Read(lenbuf)
 		if err == io.EOF {
 			break
 		} else if err != nil {
@@ -141,7 +141,10 @@ func HandleRequest(conn net.Conn) {
 		}
 		totalLength := int(binary.BigEndian.Uint32(lenbuf))
 		if totalLength > cap(buf) {
-			buf = make([]byte, totalLength)
+			log.Println(info.GetName(), "couldn't allocate enough buffer", totalLength)
+			log.Println(info.GetName(), "len(lenbuf) =", ll, lenbuf)
+			break
+			// buf = make([]byte, totalLength)
 		}
 		remain := totalLength
 		head := 0
@@ -173,6 +176,21 @@ func HandleRequest(conn net.Conn) {
 			}
 			// log.Println(info.GetName(), "received incoming record:", string(buf[1:totalLength]))
 			arrival(r)
+			// elapsed := time.Since(start)
+			// log.Printf("TIMESTAMP %s:HandleRequest took %s\n", info.GetName(), elapsed)
+		} else if buf[0] == 's' { // received records
+			// info.LogTimestamp("HandleRequest")
+			// start := time.Now()
+			var records []record.Record
+			err := record.JSONToRecordArray(buf[1:totalLength], &records)
+			if err != nil {
+				log.Println(info.GetName(), "couldn't convert read buffer to record:", string(buf[1:totalLength]))
+				continue
+			}
+			// log.Println(info.GetName(), "received incoming record:", string(buf[1:totalLength]))
+			for _, r := range records {
+				arrival(r)
+			}
 			// elapsed := time.Since(start)
 			// log.Printf("TIMESTAMP %s:HandleRequest took %s\n", info.GetName(), elapsed)
 		} else if buf[0] == 'f' { //received filter update
