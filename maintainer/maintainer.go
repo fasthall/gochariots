@@ -220,6 +220,9 @@ func HandleRequest(conn net.Conn) {
 			} else {
 				conn.Write([]byte(fmt.Sprint(r)))
 			}
+		} else if buf[0] == 's' {
+			log.Println(info.GetName(), "got subscription")
+			index.Subscriber = conn
 		} else {
 			log.Println(info.GetName(), "couldn't understand", string(buf))
 		}

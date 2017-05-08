@@ -5,7 +5,7 @@ import socket
 maintainer = ('localhost', 9030)
 
 def build(tag, value):
-    tmp = tag+':'+value
+    tmp = '{"'+tag+'":"'+value+'"}'
     n = len(tmp) + 1
     header = n.to_bytes(4, byteorder='big')
     header += b'g'
