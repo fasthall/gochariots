@@ -2,6 +2,7 @@ package index
 
 import (
 	"encoding/json"
+	"fmt"
 	"hash/fnv"
 	"log"
 	"net"
@@ -20,7 +21,7 @@ func toHash(b []byte) uint64 {
 func Insert(key, value string, LId int) {
 	h := toHash([]byte(key + ":" + value))
 	indexes[h] = append(indexes[h], LId)
-	notify(key, value, LId)
+	notify(h, LId)
 }
 
 func GetByTag(key, value string) []int {
@@ -45,15 +46,13 @@ func GetByTags(tags map[string]string) []int {
 	return ans
 }
 
-func notify(key, value string, LId int) {
+func notify(hash uint64, LId int) {
 	if Subscriber != nil {
-		payload := map[string]string{key: value, "LId": strconv.Itoa(LId)}
+		payload := map[string]string{"hash": fmt.Sprint(hash), "LId": strconv.Itoa(LId)}
 		bytes, err := json.Marshal(payload)
 		if err != nil {
 			log.Println(err)
 		}
-		// b := make([]byte, 4)
-		// binary.BigEndian.PutUint32(b, uint32(len(bytes)+1))
 		_, err = Subscriber.Write(append(bytes, byte('\n')))
 		if err != nil {
 			log.Println(err)
