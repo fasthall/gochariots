@@ -42,4 +42,3 @@ curl -XPOST localhost:8181/maintainer?host=localhost:9130
 curl -XPOST localhost:8081/remote/batcher?dc=1\&host=localhost:9100
 curl -XPOST localhost:8181/remote/batcher?dc=0\&host=localhost:9000
 
-tail -f logs/$0.log 

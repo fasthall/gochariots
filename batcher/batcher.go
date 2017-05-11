@@ -131,27 +131,36 @@ func HandleRequest(conn net.Conn) {
 	lenbuf := make([]byte, 4)
 	buf := make([]byte, 1024*1024*32)
 	for {
-		ll, err := conn.Read(lenbuf)
-		if err == io.EOF {
-			break
-		} else if err != nil {
-			log.Println(info.GetName(), "couldn't read incoming request")
-			log.Println(info.GetName(), err)
+		remain := 4
+		head := 0
+		for remain > 0 {
+			l, err := conn.Read(lenbuf[head : head+remain])
+			if err == io.EOF {
+				return
+			} else if err != nil {
+				log.Println(info.GetName(), "couldn't read incoming request")
+				log.Println(info.GetName(), err)
+				break
+			} else {
+				remain -= l
+				head += l
+			}
+		}
+		if remain != 0 {
+			log.Println(info.GetName(), "couldn't read incoming request length")
 			break
 		}
 		totalLength := int(binary.BigEndian.Uint32(lenbuf))
 		if totalLength > cap(buf) {
-			log.Println(info.GetName(), "couldn't allocate enough buffer", totalLength)
-			log.Println(info.GetName(), "len(lenbuf) =", ll, lenbuf)
-			break
-			// buf = make([]byte, totalLength)
+			log.Println(info.GetName(), "buffer is not large enough, allocate more", totalLength)
+			buf = make([]byte, totalLength)
 		}
-		remain := totalLength
-		head := 0
+		remain = totalLength
+		head = 0
 		for remain > 0 {
 			l, err := conn.Read(buf[head : head+remain])
 			if err == io.EOF {
-				break
+				return
 			} else if err != nil {
 				log.Println(info.GetName(), "couldn't read incoming request")
 				log.Println(info.GetName(), err)
