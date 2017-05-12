@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/maintainer/index"
@@ -40,6 +41,7 @@ func InitLogMaintainer(p string) {
 // Append appends a new record to the maintainer.
 func Append(r record.Record) error {
 	// info.LogTimestamp("Append")
+	r.Timestamp = time.Now()
 	b, err := record.ToJSON(r)
 	if err != nil {
 		return err

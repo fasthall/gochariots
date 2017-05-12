@@ -19,6 +19,7 @@ ss.listen(0)
 c1socket, addr = ss.accept()
 
 def onexit():
+    ss.close()
     c1socket.close()
     bs.close()
 
