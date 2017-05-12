@@ -2,28 +2,38 @@ import socket
 import time
 import sys
 import uuid
+import atexit
 
-host = (sys.argv[1], int(sys.argv[2]))
-delay = float(sys.argv[3])
-suuid = str(uuid.uuid4())
-payload = '{"Host":0,"TOId":0,"LId":0,"Tags":{"UUID":"' + suuid + '", "event":"1"},"Pre":{"Host":0,"TOId":0}}'
-batchers = [('localhost', 9000)]
+n = int(sys.argv[1])
+batcher = ('169.231.235.49', 9000)
+client2 = ('169.231.235.59', 9999)
 
-s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-s.connect(host)
+def build_payload(suuid):
+    return '{"Host":0,"TOId":0,"LId":0,"Tags":{"' + suuid + '":"1"},"Pre":{"Host":0,"TOId":0}}'
 
-start = str(time.time())
-print('Append event 1 at:', start, '@A')
-s.send(suuid.encode())
-tm = s.recv(1024)
-s.close()
+c2socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+c2socket.connect(client2)
+bs = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+bs.connect(batcher)
 
-time.sleep(delay / 1000)
-# send to batcher
-s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-s.connect(batchers[0])
-n = len(payload) + 1
-header = n.to_bytes(4, byteorder='big')
-header += b'r'
-s.send(header + payload.encode())
-s.close()
+def onexit():
+    c2socket.close()
+    bs.close()
+
+atexit.register(onexit)
+
+for i in range(n):
+    # suuid = str(uuid.uuid4())
+    suuid = str(i)
+
+    start = str(time.time())
+    print('Append event 1 at:', start, '@A', suuid)
+    c2socket.send(suuid.encode() + b'\n')
+
+    # send to batcher
+    payload = build_payload(suuid)
+    n = len(payload) + 1
+    header = n.to_bytes(4, byteorder='big')
+    header += b'r'
+    bs.send(header + payload.encode())
+

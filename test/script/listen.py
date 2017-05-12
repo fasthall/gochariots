@@ -1,4 +1,5 @@
 import sys
+import fnv
 import time
 import json
 import socket
@@ -12,6 +13,10 @@ def build():
     header = n.to_bytes(4, byteorder='big')
     header += b's'
     return header
+
+data = b'key:value'
+hash = fnv.hash(data, algorithm=fnv.fnv_1a, bits=64)
+print(hash)
 
 client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 client.connect(maintainer)

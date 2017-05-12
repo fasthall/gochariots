@@ -4,7 +4,7 @@ In this experiment, two clusters with single component in each stage are created
 
 ![topology](topology.png)
 
-* **Inter-DC latency** is the latency between two data centers. In the experiment, [this script](delay.sh) uses tc to create artificial latency between two components in different clusters.
+* **Inter-DC latency** is the latency between two data centers. In the experiment, [this script](../../test/experiment/casuality/delay.sh) uses tc to create artificial latency between two components in different clusters.
 * **Pipeline latency** is the time a record stays in the whole pipeline. In other word, it's the difference between the timestamp a record entering the batcher and hitting the maintainer.
 * **Event latency** is the real-world delay between two dependent events.
 
