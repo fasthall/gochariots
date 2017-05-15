@@ -1,5 +1,6 @@
 #!/bin/sh
 
+sh kill.sh
 mkdir logs
 
 # Cluster A

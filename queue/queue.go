@@ -23,6 +23,8 @@ var sameDCBuffered []record.Record
 var connMutex sync.Mutex
 var logMaintainerConn []net.Conn
 var logMaintainerHost []string
+var indexerConn []net.Conn
+var indexerHost []string
 var nextQueueConn net.Conn
 var nextQueueHost string
 
@@ -229,6 +231,12 @@ func dialLogMaintainer(maintainerID int) error {
 	return err
 }
 
+func dialIndexer(indexerID int) error {
+	var err error
+	indexerConn[indexerID], err = net.Dial("tcp", indexerHost[indexerID])
+	return err
+}
+
 // dispatchRecords sends the ready records to log maintainers
 func dispatchRecords(records []record.Record, maintainerID int) {
 	// info.LogTimestamp("dispatchRecords")
@@ -281,7 +289,7 @@ func dispatchRecords(records []record.Record, maintainerID int) {
 	// log.Printf("TIMESTAMP %s:record in queue %s\n", info.GetName(), time.Since(lastTime))
 }
 
-func AskIndexer(tags map[string]string, maintainerID int) []int {
+func AskIndexer(tags map[string]string, indexerID int) []int {
 	tmp, err := json.Marshal(tags)
 	if err != nil {
 		log.Println(info.GetName(), "couldn't convert tags to bytes:", tags)
@@ -292,13 +300,13 @@ func AskIndexer(tags map[string]string, maintainerID int) []int {
 	binary.BigEndian.PutUint32(b, uint32(len(tmp)+1))
 
 	connMutex.Lock()
-	if logMaintainerConn[maintainerID] == nil {
-		err := dialLogMaintainer(maintainerID)
+	if indexerConn[indexerID] == nil {
+		err := dialIndexer(indexerID)
 		if err != nil {
-			log.Printf("%s couldn't connect to log maintainer %s\n", info.GetName(), logMaintainerHost)
+			log.Printf("%s couldn't connect to indexer %s\n", info.GetName(), indexerHost[indexerID])
 			log.Println(err)
 		} else {
-			log.Printf("%s is connected to log maintainer %s\n", info.GetName(), logMaintainerHost)
+			log.Printf("%s is connected to indexer %s\n", info.GetName(), indexerHost[indexerID])
 		}
 	}
 	connMutex.Unlock()
@@ -307,21 +315,21 @@ func AskIndexer(tags map[string]string, maintainerID int) []int {
 	sent := false
 	for sent == false {
 		connMutex.Lock()
-		if logMaintainerConn[maintainerID] != nil {
-			_, err = logMaintainerConn[maintainerID].Write(append(b, tmp...))
+		if indexerConn[indexerID] != nil {
+			_, err = indexerConn[indexerID].Write(append(b, tmp...))
 		} else {
-			err = errors.New("logMaintainerConn[hostID] == nil")
+			err = errors.New("indexerConn[hostID] == nil")
 		}
 		connMutex.Unlock()
 		if err != nil {
 			if cnt >= 0 {
 				cnt--
-				err = dialLogMaintainer(maintainerID)
+				err = dialIndexer(indexerID)
 				if err != nil {
-					log.Printf("%s couldn't connect to log maintainer %s\n", info.GetName(), logMaintainerHost)
+					log.Printf("%s couldn't connect to indexer %s\n", info.GetName(), indexerHost[indexerID])
 				}
 			} else {
-				log.Printf("%s failed to connect to log maintainer %s after retrying 5 times\n", info.GetName(), logMaintainerHost)
+				log.Printf("%s failed to connect to indexer %s after retrying 5 times\n", info.GetName(), indexerHost[indexerID])
 				break
 			}
 		} else {
@@ -329,14 +337,14 @@ func AskIndexer(tags map[string]string, maintainerID int) []int {
 		}
 	}
 	lenbuf := make([]byte, 4)
-	_, err = logMaintainerConn[maintainerID].Read(lenbuf)
+	_, err = indexerConn[indexerID].Read(lenbuf)
 	if err != nil {
 		log.Println(info.GetName(), "couldn't read response from indexer")
 		return nil
 	}
 	totalLength := int(binary.BigEndian.Uint32(lenbuf))
 	buf := make([]byte, totalLength)
-	_, err = logMaintainerConn[maintainerID].Read(buf)
+	_, err = indexerConn[indexerID].Read(buf)
 	if err != nil {
 		log.Println(info.GetName(), "couldn't read response from indexer")
 		return nil
@@ -433,6 +441,12 @@ func HandleRequest(conn net.Conn) {
 				log.Println(info.GetName(), "couldn't convert received bytes to maintainer hosts:", string(buf[1:totalLength]))
 			}
 			logMaintainerConn = make([]net.Conn, len(logMaintainerHost))
+		} else if buf[0] == 'i' { // received indexer update
+			err := json.Unmarshal(buf[1:totalLength], &indexerHost)
+			if err != nil {
+				log.Println(info.GetName(), "couldn't convert received bytes to indexer hosts:", string(buf[1:totalLength]))
+			}
+			indexerConn = make([]net.Conn, len(indexerHost))
 		}
 	}
 }

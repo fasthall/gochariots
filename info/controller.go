@@ -183,7 +183,26 @@ func addMaintainer(c *gin.Context) {
 			log.Printf("%s couldn't send maintainer list to queues[%d] %s", GetName(), i, host)
 			log.Panicln(GetName(), "failing to update cluster may cause unexpected error")
 		}
-		log.Printf("%s successfully informs new maintainer about maintainer list %s\n", GetName(), maintainers)
+		log.Printf("%s successfully informs queues about maintainer list %s\n", GetName(), maintainers)
+	}
+	// update queues' indexer list
+	for i, host := range queues {
+		conn, err := net.Dial("tcp", host)
+		if err != nil {
+			log.Printf("%s couldn't connect to queues[%d] %s\n", GetName(), i, host)
+			log.Panicln(GetName(), "failing to update cluster may cause unexpected error")
+		}
+		defer conn.Close()
+		jsonBytes, err := json.Marshal(indexers)
+		b := make([]byte, 5)
+		b[4] = byte('i')
+		binary.BigEndian.PutUint32(b, uint32(len(jsonBytes)+1))
+		_, err = conn.Write(append(b, jsonBytes...))
+		if err != nil {
+			log.Printf("%s couldn't send indexer list to queues[%d] %s", GetName(), i, host)
+			log.Panicln(GetName(), "failing to update cluster may cause unexpected error")
+		}
+		log.Printf("%s successfully informs queues about indexer list %s\n", GetName(), indexers)
 	}
 	c.String(http.StatusOK, c.Query("host")+" added\n")
 }

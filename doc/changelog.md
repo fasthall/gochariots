@@ -1,3 +1,19 @@
+# May
+
+## May 15, 2017
+### Bug fixed
+Queue will send LId query to indexer, not maintainer now.
+
+## May 14, 2017
+### Seperate indexer from maintainer
+Since the maintainer has more and more work to do, indexer is seperated from maintainer for better performance now.
+
+## May 10, 2017
+### Indexing broadcasting
+The indexer broadcasts hash instead of complete tags now.
+### Bug fixed
+Fixed a major bug that tcp read incompletely.
+
 ## May 8, 2017
 ### Indexing broadcasting
 Now the indexder will broadcast the tags and corresponding record LId to the subscribers. To subscribe, clients need to send a message to the maintainer. This is for testing blocking event chain v.s. appending non-blocking causal order event. 
