@@ -26,14 +26,16 @@ for i in range(n):
     # suuid = str(uuid.uuid4())
     suuid = str(i)
 
-    start = str(time.time())
-    print('Append event 1 at:', start, '@A', suuid)
-    c2socket.send(suuid.encode() + b'\n')
-
-    # send to batcher
     payload = build_payload(suuid)
     n = len(payload) + 1
     header = n.to_bytes(4, byteorder='big')
     header += b'r'
+
+    if i % 10000 == 0:
+        start = str(time.time())
+        print('Append event 1 at:', start, '@A', suuid)
+
+    # send to batcher
+    c2socket.send(suuid.encode() + b'\n')
     bs.send(header + payload.encode())
 

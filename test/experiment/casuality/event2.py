@@ -33,9 +33,6 @@ while True:
         buf += c1socket.recv(1024)
     suuids = buf[:-1].split(b'\n')
     for suuid in suuids:
-        end = str(time.time())
-        print('Append event 2 at:', end, '@B', suuid.decode())
-
         # send to batcher
         payload = build_payload(suuid.decode())
         n = len(payload) + 1

@@ -2,7 +2,7 @@ import sys
 import time
 import socket
 
-maintainer = ('localhost', 9030)
+indexer = ('localhost', 9040)
 
 def build(tag, value):
     tmp = '{"'+tag+'":"'+value+'"}'
@@ -12,7 +12,7 @@ def build(tag, value):
     return header + tmp.encode()
 
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-s.connect(maintainer)
+s.connect(indexer)
 s.send(build(sys.argv[1], sys.argv[2]))
 buf = s.recv(1024)
 print(buf)

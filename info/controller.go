@@ -15,6 +15,7 @@ var batchers []string
 var filters []string
 var queues []string
 var maintainers []string
+var indexers []string
 var remoteBatcher []string
 
 // StartController starts controller's REST API server on sepcified port
@@ -144,7 +145,28 @@ func getQueues(c *gin.Context) {
 }
 
 func addMaintainer(c *gin.Context) {
+	if c.Query("host") == "" || c.Query("indexer") == "" {
+		c.String(http.StatusBadRequest, "invalid parameter, needs $host and $indexer\n")
+		return
+	}
 	maintainers = append(maintainers, c.Query("host"))
+	indexers = append(indexers, c.Query("indexer"))
+
+	conn, err := net.Dial("tcp", c.Query("host"))
+	if err != nil {
+		log.Printf("%s couldn't connect to maintainer %s\n", GetName(), c.Query("host"))
+		log.Panicln(GetName(), "failing to update cluster may cause unexpected error")
+	}
+	b := make([]byte, 5)
+	b[4] = byte('i')
+	binary.BigEndian.PutUint32(b, uint32(len(c.Query("indexer"))+1))
+	_, err = conn.Write(append(b, []byte(c.Query("indexer"))...))
+	if err != nil {
+		log.Printf("%s couldn't notify maintainer %s its indexer %s", GetName(), c.Query("host"), c.Query("indexer"))
+		log.Panicln(GetName(), "failing to update cluster may cause unexpected error")
+	}
+	conn.Close()
+	// update queues' maintainer list
 	for i, host := range queues {
 		conn, err := net.Dial("tcp", host)
 		if err != nil {

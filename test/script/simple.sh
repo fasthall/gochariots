@@ -13,6 +13,7 @@ nohup gochariots-queue 9022 1 0 false > /dev/null &
 nohup gochariots-maintainer 9030 1 0 > /dev/null &
 nohup gochariots-maintainer 9031 1 0 > /dev/null &
 nohup gochariots-maintainer 9032 1 0 > /dev/null &
+nohup gochariots-indexer 9040 1 0 > /dev/null &
 
 sleep 1
 
@@ -26,8 +27,8 @@ curl -XPOST localhost:8081/filter?host=localhost:9010
 curl -XPOST localhost:8081/queue?host=localhost:9020
 curl -XPOST localhost:8081/queue?host=localhost:9021
 curl -XPOST localhost:8081/queue?host=localhost:9022
-curl -XPOST localhost:8081/maintainer?host=localhost:9030
-curl -XPOST localhost:8081/maintainer?host=localhost:9031
-curl -XPOST localhost:8081/maintainer?host=localhost:9032
+curl -XPOST localhost:8081/maintainer?host=localhost:9030\&indexer=localhost:9040
+curl -XPOST localhost:8081/maintainer?host=localhost:9031\&indexer=localhost:9040
+curl -XPOST localhost:8081/maintainer?host=localhost:9032\&indexer=localhost:9040
 
 tail -f logs/$0.log
