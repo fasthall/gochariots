@@ -102,7 +102,22 @@ func TokenArrival(token Token) {
 	for _, r := range token.DeferredRecords {
 		if r.Host != info.ID {
 			// default value of TOId is 0 so no need to check if the record has dependency or not
-			if r.TOId == token.MaxTOId[r.Host]+1 && r.Pre.TOId <= token.MaxTOId[r.Pre.Host] {
+			if len(r.Pre.Tags) > 0 {
+				lids := []int{}
+				for indexerID := range indexerConn {
+					lids = append(lids, AskIndexer(r.Pre.Tags, indexerID)...)
+					if len(lids) > 0 {
+						break
+					}
+				}
+				if len(lids) > 0 {
+					dispatch = append(dispatch, r)
+					token.MaxTOId[r.Host] = r.TOId
+				} else {
+					token.DeferredRecords[head] = r
+					head++
+				}
+			} else if r.TOId == token.MaxTOId[r.Host]+1 && r.Pre.TOId <= token.MaxTOId[r.Pre.Host] {
 				dispatch = append(dispatch, r)
 				token.MaxTOId[r.Host] = r.TOId
 			} else {
@@ -113,8 +128,11 @@ func TokenArrival(token Token) {
 			// if it's from the same DC, TOId needs to be assigned
 			if len(r.Pre.Tags) > 0 {
 				lids := []int{}
-				for maintainerID := range logMaintainerConn {
-					lids = append(lids, AskIndexer(r.Pre.Tags, maintainerID)...)
+				for indexerID := range indexerConn {
+					lids = append(lids, AskIndexer(r.Pre.Tags, indexerID)...)
+					if len(lids) > 0 {
+						break
+					}
 				}
 				if len(lids) > 0 {
 					r.TOId = token.MaxTOId[r.Host] + 1
