@@ -247,7 +247,13 @@ func HandleRequest(conn net.Conn) {
 			if err != nil {
 				conn.Write([]byte(fmt.Sprint(err)))
 			} else {
-				conn.Write([]byte(fmt.Sprint(r)))
+				b, err := json.Marshal(r)
+				if err != nil {
+					log.Println(info.GetName(), "couldn't convert record to bytes", r)
+					conn.Write([]byte(fmt.Sprint(err)))
+				} else {
+					conn.Write(b)
+				}
 			}
 		} else if buf[0] == 'i' { // received indexer update
 			indexerHost = string(buf[1:totalLength])

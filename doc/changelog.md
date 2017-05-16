@@ -3,7 +3,7 @@
 ## May 15, 2017
 ### Use hash to specify casual dependency
 Client can use [fnv-1a](https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function) hash to specify casual dependency now.
-See [event_chain.py](../test/script/ecent_chain.py) for detail.
+See [event_chain.py](../test/script/event_chain.py) for detail.
 ### Bug fixed
 Queue will send LId query to indexer, not maintainer now.
 
