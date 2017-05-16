@@ -146,6 +146,18 @@ func HandleRequest(conn net.Conn) {
 			for key, value := range tags {
 				Insert(key, value, lid)
 			}
+		} else if buf[0] == 'h' { // get LIds by hash
+			hash := binary.BigEndian.Uint64(buf[1:9])
+			log.Println(hash)
+			lids := indexes[hash]
+			tmp, err := json.Marshal(lids)
+			b := make([]byte, 4)
+			binary.BigEndian.PutUint32(b, uint32(len(tmp)))
+			if err != nil {
+				conn.Write([]byte(fmt.Sprintln(err)))
+			} else {
+				conn.Write(append(b, tmp...))
+			}
 		} else if buf[0] == 'g' { // get LIds by tags
 			var tags map[string]string
 			err := json.Unmarshal(buf[1:totalLength], &tags)

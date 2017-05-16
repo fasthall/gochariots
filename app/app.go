@@ -25,6 +25,7 @@ type JsonRecord struct {
 	PreHost int               `json:"prehost"`
 	PreTOId int               `json:"pretoid"`
 	PreTags map[string]string `json:"pretags"`
+	PreHash uint64            `json:"prehash"`
 }
 
 func Run(port string) {

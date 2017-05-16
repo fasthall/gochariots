@@ -100,24 +100,49 @@ func TokenArrival(token Token) {
 	dispatch := []record.Record{}
 	head := 0
 	for _, r := range token.DeferredRecords {
-		if r.Host != info.ID {
-			// default value of TOId is 0 so no need to check if the record has dependency or not
-			if len(r.Pre.Tags) > 0 {
-				lids := []int{}
-				for indexerID := range indexerConn {
-					lids = append(lids, AskIndexer(r.Pre.Tags, indexerID)...)
-					if len(lids) > 0 {
-						break
-					}
-				}
+		// if it's from the same DC, TOId needs to be assigned
+		if r.Pre.Hash != 0 {
+			lids := []int{}
+			for indexerID := range indexerConn {
+				lids = append(lids, AskIndexerByHash(r.Pre.Hash, indexerID)...)
 				if len(lids) > 0 {
-					dispatch = append(dispatch, r)
-					token.MaxTOId[r.Host] = r.TOId
-				} else {
-					token.DeferredRecords[head] = r
-					head++
+					break
 				}
-			} else if r.TOId == token.MaxTOId[r.Host]+1 && r.Pre.TOId <= token.MaxTOId[r.Pre.Host] {
+			}
+			if len(lids) > 0 {
+				if r.Host == info.ID {
+					r.TOId = token.MaxTOId[r.Host] + 1
+				}
+				dispatch = append(dispatch, r)
+				token.MaxTOId[r.Host] = r.TOId
+			} else {
+				token.DeferredRecords[head] = r
+				head++
+			}
+		} else if len(r.Pre.Tags) > 0 {
+			lids := []int{}
+			for indexerID := range indexerConn {
+				lids = append(lids, AskIndexerByTags(r.Pre.Tags, indexerID)...)
+				if len(lids) > 0 {
+					break
+				}
+			}
+			if len(lids) > 0 {
+				if r.Host == info.ID {
+					r.TOId = token.MaxTOId[r.Host] + 1
+				}
+				dispatch = append(dispatch, r)
+				token.MaxTOId[r.Host] = r.TOId
+			} else {
+				token.DeferredRecords[head] = r
+				head++
+			}
+		} else if r.Pre.TOId <= token.MaxTOId[r.Pre.Host] {
+			if r.Host == info.ID {
+				r.TOId = token.MaxTOId[r.Host] + 1
+				dispatch = append(dispatch, r)
+				token.MaxTOId[r.Host] = r.TOId
+			} else if r.TOId == token.MaxTOId[r.Host]+1 {
 				dispatch = append(dispatch, r)
 				token.MaxTOId[r.Host] = r.TOId
 			} else {
@@ -125,31 +150,8 @@ func TokenArrival(token Token) {
 				head++
 			}
 		} else {
-			// if it's from the same DC, TOId needs to be assigned
-			if len(r.Pre.Tags) > 0 {
-				lids := []int{}
-				for indexerID := range indexerConn {
-					lids = append(lids, AskIndexer(r.Pre.Tags, indexerID)...)
-					if len(lids) > 0 {
-						break
-					}
-				}
-				if len(lids) > 0 {
-					r.TOId = token.MaxTOId[r.Host] + 1
-					dispatch = append(dispatch, r)
-					token.MaxTOId[r.Host] = r.TOId
-				} else {
-					token.DeferredRecords[head] = r
-					head++
-				}
-			} else if r.Pre.TOId <= token.MaxTOId[r.Pre.Host] {
-				r.TOId = token.MaxTOId[r.Host] + 1
-				dispatch = append(dispatch, r)
-				token.MaxTOId[r.Host] = r.TOId
-			} else {
-				token.DeferredRecords[head] = r
-				head++
-			}
+			token.DeferredRecords[head] = r
+			head++
 		}
 	}
 	token.DeferredRecords = token.DeferredRecords[:head]
@@ -307,7 +309,7 @@ func dispatchRecords(records []record.Record, maintainerID int) {
 	// log.Printf("TIMESTAMP %s:record in queue %s\n", info.GetName(), time.Since(lastTime))
 }
 
-func AskIndexer(tags map[string]string, indexerID int) []int {
+func AskIndexerByTags(tags map[string]string, indexerID int) []int {
 	tmp, err := json.Marshal(tags)
 	if err != nil {
 		log.Println(info.GetName(), "couldn't convert tags to bytes:", tags)
@@ -331,6 +333,74 @@ func AskIndexer(tags map[string]string, indexerID int) []int {
 
 	cnt := 5
 	sent := false
+	for sent == false {
+		connMutex.Lock()
+		if indexerConn[indexerID] != nil {
+			_, err = indexerConn[indexerID].Write(append(b, tmp...))
+		} else {
+			err = errors.New("indexerConn[indexerID] == nil")
+		}
+		connMutex.Unlock()
+		if err != nil {
+			if cnt >= 0 {
+				cnt--
+				err = dialIndexer(indexerID)
+				if err != nil {
+					log.Printf("%s couldn't connect to indexer %s\n", info.GetName(), indexerHost[indexerID])
+				}
+			} else {
+				log.Printf("%s failed to connect to indexer %s after retrying 5 times\n", info.GetName(), indexerHost[indexerID])
+				break
+			}
+		} else {
+			sent = true
+		}
+	}
+
+	lenbuf := make([]byte, 4)
+	_, err = indexerConn[indexerID].Read(lenbuf)
+	if err != nil {
+		log.Println(info.GetName(), "couldn't read response from indexer")
+		return nil
+	}
+	totalLength := int(binary.BigEndian.Uint32(lenbuf))
+	buf := make([]byte, totalLength)
+	_, err = indexerConn[indexerID].Read(buf)
+	if err != nil {
+		log.Println(info.GetName(), "couldn't read response from indexer")
+		return nil
+	}
+	var lids []int
+	err = json.Unmarshal(buf, &lids)
+	if err != nil {
+		log.Println(info.GetName(), "couldn't read response from indexer")
+		return nil
+	}
+	return lids
+}
+
+func AskIndexerByHash(hash uint64, indexerID int) []int {
+	tmp := make([]byte, 8)
+	binary.BigEndian.PutUint64(tmp, hash)
+	b := make([]byte, 5)
+	b[4] = byte('h')
+	binary.BigEndian.PutUint32(b, uint32(len(tmp)+1))
+
+	connMutex.Lock()
+	if indexerConn[indexerID] == nil {
+		err := dialIndexer(indexerID)
+		if err != nil {
+			log.Printf("%s couldn't connect to indexer %s\n", info.GetName(), indexerHost[indexerID])
+			log.Println(err)
+		} else {
+			log.Printf("%s is connected to indexer %s\n", info.GetName(), indexerHost[indexerID])
+		}
+	}
+	connMutex.Unlock()
+
+	cnt := 5
+	sent := false
+	var err error
 	for sent == false {
 		connMutex.Lock()
 		if indexerConn[indexerID] != nil {

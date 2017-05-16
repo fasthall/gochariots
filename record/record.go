@@ -28,6 +28,7 @@ type Causality struct {
 	Host int
 	TOId int
 	Tags map[string]string
+	Hash uint64
 }
 
 // ToJSON encodes a record into bytes
