@@ -3,6 +3,7 @@ package indexer
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/gob"
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
@@ -10,12 +11,12 @@ import (
 	"log"
 	"net"
 	"strconv"
-
-	"encoding/gob"
+	"sync"
 
 	"github.com/fasthall/gochariots/info"
 )
 
+var indexMutex sync.Mutex
 var indexes = make(map[uint64][]int)
 var Subscriber net.Conn
 
@@ -23,21 +24,32 @@ func InitIndexer(p string) {
 
 }
 
-func toHash(b []byte) uint64 {
+func TagToHash(key, value string) uint64 {
+	hash := fnv.New64a()
+	hash.Write([]byte(key + ":" + value))
+	return hash.Sum64()
+}
+
+func ToHash(b []byte) uint64 {
 	hash := fnv.New64a()
 	hash.Write(b)
 	return hash.Sum64()
 }
 
 func Insert(key, value string, LId int) {
-	h := toHash([]byte(key + ":" + value))
+	h := ToHash([]byte(key + ":" + value))
+	indexMutex.Lock()
 	indexes[h] = append(indexes[h], LId)
+	indexMutex.Unlock()
 	notify(h, LId)
 }
 
 func GetByTag(key, value string) []int {
-	h := toHash([]byte(key + ":" + value))
-	return indexes[h]
+	h := ToHash([]byte(key + ":" + value))
+	indexMutex.Lock()
+	result := indexes[h]
+	indexMutex.Unlock()
+	return result
 }
 
 func GetByTags(tags map[string]string) []int {
@@ -148,12 +160,37 @@ func HandleRequest(conn net.Conn) {
 			}
 		} else if buf[0] == 'h' { // get LIds by hash
 			hash := binary.BigEndian.Uint64(buf[1:9])
-			log.Println(hash)
+			indexMutex.Lock()
 			lids := indexes[hash]
+			indexMutex.Unlock()
 			tmp, err := json.Marshal(lids)
 			b := make([]byte, 4)
 			binary.BigEndian.PutUint32(b, uint32(len(tmp)))
 			if err != nil {
+				conn.Write([]byte(fmt.Sprintln(err)))
+			} else {
+				conn.Write(append(b, tmp...))
+			}
+		} else if buf[0] == 'H' { // get LIds by hash
+			var hash []uint64
+			err := json.Unmarshal(buf[1:totalLength], &hash)
+			if err != nil {
+				log.Println(info.GetName(), "couldn't unmarshal hash:", string(buf[1:totalLength]))
+				log.Panicln(err)
+			}
+			result := make([]bool, len(hash))
+			indexMutex.Lock()
+			for i, h := range hash {
+				if len(indexes[h]) > 0 {
+					result[i] = true
+				}
+			}
+			indexMutex.Unlock()
+			tmp, err := json.Marshal(result)
+			b := make([]byte, 4)
+			binary.BigEndian.PutUint32(b, uint32(len(tmp)))
+			if err != nil {
+				log.Println(err)
 				conn.Write([]byte(fmt.Sprintln(err)))
 			} else {
 				conn.Write(append(b, tmp...))

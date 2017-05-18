@@ -22,9 +22,6 @@ var connMutex sync.Mutex
 
 type JsonRecord struct {
 	Tags    map[string]string `json:"tags"`
-	PreHost int               `json:"prehost"`
-	PreTOId int               `json:"pretoid"`
-	PreTags map[string]string `json:"pretags"`
 	PreHash uint64            `json:"prehash"`
 }
 
@@ -68,9 +65,7 @@ func postRecord(c *gin.Context) {
 		Host: info.ID,
 		Tags: jsonRecord.Tags,
 		Pre: record.Causality{
-			Host: jsonRecord.PreHost,
-			TOId: jsonRecord.PreTOId,
-			Tags: jsonRecord.PreTags,
+			Hash: jsonRecord.PreHash,
 		},
 	}
 	jsonBytes, err := record.ToJSON(r)

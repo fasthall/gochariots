@@ -41,26 +41,26 @@ func arrival(records []record.Record) {
 	// info.LogTimestamp("arrival")
 	bufMutex.Lock()
 	queued := []record.Record{}
-	for _, record := range records {
-		if record.Host == info.ID {
+	for _, r := range records {
+		if r.Host == info.ID {
 			// this record is from the same datacenter, the TOId hasn't been generated yet
-			if record.TOId == 0 {
-				queued = append(queued, record)
+			if r.TOId == 0 {
+				queued = append(queued, r)
 			}
-		} else if record.TOId > nextTOId[record.Host] {
-			buffer = append(buffer, record)
-		} else if record.TOId == nextTOId[record.Host] {
-			queued = append(queued, record)
-			nextTOId[record.Host]++
+		} else if r.TOId > nextTOId[r.Host] {
+			buffer = append(buffer, r)
+		} else if r.TOId == nextTOId[r.Host] {
+			queued = append(queued, r)
+			nextTOId[r.Host]++
 			changed := true
 			for changed {
 				changed = false
 				head := 0
 				for _, v := range buffer {
-					if v.Host == record.Host && v.TOId == nextTOId[record.Host] {
+					if v.Host == r.Host && v.TOId == nextTOId[r.Host] {
 						changed = true
 						queued = append(queued, v)
-						nextTOId[record.Host]++
+						nextTOId[r.Host]++
 					} else {
 						buffer[head] = v
 						head++

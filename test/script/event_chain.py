@@ -30,6 +30,8 @@ def onexit():
 atexit.register(onexit)
 
 for i in range(n):
+    if i % 10000 == 0:
+        print(i)
     suuid = str(i)
 
     # send to batcher
@@ -37,14 +39,10 @@ for i in range(n):
     n1 = len(payload1) + 1
     header1 = n1.to_bytes(4, byteorder='big')
     header1 += b'r'
+    bs1.send(header1 + payload1.encode())
 
     payload2 = build_payload2hash(suuid)
     n2 = len(payload2) + 1
     header2 = n2.to_bytes(4, byteorder='big')
     header2 += b'r'
-
     bs2.send(header2 + payload2.encode())
-
-
-    time.sleep(3)
-    bs1.send(header1 + payload1.encode())
