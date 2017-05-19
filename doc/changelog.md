@@ -1,5 +1,12 @@
 # May
 
+## May 18, 2017
+### Refactor connection reading function
+As in [connection.go](../misc/connection/connection.go).
+
+### Use hash to specify casual dependency instead of tags
+Now, record has a field pre:hash which is a uint64 type. To specify casual dependency, firstly hash "key:value" into a 64 bits int using fnv-1a, then put this hash value into the field. The deferred record carried by token will be checked, if the hash value has been indexed by indexers, the queue will remove the record from the token and send it to maintainer. 
+
 ## May 15, 2017
 ### Use hash to specify casual dependency
 Client can use [fnv-1a](https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function) hash to specify casual dependency now.
