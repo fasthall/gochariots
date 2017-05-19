@@ -9,7 +9,6 @@ n = int(sys.argv[1])
 batcher = [('localhost', 9000), ('localhost', 9100)]
 
 start = time.time()
-
 def build_payload1(suuid):
     return '{"Host":0,"TOId":0,"LId":0,"Tags":{"' + suuid + '":"1"},"Pre":{"Host":0,"TOId":0}}'
 
@@ -18,7 +17,7 @@ def build_payload2(suuid):
 
 def build_payload2hash(suuid):
     hash = fnv.hash((suuid + ':1').encode(), bits=64)
-    return '{"Host":1,"TOId":0,"LId":0,"Tags":{"' + suuid + '":"2"},"Pre":{"Host":0,"TOId":0,"Hash":' + str(hash) + '}}'
+    return '{"Host":1,"TOId":0,"LId":0,"Tags":{"' + suuid + '":"2"},"Pre":{"Host":0,"TOId":0}}'
 
 bs1 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 bs1.connect(batcher[0])

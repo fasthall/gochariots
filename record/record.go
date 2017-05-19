@@ -25,9 +25,6 @@ type Record struct {
 
 // Causality structure is used in Record structure. It shows the record which should present before.
 type Causality struct {
-	Host int
-	TOId int
-	Tags map[string]string
 	Hash uint64
 }
 

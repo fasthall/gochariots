@@ -17,6 +17,7 @@ import (
 	"sync"
 
 	"github.com/fasthall/gochariots/info"
+	"github.com/fasthall/gochariots/misc/connection"
 	"github.com/fasthall/gochariots/record"
 )
 
@@ -175,50 +176,14 @@ func recordsArrival(records []record.Record) {
 
 // HandleRequest handles incoming connection
 func HandleRequest(conn net.Conn) {
-	lenbuf := make([]byte, 4)
 	buf := make([]byte, 1024*1024*32)
 	for {
-		remain := 4
-		head := 0
-		for remain > 0 {
-			l, err := conn.Read(lenbuf[head : head+remain])
-			if err == io.EOF {
-				return
-			} else if err != nil {
-				log.Println(info.GetName(), "couldn't read incoming request")
-				log.Println(info.GetName(), err)
-				break
-			} else {
-				remain -= l
-				head += l
-			}
-		}
-		if remain != 0 {
-			log.Println(info.GetName(), "couldn't read incoming request length")
-			break
-		}
-		totalLength := int(binary.BigEndian.Uint32(lenbuf))
-		if totalLength > cap(buf) {
-			log.Println(info.GetName(), "buffer is not large enough, allocate more", totalLength)
-			buf = make([]byte, totalLength)
-		}
-		remain = totalLength
-		head = 0
-		for remain > 0 {
-			l, err := conn.Read(buf[head : head+remain])
-			if err == io.EOF {
-				return
-			} else if err != nil {
-				log.Println(info.GetName(), "couldn't read incoming request")
-				log.Println(info.GetName(), err)
-				break
-			} else {
-				remain -= l
-				head += l
-			}
-		}
-		if remain != 0 {
-			log.Println(info.GetName(), "couldn't read incoming request", remain)
+		totalLength, err := connection.Read(conn, &buf)
+		if err == io.EOF {
+			return
+		} else if err != nil {
+			log.Println(info.GetName(), "couldn't read incoming request")
+			log.Println(info.GetName(), err)
 			break
 		}
 		if buf[0] == 'b' { // received remote batchers update
@@ -237,7 +202,6 @@ func HandleRequest(conn net.Conn) {
 			err := record.GobToRecordArray(buf[1:totalLength], &records)
 			if err != nil {
 				log.Println(info.GetName(), "couldn't convert received bytes to records:", string(buf[1:totalLength]))
-				log.Panicln(binary.BigEndian.Uint32(lenbuf), len(buf), err)
 			}
 			// log.Println(info.GetName(), "received records:", records)
 			recordsArrival(records)

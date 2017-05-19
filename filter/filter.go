@@ -13,6 +13,7 @@ import (
 	"sync"
 
 	"github.com/fasthall/gochariots/info"
+	"github.com/fasthall/gochariots/misc/connection"
 	"github.com/fasthall/gochariots/record"
 )
 
@@ -41,26 +42,26 @@ func arrival(records []record.Record) {
 	// info.LogTimestamp("arrival")
 	bufMutex.Lock()
 	queued := []record.Record{}
-	for _, record := range records {
-		if record.Host == info.ID {
+	for _, r := range records {
+		if r.Host == info.ID {
 			// this record is from the same datacenter, the TOId hasn't been generated yet
-			if record.TOId == 0 {
-				queued = append(queued, record)
+			if r.TOId == 0 {
+				queued = append(queued, r)
 			}
-		} else if record.TOId > nextTOId[record.Host] {
-			buffer = append(buffer, record)
-		} else if record.TOId == nextTOId[record.Host] {
-			queued = append(queued, record)
-			nextTOId[record.Host]++
+		} else if r.TOId > nextTOId[r.Host] {
+			buffer = append(buffer, r)
+		} else if r.TOId == nextTOId[r.Host] {
+			queued = append(queued, r)
+			nextTOId[r.Host]++
 			changed := true
 			for changed {
 				changed = false
 				head := 0
 				for _, v := range buffer {
-					if v.Host == record.Host && v.TOId == nextTOId[record.Host] {
+					if v.Host == r.Host && v.TOId == nextTOId[r.Host] {
 						changed = true
 						queued = append(queued, v)
-						nextTOId[record.Host]++
+						nextTOId[r.Host]++
 					} else {
 						buffer[head] = v
 						head++
@@ -133,50 +134,14 @@ func sendToQueue(records []record.Record) {
 
 // HandleRequest handles incoming connection
 func HandleRequest(conn net.Conn) {
-	lenbuf := make([]byte, 4)
 	buf := make([]byte, 1024*1024*32)
 	for {
-		remain := 4
-		head := 0
-		for remain > 0 {
-			l, err := conn.Read(lenbuf[head : head+remain])
-			if err == io.EOF {
-				return
-			} else if err != nil {
-				log.Println(info.GetName(), "couldn't read incoming request")
-				log.Println(info.GetName(), err)
-				break
-			} else {
-				remain -= l
-				head += l
-			}
-		}
-		if remain != 0 {
-			log.Println(info.GetName(), "couldn't read incoming request length")
-			break
-		}
-		totalLength := int(binary.BigEndian.Uint32(lenbuf))
-		if totalLength > cap(buf) {
-			log.Println(info.GetName(), "buffer is not large enough, allocate more", totalLength)
-			buf = make([]byte, totalLength)
-		}
-		remain = totalLength
-		head = 0
-		for remain > 0 {
-			l, err := conn.Read(buf[head : head+remain])
-			if err == io.EOF {
-				return
-			} else if err != nil {
-				log.Println(info.GetName(), "couldn't read incoming request")
-				log.Println(info.GetName(), err)
-				break
-			} else {
-				remain -= l
-				head += l
-			}
-		}
-		if remain != 0 {
-			log.Println(info.GetName(), "couldn't read incoming request", remain)
+		totalLength, err := connection.Read(conn, &buf)
+		if err == io.EOF {
+			return
+		} else if err != nil {
+			log.Println(info.GetName(), "couldn't read incoming request")
+			log.Println(info.GetName(), err)
 			break
 		}
 		if buf[0] == 'r' { // received records
