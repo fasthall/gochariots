@@ -13,6 +13,7 @@ import (
 	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/maintainer"
 	"github.com/fasthall/gochariots/maintainer/indexer"
+	"github.com/fasthall/gochariots/misc/connection"
 	"github.com/fasthall/gochariots/record"
 )
 
@@ -20,13 +21,17 @@ var lastTime time.Time
 var bufMutex sync.Mutex
 var buffered []map[int]record.Record
 var sameDCBuffered []record.Record
-var connMutex sync.Mutex
+var maintainerConnMutex sync.Mutex
 var logMaintainerConn []net.Conn
 var logMaintainerHost []string
+var indexerConnMutex sync.Mutex
 var indexerConn []net.Conn
 var indexerHost []string
+var queueConnMutex sync.Mutex
 var nextQueueConn net.Conn
 var nextQueueHost string
+
+var indexerBuf []byte
 
 type queueHost int
 
@@ -53,6 +58,7 @@ func InitQueue(hasToken bool) {
 	} else {
 		log.Println(info.GetName(), "initialized without token")
 	}
+	indexerBuf = make([]byte, 1024*1024*32)
 }
 
 // InitToken intializes a token. The IDs info should be accuired from log maintainers
@@ -175,10 +181,10 @@ func assignLId(records []record.Record, lastLId int) int {
 }
 
 func dialNextQueue() error {
-	connMutex.Lock()
+	queueConnMutex.Lock()
 	var err error
 	nextQueueConn, err = net.Dial("tcp", nextQueueHost)
-	connMutex.Unlock()
+	queueConnMutex.Unlock()
 	return err
 }
 
@@ -258,7 +264,7 @@ func dispatchRecords(records []record.Record, maintainerID int) {
 	b := make([]byte, 5)
 	b[4] = byte('r')
 	binary.BigEndian.PutUint32(b, uint32(len(bytes)+1))
-	connMutex.Lock()
+	maintainerConnMutex.Lock()
 	if logMaintainerConn[maintainerID] == nil {
 		err = dialLogMaintainer(maintainerID)
 		if err != nil {
@@ -268,18 +274,18 @@ func dispatchRecords(records []record.Record, maintainerID int) {
 			log.Printf("%s is connected to log maintainer %s\n", info.GetName(), logMaintainerHost)
 		}
 	}
-	connMutex.Unlock()
+	maintainerConnMutex.Unlock()
 
 	cnt := 5
 	sent := false
 	for sent == false {
-		connMutex.Lock()
+		maintainerConnMutex.Lock()
 		if logMaintainerConn[maintainerID] != nil {
 			_, err = logMaintainerConn[maintainerID].Write(append(b, bytes...))
 		} else {
 			err = errors.New("logMaintainerConn[hostID] == nil")
 		}
-		connMutex.Unlock()
+		maintainerConnMutex.Unlock()
 		if err != nil {
 			if cnt >= 0 {
 				cnt--
@@ -309,7 +315,7 @@ func AskIndexerByTags(tags map[string]string, indexerID int) []int {
 	b[4] = byte('i')
 	binary.BigEndian.PutUint32(b, uint32(len(tmp)+1))
 
-	connMutex.Lock()
+	indexerConnMutex.Lock()
 	if indexerConn[indexerID] == nil {
 		err := dialIndexer(indexerID)
 		if err != nil {
@@ -319,18 +325,18 @@ func AskIndexerByTags(tags map[string]string, indexerID int) []int {
 			log.Printf("%s is connected to indexer %s\n", info.GetName(), indexerHost[indexerID])
 		}
 	}
-	connMutex.Unlock()
+	indexerConnMutex.Unlock()
 
 	cnt := 5
 	sent := false
 	for sent == false {
-		connMutex.Lock()
+		indexerConnMutex.Lock()
 		if indexerConn[indexerID] != nil {
 			_, err = indexerConn[indexerID].Write(append(b, tmp...))
 		} else {
 			err = errors.New("indexerConn[indexerID] == nil")
 		}
-		connMutex.Unlock()
+		indexerConnMutex.Unlock()
 		if err != nil {
 			if cnt >= 0 {
 				cnt--
@@ -379,7 +385,7 @@ func AskIndexerByHash(hash uint64, indexerID int) []int {
 	b[4] = byte('h')
 	binary.BigEndian.PutUint32(b, uint32(len(tmp)+1))
 
-	connMutex.Lock()
+	indexerConnMutex.Lock()
 	if indexerConn[indexerID] == nil {
 		err := dialIndexer(indexerID)
 		if err != nil {
@@ -389,19 +395,19 @@ func AskIndexerByHash(hash uint64, indexerID int) []int {
 			log.Printf("%s is connected to indexer %s\n", info.GetName(), indexerHost[indexerID])
 		}
 	}
-	connMutex.Unlock()
+	indexerConnMutex.Unlock()
 
 	cnt := 5
 	sent := false
 	var err error
 	for sent == false {
-		connMutex.Lock()
+		indexerConnMutex.Lock()
 		if indexerConn[indexerID] != nil {
 			_, err = indexerConn[indexerID].Write(append(b, tmp...))
 		} else {
 			err = errors.New("indexerConn[hostID] == nil")
 		}
-		connMutex.Unlock()
+		indexerConnMutex.Unlock()
 		if err != nil {
 			if cnt >= 0 {
 				cnt--
@@ -452,7 +458,7 @@ func AskIndexerByHashes(hash []uint64, indexerID int) []bool {
 	b[4] = byte('H')
 	binary.BigEndian.PutUint32(b, uint32(len(bytes)+1))
 
-	connMutex.Lock()
+	indexerConnMutex.Lock()
 	if indexerConn[indexerID] == nil {
 		err := dialIndexer(indexerID)
 		if err != nil {
@@ -462,18 +468,18 @@ func AskIndexerByHashes(hash []uint64, indexerID int) []bool {
 			log.Printf("%s is connected to indexer %s\n", info.GetName(), indexerHost[indexerID])
 		}
 	}
-	connMutex.Unlock()
+	indexerConnMutex.Unlock()
 
 	cnt := 5
 	sent := false
 	for sent == false {
-		connMutex.Lock()
+		indexerConnMutex.Lock()
 		if indexerConn[indexerID] != nil {
 			_, err = indexerConn[indexerID].Write(append(b, bytes...))
 		} else {
 			err = errors.New("indexerConn[hostID] == nil")
 		}
-		connMutex.Unlock()
+		indexerConnMutex.Unlock()
 		if err != nil {
 			if cnt >= 0 {
 				cnt--
@@ -489,23 +495,13 @@ func AskIndexerByHashes(hash []uint64, indexerID int) []bool {
 			sent = true
 		}
 	}
-	lenbuf := make([]byte, 4)
-	_, err = indexerConn[indexerID].Read(lenbuf)
+	totalLength, err := connection.Read(indexerConn[indexerID], &indexerBuf)
 	if err != nil {
 		log.Println(info.GetName(), "couldn't read response from indexer")
-		log.Panicln("lenbuf", err)
-		return nil
-	}
-	totalLength := int(binary.BigEndian.Uint32(lenbuf))
-	buf := make([]byte, totalLength)
-	_, err = indexerConn[indexerID].Read(buf)
-	if err != nil {
-		log.Println(info.GetName(), "couldn't read response from indexer")
-		log.Panicln("content", err)
-		return nil
+		log.Panicln(err)
 	}
 	var result []bool
-	err = json.Unmarshal(buf, &result)
+	err = json.Unmarshal(indexerBuf[:totalLength], &result)
 	if err != nil {
 		log.Println(info.GetName(), "couldn't unmarshal response from indexer")
 		log.Panicln(err)
@@ -516,50 +512,14 @@ func AskIndexerByHashes(hash []uint64, indexerID int) []bool {
 
 // HandleRequest handles incoming connection
 func HandleRequest(conn net.Conn) {
-	lenbuf := make([]byte, 4)
 	buf := make([]byte, 1024*1024*32)
 	for {
-		remain := 4
-		head := 0
-		for remain > 0 {
-			l, err := conn.Read(lenbuf[head : head+remain])
-			if err == io.EOF {
-				return
-			} else if err != nil {
-				log.Println(info.GetName(), "couldn't read incoming request")
-				log.Println(info.GetName(), err)
-				break
-			} else {
-				remain -= l
-				head += l
-			}
-		}
-		if remain != 0 {
-			log.Println(info.GetName(), "couldn't read incoming request length")
-			break
-		}
-		totalLength := int(binary.BigEndian.Uint32(lenbuf))
-		if totalLength > cap(buf) {
-			log.Println(info.GetName(), "buffer is not large enough, allocate more", totalLength)
-			buf = make([]byte, totalLength)
-		}
-		remain = totalLength
-		head = 0
-		for remain > 0 {
-			l, err := conn.Read(buf[head : head+remain])
-			if err == io.EOF {
-				return
-			} else if err != nil {
-				log.Println(info.GetName(), "couldn't read incoming request")
-				log.Println(info.GetName(), err)
-				break
-			} else {
-				remain -= l
-				head += l
-			}
-		}
-		if remain != 0 {
-			log.Println(info.GetName(), "couldn't read incoming request", remain)
+		totalLength, err := connection.Read(conn, &buf)
+		if err == io.EOF {
+			return
+		} else if err != nil {
+			log.Println(info.GetName(), "couldn't read incoming request")
+			log.Println(info.GetName(), err)
 			break
 		}
 		if buf[0] == 'r' { // received records
