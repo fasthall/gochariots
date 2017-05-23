@@ -77,6 +77,7 @@ func Append(r record.Record) error {
 	LastLId = r.LId
 	if r.Host == info.ID {
 		Propagate(r)
+		InsertIndexerTOId(r.TOId)
 	}
 	return nil
 }
@@ -112,6 +113,51 @@ func InsertIndexer(r record.Record) {
 		indexerConnMutex.Lock()
 		if indexerConn != nil {
 			_, err = indexerConn.Write(append(append(b, lidBytes...), buf.Bytes()...))
+		} else {
+			err = errors.New("indexerConn == nil")
+		}
+		indexerConnMutex.Unlock()
+		if err != nil {
+			if cnt >= 0 {
+				cnt--
+				err = dialConn()
+				if err != nil {
+					log.Printf("%s couldn't connect to indexerHost %s, retrying...\n", info.GetName(), indexerHost)
+				}
+			} else {
+				log.Printf("%s failed to connect to indexerHost %s after retrying 5 times\n", info.GetName(), indexerHost)
+				break
+			}
+		} else {
+			sent = true
+		}
+	}
+}
+
+func InsertIndexerTOId(toid int) {
+	toidBytes := make([]byte, 4)
+	binary.BigEndian.PutUint32(toidBytes, uint32(toid))
+	b := make([]byte, 5)
+	b[4] = byte('o')
+	binary.BigEndian.PutUint32(b, uint32(len(toidBytes)+1))
+
+	indexerConnMutex.Lock()
+	if indexerConn == nil {
+		err := dialConn()
+		if err != nil {
+			log.Printf("%s couldn't connect to indexerHost %s\n", info.GetName(), indexerHost)
+		} else {
+			log.Printf("%s is connected to indexerHost %s\n", info.GetName(), indexerHost)
+		}
+	}
+	indexerConnMutex.Unlock()
+	cnt := 5
+	sent := false
+	for sent == false {
+		var err error
+		indexerConnMutex.Lock()
+		if indexerConn != nil {
+			_, err = indexerConn.Write(append(b, toidBytes...))
 		} else {
 			err = errors.New("indexerConn == nil")
 		}

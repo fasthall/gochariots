@@ -41,7 +41,7 @@ func Insert(key, value string, LId int) {
 	indexMutex.Lock()
 	indexes[h] = append(indexes[h], LId)
 	indexMutex.Unlock()
-	notify(h, LId)
+	// notify(h, LId)
 }
 
 func GetByTag(key, value string) []int {
@@ -77,6 +77,17 @@ func notify(hash uint64, LId int) {
 			log.Println(err)
 		}
 		_, err = Subscriber.Write(append(bytes, byte('\n')))
+		if err != nil {
+			log.Println(err)
+		}
+	}
+}
+
+func notifyTOId(TOId int) {
+	if Subscriber != nil {
+		bytes := make([]byte, 4)
+		binary.BigEndian.PutUint32(bytes, uint32(TOId))
+		_, err := Subscriber.Write(bytes)
 		if err != nil {
 			log.Println(err)
 		}
@@ -158,6 +169,9 @@ func HandleRequest(conn net.Conn) {
 			for key, value := range tags {
 				Insert(key, value, lid)
 			}
+		} else if buf[0] == 'o' {
+			toid := int(binary.BigEndian.Uint32(buf[1:5]))
+			notifyTOId(toid)
 		} else if buf[0] == 'h' { // get LIds by hash
 			hash := binary.BigEndian.Uint64(buf[1:9])
 			indexMutex.Lock()

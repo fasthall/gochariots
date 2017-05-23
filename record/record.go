@@ -24,7 +24,8 @@ type Record struct {
 
 // Causality structure is used in Record structure. It shows the record which should present before.
 type Causality struct {
-	Hash uint64
+	Host int
+	TOId int
 }
 
 // ToJSON encodes a record into bytes

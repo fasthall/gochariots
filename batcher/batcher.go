@@ -148,7 +148,7 @@ func HandleRequest(conn net.Conn) {
 				log.Println(info.GetName(), "couldn't convert read buffer to record:", string(buf[1:totalLength]))
 				continue
 			}
-			// log.Println(info.GetName(), "received incoming record:", string(buf[1:totalLength]))
+			log.Println(info.GetName(), "received incoming record:", string(buf[1:totalLength]))
 			arrival(r)
 			// elapsed := time.Since(start)
 			// log.Printf("TIMESTAMP %s:HandleRequest took %s\n", info.GetName(), elapsed)

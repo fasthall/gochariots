@@ -1,6 +1,7 @@
 package queue
 
 import (
+	"container/heap"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -12,14 +13,13 @@ import (
 
 	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/maintainer"
-	"github.com/fasthall/gochariots/maintainer/indexer"
 	"github.com/fasthall/gochariots/misc/connection"
 	"github.com/fasthall/gochariots/record"
 )
 
 var lastTime time.Time
 var bufMutex sync.Mutex
-var buffered []map[int]record.Record
+var buffered []BufferHeap
 var sameDCBuffered []record.Record
 var maintainerConnMutex sync.Mutex
 var logMaintainerConn []net.Conn
@@ -39,14 +39,15 @@ type queueHost int
 type Token struct {
 	MaxTOId         []int
 	LastLId         int
-	DeferredRecords map[uint64]record.Record // the key of the map is the casual dependency of the record
+	DeferredRecords []record.Record
 }
 
 // InitQueue initializes the buffer and hashmap for queued records
 func InitQueue(hasToken bool) {
-	buffered = make([]map[int]record.Record, info.NumDC)
+	buffered = make([]BufferHeap, info.NumDC)
 	for i := range buffered {
-		buffered[i] = make(map[int]record.Record)
+		buffered[i] = BufferHeap{}
+		heap.Init(&buffered[i])
 	}
 	if hasToken {
 		var token Token
@@ -65,7 +66,7 @@ func InitQueue(hasToken bool) {
 func (token *Token) InitToken(maxTOId []int, lastLId int) {
 	token.MaxTOId = maxTOId
 	token.LastLId = lastLId
-	token.DeferredRecords = make(map[uint64]record.Record)
+	token.DeferredRecords = []record.Record{}
 }
 
 // recordsArrival deals with the records received from filters
@@ -73,10 +74,11 @@ func recordsArrival(records []record.Record) {
 	// info.LogTimestamp("recordsArrival")
 	bufMutex.Lock()
 	for _, record := range records {
+		log.Println(record)
 		if record.Host == info.ID {
 			sameDCBuffered = append(sameDCBuffered, record)
 		} else {
-			buffered[record.Host][record.TOId] = record
+			heap.Push(&buffered[record.Host], record)
 		}
 	}
 	bufMutex.Unlock()
@@ -86,85 +88,58 @@ func recordsArrival(records []record.Record) {
 // For each deferred records in the token, check if the current max TOId in shared log satisfies the dependency.
 // If so, the deferred records are sent to the log maintainers.
 func TokenArrival(token Token) {
-	dispatch := []record.Record{}
 	bufMutex.Lock()
 	// append buffered records to the token in order
 	for dc := range buffered {
-		for _, r := range buffered[dc] {
-			if r.Pre.Hash == 0 {
-				dispatch = append(dispatch, r)
-			} else {
-				token.DeferredRecords[r.Pre.Hash] = r
-			}
-		}
-		buffered[dc] = map[int]record.Record{}
-	}
-	for _, r := range sameDCBuffered {
-		if r.Pre.Hash == 0 {
-			if r.Host == info.ID {
-				r.TOId = token.MaxTOId[r.Host] + 1
-			}
-			token.MaxTOId[r.Host] = r.TOId
-			dispatch = append(dispatch, r)
-		} else {
-			token.DeferredRecords[r.Pre.Hash] = r
+		for buffered[dc].Len() > 0 {
+			r := heap.Pop(&buffered[dc]).(record.Record)
+			token.DeferredRecords = append(token.DeferredRecords, r)
 		}
 	}
+	token.DeferredRecords = append(token.DeferredRecords, sameDCBuffered...)
 	sameDCBuffered = []record.Record{}
 	bufMutex.Unlock()
 	// put the deffered records with dependency satisfied into dispatch slice
 
+	dispatch := []record.Record{}
+	head := 0
+	for _, r := range token.DeferredRecords {
+		if r.Host != info.ID {
+			// log.Println(r.Pre.TOId)
+			// default value of TOId is 0 so no need to check if the record has dependency or not
+			if r.TOId == token.MaxTOId[r.Host]+1 && r.Pre.TOId <= token.MaxTOId[r.Pre.Host] {
+				dispatch = append(dispatch, r)
+				token.MaxTOId[r.Host] = r.TOId
+			} else {
+				token.DeferredRecords[head] = r
+				head++
+			}
+		} else {
+			// if it's from the same DC, TOId needs to be assigned
+			if r.Pre.TOId <= token.MaxTOId[r.Pre.Host] {
+				r.TOId = token.MaxTOId[r.Host] + 1
+				dispatch = append(dispatch, r)
+				token.MaxTOId[r.Host] = r.TOId
+			} else {
+				token.DeferredRecords[head] = r
+				head++
+			}
+		}
+	}
+	token.DeferredRecords = token.DeferredRecords[:head]
 	if len(dispatch) > 0 {
-		checkAgain := true
-		for checkAgain {
-			checkAgain = false
-			// check if to-be-dispatched record satisify other deferred records
-			for _, d := range dispatch {
-				for key, value := range d.Tags {
-					if deferred, ok := token.DeferredRecords[indexer.TagToHash(key, value)]; ok {
-						if deferred.Host == info.ID {
-							deferred.TOId = token.MaxTOId[deferred.Host] + 1
-						}
-						token.MaxTOId[deferred.Host] = deferred.TOId
-						dispatch = append(dispatch, deferred)
-						delete(token.DeferredRecords, indexer.TagToHash(key, value))
-						checkAgain = true
-					}
-				}
+		// assign LId and send to log maintainers
+		lastID := assignLId(dispatch, token.LastLId)
+		token.LastLId = lastID
+		toDispatch := make([][]record.Record, len(logMaintainerConn))
+		for _, r := range dispatch {
+			id := maintainer.AssignToMaintainer(r.LId, len(logMaintainerConn))
+			toDispatch[id] = append(toDispatch[id], r)
+		}
+		for id, t := range toDispatch {
+			if len(t) > 0 {
+				dispatchRecords(t, id)
 			}
-		}
-	}
-	if len(token.DeferredRecords) > 0 {
-		indexerQuery := []uint64{}
-		for hash := range token.DeferredRecords {
-			indexerQuery = append(indexerQuery, hash)
-		}
-		existed := make([]bool, len(indexerQuery))
-		for i := range indexerConn {
-			result := AskIndexerByHashes(indexerQuery, i)
-			for j := 0; j < len(existed); j++ {
-				existed[j] = existed[j] || result[j]
-			}
-		}
-		for i, e := range existed {
-			if e {
-				dispatch = append(dispatch, token.DeferredRecords[indexerQuery[i]])
-				delete(token.DeferredRecords, indexerQuery[i])
-			}
-		}
-	}
-
-	// assign LId and send to log maintainers
-	lastID := assignLId(dispatch, token.LastLId)
-	token.LastLId = lastID
-	toDispatch := make([][]record.Record, len(logMaintainerConn))
-	for _, r := range dispatch {
-		id := maintainer.AssignToMaintainer(r.LId, len(logMaintainerConn))
-		toDispatch[id] = append(toDispatch[id], r)
-	}
-	for id, t := range toDispatch {
-		if len(t) > 0 {
-			dispatchRecords(t, id)
 		}
 	}
 	go passToken(&token)
