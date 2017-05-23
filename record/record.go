@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"encoding/gob"
 	"encoding/json"
-	"time"
 )
 
 // Record represents a single record in the shared log.
@@ -15,7 +14,7 @@ import (
 //	TOId: The total order of the record in the origining datacenter
 //	Tags: Consist of keys and values
 type Record struct {
-	Timestamp time.Time
+	Timestamp int64
 	Host      int
 	TOId      int
 	LId       int

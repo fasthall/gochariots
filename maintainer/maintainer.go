@@ -55,7 +55,7 @@ func dialConn() error {
 // Append appends a new record to the maintainer.
 func Append(r record.Record) error {
 	// info.LogTimestamp("Append")
-	r.Timestamp = time.Now()
+	r.Timestamp = time.Now().UnixNano()
 	b, err := record.ToJSON(r)
 	if err != nil {
 		return err
