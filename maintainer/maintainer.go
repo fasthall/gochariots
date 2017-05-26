@@ -63,11 +63,7 @@ func Append(r record.Record) error {
 	lenbuf := make([]byte, 4)
 	binary.BigEndian.PutUint32(lenbuf, uint32(len(b)))
 	lid := r.LId
-	_, err = f.WriteAt(lenbuf, int64(512*lid))
-	if err != nil {
-		return err
-	}
-	_, err = f.WriteAt(b, int64(512*lid+4))
+	_, err = f.WriteAt(append(lenbuf, b...), int64(512*lid))
 	if err != nil {
 		return err
 	}

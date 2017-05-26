@@ -40,39 +40,7 @@ func InitFilter(n int) {
 // If the TOId is larger than expected, the record will be buffered.
 func arrival(records []record.Record) {
 	// info.LogTimestamp("arrival")
-	bufMutex.Lock()
-	queued := []record.Record{}
-	for _, r := range records {
-		if r.Host == info.ID {
-			// this record is from the same datacenter, the TOId hasn't been generated yet
-			if r.TOId == 0 {
-				queued = append(queued, r)
-			}
-		} else if r.TOId > nextTOId[r.Host] {
-			buffer = append(buffer, r)
-		} else if r.TOId == nextTOId[r.Host] {
-			queued = append(queued, r)
-			nextTOId[r.Host]++
-			changed := true
-			for changed {
-				changed = false
-				head := 0
-				for _, v := range buffer {
-					if v.Host == r.Host && v.TOId == nextTOId[r.Host] {
-						changed = true
-						queued = append(queued, v)
-						nextTOId[r.Host]++
-					} else {
-						buffer[head] = v
-						head++
-					}
-				}
-				buffer = buffer[:head]
-			}
-		}
-	}
-	sendToQueue(queued)
-	bufMutex.Unlock()
+	sendToQueue(records)
 }
 
 func dialConn(queueID int) error {

@@ -19,8 +19,7 @@ import (
 
 var lastTime time.Time
 var bufMutex sync.Mutex
-var buffered []map[int]record.Record
-var sameDCBuffered []record.Record
+var buffered []record.Record
 var maintainerConnMutex sync.Mutex
 var logMaintainerConn []net.Conn
 var logMaintainerHost []string
@@ -37,20 +36,16 @@ type queueHost int
 
 // Token is used by queues to ensure causality of LId assignment
 type Token struct {
-	MaxTOId         []int
 	LastLId         int
 	DeferredRecords map[uint64]record.Record // the key of the map is the casual dependency of the record
 }
 
 // InitQueue initializes the buffer and hashmap for queued records
 func InitQueue(hasToken bool) {
-	buffered = make([]map[int]record.Record, info.NumDC)
-	for i := range buffered {
-		buffered[i] = make(map[int]record.Record)
-	}
+	buffered = []record.Record{}
 	if hasToken {
 		var token Token
-		token.InitToken(make([]int, info.NumDC), 0)
+		token.InitToken(0)
 		TokenArrival(token)
 	}
 	if hasToken {
@@ -62,8 +57,7 @@ func InitQueue(hasToken bool) {
 }
 
 // InitToken intializes a token. The IDs info should be accuired from log maintainers
-func (token *Token) InitToken(maxTOId []int, lastLId int) {
-	token.MaxTOId = maxTOId
+func (token *Token) InitToken(lastLId int) {
 	token.LastLId = lastLId
 	token.DeferredRecords = make(map[uint64]record.Record)
 }
@@ -72,13 +66,7 @@ func (token *Token) InitToken(maxTOId []int, lastLId int) {
 func recordsArrival(records []record.Record) {
 	// info.LogTimestamp("recordsArrival")
 	bufMutex.Lock()
-	for _, record := range records {
-		if record.Host == info.ID {
-			sameDCBuffered = append(sameDCBuffered, record)
-		} else {
-			buffered[record.Host][record.TOId] = record
-		}
-	}
+	buffered = append(buffered, records...)
 	bufMutex.Unlock()
 }
 
@@ -89,28 +77,14 @@ func TokenArrival(token Token) {
 	dispatch := []record.Record{}
 	bufMutex.Lock()
 	// append buffered records to the token in order
-	for dc := range buffered {
-		for _, r := range buffered[dc] {
-			if r.Pre.Hash == 0 {
-				dispatch = append(dispatch, r)
-			} else {
-				token.DeferredRecords[r.Pre.Hash] = r
-			}
-		}
-		buffered[dc] = map[int]record.Record{}
-	}
-	for _, r := range sameDCBuffered {
+	for _, r := range buffered {
 		if r.Pre.Hash == 0 {
-			if r.Host == info.ID {
-				r.TOId = token.MaxTOId[r.Host] + 1
-			}
-			token.MaxTOId[r.Host] = r.TOId
 			dispatch = append(dispatch, r)
 		} else {
 			token.DeferredRecords[r.Pre.Hash] = r
 		}
 	}
-	sameDCBuffered = []record.Record{}
+	buffered = []record.Record{}
 	bufMutex.Unlock()
 	// put the deffered records with dependency satisfied into dispatch slice
 
@@ -122,10 +96,6 @@ func TokenArrival(token Token) {
 			for _, d := range dispatch {
 				for key, value := range d.Tags {
 					if deferred, ok := token.DeferredRecords[indexer.TagToHash(key, value)]; ok {
-						if deferred.Host == info.ID {
-							deferred.TOId = token.MaxTOId[deferred.Host] + 1
-						}
-						token.MaxTOId[deferred.Host] = deferred.TOId
 						dispatch = append(dispatch, deferred)
 						delete(token.DeferredRecords, indexer.TagToHash(key, value))
 						checkAgain = true

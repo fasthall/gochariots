@@ -16,7 +16,6 @@ import (
 type Record struct {
 	Timestamp int64
 	Host      int
-	TOId      int
 	LId       int
 	Tags      map[string]string
 	Pre       Causality

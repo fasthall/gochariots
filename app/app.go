@@ -143,7 +143,6 @@ func getRecord(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"LId":       r.LId,
 		"Host":      r.Host,
-		"TOId":      r.TOId,
 		"Causality": r.Pre,
 		"Tags":      r.Tags,
 	})
