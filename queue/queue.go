@@ -74,7 +74,6 @@ func recordsArrival(records []record.Record) {
 	// info.LogTimestamp("recordsArrival")
 	bufMutex.Lock()
 	for _, record := range records {
-		log.Println(record)
 		if record.Host == info.ID {
 			sameDCBuffered = append(sameDCBuffered, record)
 		} else {
