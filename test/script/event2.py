@@ -45,7 +45,8 @@ while True:
         # print('Append event 2 at:', end, '@B', suuid.decode())
 
         # send to batcher
-        payload = build_payload2(suuid.decode())
+        # payload = build_payload2(suuid.decode())
+        payload = build_payload_hash(suuid.decode())
         n = len(payload) + 1
         header = n.to_bytes(4, byteorder='big')
         header += b'r'
