@@ -17,6 +17,8 @@ client.connect(indexer)
 client.send(build())
 while client:
     buf = client.recv(4)
-    print(int.from_bytes(buf, byteorder='big'))
+    print('TOId', int.from_bytes(buf, byteorder='big'))
+    buf = client.recv(8)
+    print('Hash', int.from_bytes(buf, byteorder='big'))
 
 client.close()

@@ -83,11 +83,13 @@ func notify(hash uint64, LId int) {
 	}
 }
 
-func notifyTOId(TOId int) {
+func notifyTOId(TOId int, hash uint64) {
 	if Subscriber != nil {
-		bytes := make([]byte, 4)
-		binary.BigEndian.PutUint32(bytes, uint32(TOId))
-		_, err := Subscriber.Write(bytes)
+		toidBytes := make([]byte, 4)
+		hashBytes := make([]byte, 8)
+		binary.BigEndian.PutUint32(toidBytes, uint32(TOId))
+		binary.BigEndian.PutUint64(hashBytes, hash)
+		_, err := Subscriber.Write(append(toidBytes, hashBytes...))
 		if err != nil {
 			log.Println(err)
 		}
@@ -159,8 +161,9 @@ func HandleRequest(conn net.Conn) {
 			conn.Write(append(b, tmp...))
 		} else if buf[0] == 't' { // insert tags into hash table
 			lid := int(binary.BigEndian.Uint32(buf[1:5]))
+			toid := int(binary.BigEndian.Uint32(buf[5:9]))
 			var tags map[string]string
-			dec := gob.NewDecoder(bytes.NewBuffer(buf[5:totalLength]))
+			dec := gob.NewDecoder(bytes.NewBuffer(buf[9:totalLength]))
 			err := dec.Decode(&tags)
 			if err != nil {
 				log.Println(info.GetName(), "couldn't decode tags")
@@ -168,10 +171,10 @@ func HandleRequest(conn net.Conn) {
 			}
 			for key, value := range tags {
 				Insert(key, value, lid)
+				if toid != 0 {
+					notifyTOId(toid, ToHash([]byte(key+":"+value)))
+				}
 			}
-		} else if buf[0] == 'o' {
-			toid := int(binary.BigEndian.Uint32(buf[1:5]))
-			notifyTOId(toid)
 		} else if buf[0] == 'h' { // get LIds by hash
 			hash := binary.BigEndian.Uint64(buf[1:9])
 			indexMutex.Lock()

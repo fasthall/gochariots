@@ -77,7 +77,6 @@ func Append(r record.Record) error {
 	LastLId = r.LId
 	if r.Host == info.ID {
 		Propagate(r)
-		InsertIndexerTOId(r.TOId)
 	}
 	return nil
 }
@@ -85,6 +84,12 @@ func Append(r record.Record) error {
 func InsertIndexer(r record.Record) {
 	lidBytes := make([]byte, 4)
 	binary.BigEndian.PutUint32(lidBytes, uint32(r.LId))
+	toidBytes := make([]byte, 4)
+	if r.Host == info.ID {
+		binary.BigEndian.PutUint32(toidBytes, uint32(r.TOId))
+	} else {
+		binary.BigEndian.PutUint32(toidBytes, uint32(0))
+	}
 	var buf bytes.Buffer
 	enc := gob.NewEncoder(&buf)
 	err := enc.Encode(r.Tags)
@@ -94,7 +99,10 @@ func InsertIndexer(r record.Record) {
 	}
 	b := make([]byte, 5)
 	b[4] = byte('t')
-	binary.BigEndian.PutUint32(b, uint32(len(lidBytes)+buf.Len()+1))
+	binary.BigEndian.PutUint32(b, uint32(9+buf.Len()))
+	// notify indexer, format
+	// LId[0~3] TOId[4~7] Tags[8...]
+	// If the record is from other DC, TOId is set to 0
 
 	indexerConnMutex.Lock()
 	if indexerConn == nil {
@@ -112,52 +120,7 @@ func InsertIndexer(r record.Record) {
 		var err error
 		indexerConnMutex.Lock()
 		if indexerConn != nil {
-			_, err = indexerConn.Write(append(append(b, lidBytes...), buf.Bytes()...))
-		} else {
-			err = errors.New("indexerConn == nil")
-		}
-		indexerConnMutex.Unlock()
-		if err != nil {
-			if cnt >= 0 {
-				cnt--
-				err = dialConn()
-				if err != nil {
-					log.Printf("%s couldn't connect to indexerHost %s, retrying...\n", info.GetName(), indexerHost)
-				}
-			} else {
-				log.Printf("%s failed to connect to indexerHost %s after retrying 5 times\n", info.GetName(), indexerHost)
-				break
-			}
-		} else {
-			sent = true
-		}
-	}
-}
-
-func InsertIndexerTOId(toid int) {
-	toidBytes := make([]byte, 4)
-	binary.BigEndian.PutUint32(toidBytes, uint32(toid))
-	b := make([]byte, 5)
-	b[4] = byte('o')
-	binary.BigEndian.PutUint32(b, uint32(len(toidBytes)+1))
-
-	indexerConnMutex.Lock()
-	if indexerConn == nil {
-		err := dialConn()
-		if err != nil {
-			log.Printf("%s couldn't connect to indexerHost %s\n", info.GetName(), indexerHost)
-		} else {
-			log.Printf("%s is connected to indexerHost %s\n", info.GetName(), indexerHost)
-		}
-	}
-	indexerConnMutex.Unlock()
-	cnt := 5
-	sent := false
-	for sent == false {
-		var err error
-		indexerConnMutex.Lock()
-		if indexerConn != nil {
-			_, err = indexerConn.Write(append(b, toidBytes...))
+			_, err = indexerConn.Write(append(append(append(b, lidBytes...), toidBytes...), buf.Bytes()...))
 		} else {
 			err = errors.New("indexerConn == nil")
 		}

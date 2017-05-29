@@ -8,15 +8,8 @@ import fnv
 host = ('localhost', int(sys.argv[1]))
 batcher = ('localhost', 9100)
 
-def build_payload(suuid):
-    return '{"Host":1,"TOId":0,"LId":0,"Tags":{"' + suuid + '":"2"},"Pre":{"Host":0,"TOId":0,"Tags":{"' + suuid + '":"1"}}}'
-
-def build_payload2(suuid):
-    return '{"Host":1,"TOId":0,"LId":0,"Tags":{"' + suuid + '":"2"},"Pre":{"Host":0,"TOId":' + str(int(suuid)) + '}}'
-
-def build_payload_hash(suuid):
-    hash = fnv.hash((suuid + ':1').encode(), bits=64)
-    return '{"Host":1,"TOId":0,"LId":0,"Tags":{"' + suuid + '":"2"},"Pre":{"Host":0,"TOId":0,"Hash":' + str(hash) + '}}'
+def build_payload_toid(suuid, toid):
+    return '{"Host":1,"TOId":0,"LId":0,"Tags":{"' + suuid + '":"2"},"Pre":{"Host":0,"TOId":' + toid + '}}'
 
 bs = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 bs.connect(batcher)
@@ -39,13 +32,16 @@ while True:
         continue
     while buf[-1] != 10:
         buf += c1socket.recv(1024)
-    suuids = buf[:-1].split(b'\n')
-    for suuid in suuids:
+    idPairs = buf[:-1].split(b'\n')
+    for idPair in idPairs:
         # end = str(time.time())
         # print('Append event 2 at:', end, '@B', suuid.decode())
 
         # send to batcher
-        payload = build_payload2(suuid.decode())
+        idPair = idPair.decode().split(':')
+        suuid = idPair[0]
+        toid = idPair[1]
+        payload = build_payload_toid(suuid, toid)
         n = len(payload) + 1
         header = n.to_bytes(4, byteorder='big')
         header += b'r'
