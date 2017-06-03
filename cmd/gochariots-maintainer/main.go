@@ -1,9 +1,9 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"net"
-	"os"
 	"strconv"
 
 	"github.com/fasthall/gochariots/info"
@@ -11,31 +11,34 @@ import (
 )
 
 func main() {
-	if len(os.Args) < 4 {
+	n := flag.Int("n", 0, "Log the time maintainer takes to append the nth record")
+	flag.Parse()
+	maintainer.LogRecordNth = *n
+	if len(flag.Args()) < 3 {
 		fmt.Println("Usage: gochariots-maintainer port num_dc dc_id")
 		return
 	}
-	numDc, err := strconv.Atoi(os.Args[2])
+	numDc, err := strconv.Atoi(flag.Args()[1])
 	if err != nil {
 		fmt.Println("Usage: gochariots-maintainer port num_dc dc_id")
 		return
 	}
-	dcID, err := strconv.Atoi(os.Args[3])
+	dcID, err := strconv.Atoi(flag.Args()[2])
 	if err != nil {
 		fmt.Println("Usage: gochariots-maintainer port num_dc dc_id")
 		return
 	}
 	info.InitChariots(numDc, dcID)
-	info.SetName("maintainer" + os.Args[1])
+	info.SetName("maintainer" + flag.Args()[0])
 	info.RedirectLog(info.GetName() + ".log")
 	maintainer.InitLogMaintainer(info.GetName())
-	ln, err := net.Listen("tcp", ":"+os.Args[1])
+	ln, err := net.Listen("tcp", ":"+flag.Args()[0])
 	if err != nil {
-		fmt.Println(info.GetName() + "couldn't listen on port " + os.Args[1])
+		fmt.Println(info.GetName() + "couldn't listen on port " + flag.Args()[0])
 		panic(err)
 	}
 	defer ln.Close()
-	fmt.Println(info.GetName()+" is listening to port", os.Args[1])
+	fmt.Println(info.GetName()+" is listening to port", flag.Args()[0])
 	for {
 		// Listen for an incoming connection.
 		conn, err := ln.Accept()

@@ -10,7 +10,7 @@ nohup gochariots-batcher 9000 2 0 > /dev/null &
 nohup gochariots-filter 9010 2 0 > /dev/null &
 nohup gochariots-filter 9011 2 0 > /dev/null &
 nohup gochariots-queue 9020 2 0 true > /dev/null &
-nohup gochariots-maintainer 9030 2 0 > /dev/null &
+nohup gochariots-maintainer -n=100000 9030 2 0 > /dev/null &
 nohup gochariots-indexer 9040 2 0 > /dev/null &
 
 sleep 1
@@ -29,7 +29,7 @@ nohup gochariots-batcher 9100 2 1 > /dev/null &
 nohup gochariots-filter 9110 2 1 > /dev/null &
 nohup gochariots-filter 9111 2 1 > /dev/null &
 nohup gochariots-queue 9120 2 1 true > /dev/null &
-nohup gochariots-maintainer 9130 2 1 > /dev/null &
+nohup gochariots-maintainer -n=100000 9130 2 1 > /dev/null &
 nohup gochariots-indexer 9140 2 1 > /dev/null &
 
 sleep 1

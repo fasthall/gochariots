@@ -31,6 +31,9 @@ var indexerConnMutex sync.Mutex
 var indexerConn net.Conn
 var indexerHost string
 
+var logFirstTime time.Time
+var LogRecordNth int
+
 // InitLogMaintainer initializes the maintainer and assign the path name to store the records
 func InitLogMaintainer(p string) {
 	LastLId = 0
@@ -56,6 +59,13 @@ func dialConn() error {
 func Append(r record.Record) error {
 	// info.LogTimestamp("Append")
 	r.Timestamp = time.Now().UnixNano()
+	if LogRecordNth > 0 {
+		if r.LId == 1 {
+			logFirstTime = time.Now()
+		} else if r.LId == LogRecordNth {
+			log.Println("Appending", LogRecordNth, "records took", time.Since(logFirstTime))
+		}
+	}
 	b, err := record.ToJSON(r)
 	if err != nil {
 		return err
