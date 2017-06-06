@@ -23,6 +23,7 @@ var connMutex sync.Mutex
 type JsonRecord struct {
 	Tags    map[string]string `json:"tags"`
 	PreHash uint64            `json:"prehash"`
+	Seed    uint64            `json:"seed"`
 }
 
 func Run(port string) {
@@ -145,5 +146,6 @@ func getRecord(c *gin.Context) {
 		"Host":      r.Host,
 		"Causality": r.Pre,
 		"Tags":      r.Tags,
+		"Seed":      r.Seed,
 	})
 }

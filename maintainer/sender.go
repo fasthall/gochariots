@@ -25,7 +25,6 @@ func dialRemoteBatchers(dc int) error {
 
 // Propagate sends the local record to remote datacenter's batcher
 func Propagate(r record.Record) {
-	log.Println("propagating", r)
 	for dc, host := range remoteBatchers {
 		if dc != info.ID && host != "" {
 			// log.Printf("%s is propagating record to remoteBatchers[%d] %s", info.GetName(), dc, host)
