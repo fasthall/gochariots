@@ -16,7 +16,7 @@ def build_payload2(suuid):
 
 def build_payload_hash(suuid):
     hash = fnv.hash((suuid + ':1').encode(), bits=64)
-    return '{"Host":1,"TOId":0,"LId":0,"Tags":{"' + suuid + '":"2"},"Pre":{"Host":0,"TOId":0,"Hash":' + str(hash) + '}}'
+    return '{"Host":1,"TOId":0,"LId":0,"Tags":{"' + suuid + '":"2"},"Pre":{"Hash":' + str(hash) + '},"Seed":'+suuid+'}'
 
 bs = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 bs.connect(batcher)

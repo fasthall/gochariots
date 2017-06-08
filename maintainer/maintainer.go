@@ -90,6 +90,8 @@ func Append(r record.Record) error {
 func InsertIndexer(r record.Record) {
 	lidBytes := make([]byte, 4)
 	binary.BigEndian.PutUint32(lidBytes, uint32(r.LId))
+	seedBytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(seedBytes, r.Seed)
 	var buf bytes.Buffer
 	enc := gob.NewEncoder(&buf)
 	err := enc.Encode(r.Tags)
@@ -99,7 +101,7 @@ func InsertIndexer(r record.Record) {
 	}
 	b := make([]byte, 5)
 	b[4] = byte('t')
-	binary.BigEndian.PutUint32(b, uint32(len(lidBytes)+buf.Len()+1))
+	binary.BigEndian.PutUint32(b, uint32(13+buf.Len()))
 
 	indexerConnMutex.Lock()
 	if indexerConn == nil {
@@ -117,7 +119,7 @@ func InsertIndexer(r record.Record) {
 		var err error
 		indexerConnMutex.Lock()
 		if indexerConn != nil {
-			_, err = indexerConn.Write(append(append(b, lidBytes...), buf.Bytes()...))
+			_, err = indexerConn.Write(append(append(append(b, lidBytes...), seedBytes...), buf.Bytes()...))
 		} else {
 			err = errors.New("indexerConn == nil")
 		}

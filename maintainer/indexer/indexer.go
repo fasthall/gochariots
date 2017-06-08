@@ -10,21 +10,61 @@ import (
 	"io"
 	"log"
 	"net"
-	"strconv"
 	"sync"
 
 	"github.com/fasthall/gochariots/info"
+	"github.com/fasthall/gochariots/misc/connection"
 )
 
-var indexMutex sync.Mutex
-var indexes = make(map[uint64][]int)
+var indexes IndexTable
 var Subscriber net.Conn
 
-func InitIndexer(p string) {
-
+type Query struct {
+	Hash uint64
+	Seed uint64
 }
 
-func TagToHash(key, value string) uint64 {
+type IndexTableEntry struct {
+	LId  int
+	Seed uint64
+}
+
+type IndexTable struct {
+	table map[uint64][]IndexTableEntry
+	mutex sync.Mutex
+}
+
+func NewIndexTable() IndexTable {
+	index := IndexTable{
+		table: map[uint64][]IndexTableEntry{},
+	}
+	return index
+}
+
+func (it IndexTable) Insert(key, value string, lid int, seed uint64) {
+	hash := tagToHash(key, value)
+	it.mutex.Lock()
+	it.table[hash] = append(it.table[hash], IndexTableEntry{
+		LId:  lid,
+		Seed: seed,
+	})
+	it.mutex.Unlock()
+}
+
+func (it IndexTable) Get(key, value string) []IndexTableEntry {
+	hash := tagToHash(key, value)
+	return it.table[hash]
+}
+
+func (it IndexTable) GetByHash(hash uint64) []IndexTableEntry {
+	return it.table[hash]
+}
+
+func InitIndexer(p string) {
+	indexes = NewIndexTable()
+}
+
+func tagToHash(key, value string) uint64 {
 	hash := fnv.New64a()
 	hash.Write([]byte(key + ":" + value))
 	return hash.Sum64()
@@ -36,164 +76,85 @@ func ToHash(b []byte) uint64 {
 	return hash.Sum64()
 }
 
-func Insert(key, value string, LId int) {
-	h := ToHash([]byte(key + ":" + value))
-	indexMutex.Lock()
-	indexes[h] = append(indexes[h], LId)
-	indexMutex.Unlock()
-	notify(h, LId)
-}
-
-func GetByTag(key, value string) []int {
-	h := ToHash([]byte(key + ":" + value))
-	indexMutex.Lock()
-	result := indexes[h]
-	indexMutex.Unlock()
-	return result
-}
-
-func GetByTags(tags map[string]string) []int {
-	result := map[int]int{}
-	for key, value := range tags {
-		tmp := GetByTag(key, value)
-		for _, tmpv := range tmp {
-			result[tmpv]++
-		}
-	}
+func getLIdByTag(key, value string) []int {
+	result := indexes.Get(key, value)
 	ans := []int{}
-	for k, v := range result {
-		if v == len(tags) {
-			ans = append(ans, k)
-		}
+	for _, r := range result {
+		ans = append(ans, r.LId)
 	}
 	return ans
 }
 
-func notify(hash uint64, LId int) {
-	if Subscriber != nil {
-		payload := map[string]string{"hash": fmt.Sprint(hash), "LId": strconv.Itoa(LId)}
-		bytes, err := json.Marshal(payload)
-		if err != nil {
-			log.Println(err)
-		}
-		_, err = Subscriber.Write(append(bytes, byte('\n')))
-		if err != nil {
-			log.Println(err)
-		}
+func getLIdByTags(tags map[string]string) []int {
+	ans := []int{}
+	for k, v := range tags {
+		ans = append(ans, getLIdByTag(k, v)...)
 	}
+	return ans
+}
+
+func getLIdByHash(hash uint64) []int {
+	result := indexes.GetByHash(hash)
+	ans := []int{}
+	for _, r := range result {
+		ans = append(ans, r.LId)
+	}
+	return ans
 }
 
 // HandleRequest handles incoming connection
 func HandleRequest(conn net.Conn) {
-	lenbuf := make([]byte, 4)
 	buf := make([]byte, 1024*1024*32)
 	for {
-		remain := 4
-		head := 0
-		for remain > 0 {
-			l, err := conn.Read(lenbuf[head : head+remain])
-			if err == io.EOF {
-				return
-			} else if err != nil {
-				log.Println(info.GetName(), "couldn't read incoming request")
-				log.Println(info.GetName(), err)
-				break
-			} else {
-				remain -= l
-				head += l
-			}
-		}
-		if remain != 0 {
-			log.Println(info.GetName(), "couldn't read incoming request length")
+		totalLength, err := connection.Read(conn, &buf)
+		if err == io.EOF {
+			return
+		} else if err != nil {
+			log.Println(info.GetName(), "couldn't read incoming request")
+			log.Println(info.GetName(), err)
 			break
 		}
-		totalLength := int(binary.BigEndian.Uint32(lenbuf))
-		if totalLength > cap(buf) {
-			log.Println(info.GetName(), "buffer is not large enough, allocate more", totalLength)
-			buf = make([]byte, totalLength)
-		}
-		remain = totalLength
-		head = 0
-		for remain > 0 {
-			l, err := conn.Read(buf[head : head+remain])
-			if err == io.EOF {
-				return
-			} else if err != nil {
-				log.Println(info.GetName(), "couldn't read incoming request")
+		if buf[0] == 'q' { // query from queue
+			var query []Query
+			dec := gob.NewDecoder(bytes.NewBuffer(buf[1:totalLength]))
+			err = dec.Decode(&query)
+			if err != nil {
+				log.Println(info.GetName(), "couldn't decode query")
 				log.Println(info.GetName(), err)
 				break
-			} else {
-				remain -= l
-				head += l
 			}
-		}
-		if remain != 0 {
-			log.Println(info.GetName(), "couldn't read incoming request", remain)
-			break
-		}
-		if buf[0] == 'i' { // get LId by tags
-			var tags map[string]string
-			err := json.Unmarshal(buf[1:totalLength], &tags)
-			if err != nil {
-				log.Println(info.GetName(), "couldn't unmarshal tags:", string(buf[1:totalLength]))
-				log.Panicln(err)
+			ans := make([]bool, len(query))
+			for i, q := range query {
+				for _, s := range indexes.GetByHash(q.Hash) {
+					if s.Seed == q.Seed {
+						ans[i] = true
+						break
+					}
+				}
 			}
-			lids := GetByTags(tags)
-			tmp, err := json.Marshal(lids)
+			var tmp bytes.Buffer
+			enc := gob.NewEncoder(&tmp)
+			err := enc.Encode(ans)
 			if err != nil {
-				tmp = []byte(fmt.Sprintln(err))
+				log.Println(info.GetName(), "couldn't encode answer boolean slice")
+				log.Println(info.GetName(), err)
+				break
 			}
 			b := make([]byte, 4)
-			binary.BigEndian.PutUint32(b, uint32(len(tmp)))
-			conn.Write(append(b, tmp...))
+			binary.BigEndian.PutUint32(b, uint32(len(tmp.Bytes())))
+			conn.Write(append(b, tmp.Bytes()...))
 		} else if buf[0] == 't' { // insert tags into hash table
 			lid := int(binary.BigEndian.Uint32(buf[1:5]))
+			seed := binary.BigEndian.Uint64(buf[5:13])
 			var tags map[string]string
-			dec := gob.NewDecoder(bytes.NewBuffer(buf[5:totalLength]))
+			dec := gob.NewDecoder(bytes.NewBuffer(buf[13:totalLength]))
 			err := dec.Decode(&tags)
 			if err != nil {
 				log.Println(info.GetName(), "couldn't decode tags")
 				log.Panicln(err)
 			}
 			for key, value := range tags {
-				Insert(key, value, lid)
-			}
-		} else if buf[0] == 'h' { // get LIds by hash
-			hash := binary.BigEndian.Uint64(buf[1:9])
-			indexMutex.Lock()
-			lids := indexes[hash]
-			indexMutex.Unlock()
-			tmp, err := json.Marshal(lids)
-			b := make([]byte, 4)
-			binary.BigEndian.PutUint32(b, uint32(len(tmp)))
-			if err != nil {
-				conn.Write([]byte(fmt.Sprintln(err)))
-			} else {
-				conn.Write(append(b, tmp...))
-			}
-		} else if buf[0] == 'H' { // get LIds by hash
-			var hash []uint64
-			err := json.Unmarshal(buf[1:totalLength], &hash)
-			if err != nil {
-				log.Println(info.GetName(), "couldn't unmarshal hash:", string(buf[1:totalLength]))
-				log.Panicln(err)
-			}
-			result := make([]bool, len(hash))
-			indexMutex.Lock()
-			for i, h := range hash {
-				if len(indexes[h]) > 0 {
-					result[i] = true
-				}
-			}
-			indexMutex.Unlock()
-			tmp, err := json.Marshal(result)
-			b := make([]byte, 4)
-			binary.BigEndian.PutUint32(b, uint32(len(tmp)))
-			if err != nil {
-				log.Println(err)
-				conn.Write([]byte(fmt.Sprintln(err)))
-			} else {
-				conn.Write(append(b, tmp...))
+				indexes.Insert(key, value, lid, seed)
 			}
 		} else if buf[0] == 'g' { // get LIds by tags
 			var tags map[string]string
@@ -202,7 +163,7 @@ func HandleRequest(conn net.Conn) {
 				log.Println(info.GetName(), "couldn't unmarshal tags:", string(buf[1:totalLength]))
 				log.Panicln(err)
 			}
-			lids := GetByTags(tags)
+			lids := getLIdByTags(tags)
 			b, err := json.Marshal(lids)
 			if err != nil {
 				conn.Write([]byte(fmt.Sprintln(err)))

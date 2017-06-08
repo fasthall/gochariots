@@ -19,7 +19,7 @@ type Record struct {
 	LId       int
 	Tags      map[string]string
 	Pre       Causality
-	Seed      int64
+	Seed      uint64
 }
 
 // Causality structure is used in Record structure. It shows the record which should present before.

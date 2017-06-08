@@ -68,6 +68,7 @@ func postRecord(c *gin.Context) {
 		Pre: record.Causality{
 			Hash: jsonRecord.PreHash,
 		},
+		Seed: jsonRecord.Seed,
 	}
 	jsonBytes, err := record.ToJSON(r)
 	if err != nil {
