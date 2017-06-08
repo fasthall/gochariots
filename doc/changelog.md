@@ -1,3 +1,14 @@
+# June
+
+## June 8, 2017
+### Compare the performance between carrying v.s. not carrying deferred records with token
+Not carrying deferred records with token may cause additional delay, but it's negligible. See [0606.md](experiment/0606.md).
+
+### Use hash and seed to describe causal dependency
+A record now has Seed and Hash field. Seed is a randomly generated 64 bits number, or application can give it context and manually assign it to the record. All the events(records) in the same event chain will share an identical seed. Hash is used to specify causal dependency(see changelog of May 15), and serves as the key of indexer.
+
+When a record is stored in maintainer, indexer will hash the content and use the hash as key to store record's seed as value. Now, the deferred record can query indexer whether its prerequisite has been indexed.
+
 # May
 
 ## May 18, 2017
