@@ -3,11 +3,11 @@ package info
 import (
 	"encoding/binary"
 	"encoding/json"
-	"log"
 	"net"
 	"net/http"
 	"strconv"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/gin-gonic/gin"
 )
 
@@ -53,24 +53,24 @@ func addFilter(c *gin.Context) {
 	for i, host := range batchers {
 		conn, err := net.Dial("tcp", host)
 		if err != nil {
-			log.Printf("%s couldn't connect to batchers[%d] %s\n", GetName(), i, host)
-			log.Panicln(GetName(), "failing to update cluster may cause unexpected error")
+			logrus.WithField("id", i).Error("couldn't connect to batcher")
+			panic("failing to update cluster may cause unexpected error")
 		}
 		defer conn.Close()
 		jsonBytes, err := json.Marshal(filters)
 		if err != nil {
-			log.Println(GetName(), "couldn't convert filter list to bytes:", filters)
-			log.Panicln(GetName(), "failing to update cluster may cause unexpected error")
+			logrus.WithField("filters", filters).Error("couldn't convert filter list to bytes")
+			panic("failing to update cluster may cause unexpected error")
 		}
 		b := make([]byte, 5)
 		b[4] = byte('f')
 		binary.BigEndian.PutUint32(b, uint32(len(jsonBytes)+1))
 		_, err = conn.Write(append(b, jsonBytes...))
 		if err != nil {
-			log.Printf("%s couldn't send filter list to batchers[%d] %s", GetName(), i, host)
-			log.Panicln(GetName(), "failing to update cluster may cause unexpected error")
+			logrus.WithField("id", i).Error("couldn't send filter list to batcher")
+			panic("failing to update cluster may cause unexpected error")
 		}
-		log.Printf("%s successfully informs batchers[%d] about filter list %s\n", GetName(), i, filters)
+		logrus.WithFields(logrus.Fields{"id": i, "filters": filters}).Info("successfully informs batcher about filter list")
 	}
 }
 
@@ -87,8 +87,8 @@ func addQueue(c *gin.Context) {
 	for i, host := range queues {
 		conn, err := net.Dial("tcp", host)
 		if err != nil {
-			log.Printf("%s couldn't connect to queues[%d] %s\n", GetName(), i, host)
-			log.Panicln(GetName(), "failing to update cluster may cause unexpected error")
+			logrus.WithField("id", i).Error("couldn't connect to queue")
+			panic("failing to update cluster may cause unexpected error")
 		}
 		defer conn.Close()
 		b := make([]byte, 5)
@@ -96,17 +96,17 @@ func addQueue(c *gin.Context) {
 		binary.BigEndian.PutUint32(b, uint32(len(queues[(i+1)%len(queues)])+1))
 		_, err = conn.Write(append(b, []byte(queues[(i+1)%len(queues)])...))
 		if err != nil {
-			log.Printf("%s couldn't send next queue host to queues[%d] %s", GetName(), i, host)
-			log.Panicln(GetName(), "failing to update cluster may cause unexpected error")
+			logrus.WithField("id", i).Error("couldn't send next queue host")
+			panic("failing to update cluster may cause unexpected error")
 		}
-		log.Printf("%s successfully informs queues[%d] about next queue host %s\n", GetName(), i, queues[(i+1)%len(queues)])
+		logrus.WithFields(logrus.Fields{"id": i, "queue": queues[(i+1)%len(queues)]}).Info("successfully informs queue about next queue host")
 	}
 	// update filter about queues
 	for i, host := range filters {
 		conn, err := net.Dial("tcp", host)
 		if err != nil {
-			log.Printf("%s couldn't connect to filters[%d] %s\n", GetName(), i, host)
-			log.Panicln(GetName(), "failing to update cluster may cause unexpected error")
+			logrus.WithField("id", i).Error("couldn't connect to filter")
+			panic("failing to update cluster may cause unexpected error")
 		}
 		defer conn.Close()
 		b := make([]byte, 5)
@@ -114,16 +114,16 @@ func addQueue(c *gin.Context) {
 		binary.BigEndian.PutUint32(b, uint32(len(c.Query("host"))+1))
 		_, err = conn.Write(append(b, []byte(c.Query("host"))...))
 		if err != nil {
-			log.Printf("%s couldn't send new queue host to filters[%d] %s", GetName(), i, host)
-			log.Panicln(GetName(), "failing to update cluster may cause unexpected error")
+			logrus.WithField("id", i).Error("couldn't send new queue host")
+			panic("failing to update cluster may cause unexpected error")
 		}
-		log.Printf("%s successfully informs filters[%d] about new queue host %s\n", GetName(), i, c.Query("host"))
+		logrus.WithFields(logrus.Fields{"id": i, "host": c.Query("host")}).Info("successfully informs filter about new queue host")
 	}
 	// update queues' maintainer list
 	conn, err := net.Dial("tcp", c.Query("host"))
 	if err != nil {
-		log.Println(GetName(), "couldn't connect to queue", c.Query("host"))
-		log.Panicln(GetName(), "failing to update cluster may cause unexpected error")
+		logrus.WithField("host", c.Query("host")).Error("couldn't connect to queue")
+		panic("failing to update cluster may cause unexpected error")
 	}
 	defer conn.Close()
 	jsonBytes, err := json.Marshal(maintainers)
@@ -132,10 +132,10 @@ func addQueue(c *gin.Context) {
 	binary.BigEndian.PutUint32(b, uint32(len(jsonBytes)+1))
 	_, err = conn.Write(append(b, jsonBytes...))
 	if err != nil {
-		log.Printf("%s couldn't send maintainer list to new queue %s", GetName(), c.Query("host"))
-		log.Panicln(GetName(), "failing to update cluster may cause unexpected error")
+		logrus.WithField("host", c.Query("host")).Error("couldn't send maintainer list to new queue")
+		panic("failing to update cluster may cause unexpected error")
 	}
-	log.Printf("%s successfully informs new queue about maintainer list %s\n", GetName(), maintainers)
+	logrus.WithField("maintainers", maintainers).Info("successfully informs new queue about maintainer list")
 }
 
 func getQueues(c *gin.Context) {
@@ -154,24 +154,24 @@ func addMaintainer(c *gin.Context) {
 
 	conn, err := net.Dial("tcp", c.Query("host"))
 	if err != nil {
-		log.Printf("%s couldn't connect to maintainer %s\n", GetName(), c.Query("host"))
-		log.Panicln(GetName(), "failing to update cluster may cause unexpected error")
+		logrus.WithField("host", c.Query("host")).Error("couldn't connect to maintainer")
+		panic("failing to update cluster may cause unexpected error")
 	}
 	b := make([]byte, 5)
 	b[4] = byte('i')
 	binary.BigEndian.PutUint32(b, uint32(len(c.Query("indexer"))+1))
 	_, err = conn.Write(append(b, []byte(c.Query("indexer"))...))
 	if err != nil {
-		log.Printf("%s couldn't notify maintainer %s its indexer %s", GetName(), c.Query("host"), c.Query("indexer"))
-		log.Panicln(GetName(), "failing to update cluster may cause unexpected error")
+		logrus.WithFields(logrus.Fields{"maintainer": c.Query("host"), "indexer": c.Query("indexer")}).Error("couldn't notify maintainer its indexer")
+		panic("failing to update cluster may cause unexpected error")
 	}
 	conn.Close()
 	// update queues' maintainer list
 	for i, host := range queues {
 		conn, err := net.Dial("tcp", host)
 		if err != nil {
-			log.Printf("%s couldn't connect to queues[%d] %s\n", GetName(), i, host)
-			log.Panicln(GetName(), "failing to update cluster may cause unexpected error")
+			logrus.WithField("id", i).Error("couldn't connect to queue")
+			panic("failing to update cluster may cause unexpected error")
 		}
 		defer conn.Close()
 		jsonBytes, err := json.Marshal(maintainers)
@@ -180,17 +180,17 @@ func addMaintainer(c *gin.Context) {
 		binary.BigEndian.PutUint32(b, uint32(len(jsonBytes)+1))
 		_, err = conn.Write(append(b, jsonBytes...))
 		if err != nil {
-			log.Printf("%s couldn't send maintainer list to queues[%d] %s", GetName(), i, host)
-			log.Panicln(GetName(), "failing to update cluster may cause unexpected error")
+			logrus.WithField("id", i).Error("couldn't send maintainer list to queue")
+			panic("failing to update cluster may cause unexpected error")
 		}
-		log.Printf("%s successfully informs queues about maintainer list %s\n", GetName(), maintainers)
+		logrus.WithField("maintainers", maintainers).Info("successfully informs queues about maintainer list")
 	}
 	// update queues' indexer list
 	for i, host := range queues {
 		conn, err := net.Dial("tcp", host)
 		if err != nil {
-			log.Printf("%s couldn't connect to queues[%d] %s\n", GetName(), i, host)
-			log.Panicln(GetName(), "failing to update cluster may cause unexpected error")
+			logrus.WithField("id", i).Error("couldn't connect to queue")
+			panic("failing to update cluster may cause unexpected error")
 		}
 		defer conn.Close()
 		jsonBytes, err := json.Marshal(indexers)
@@ -199,10 +199,10 @@ func addMaintainer(c *gin.Context) {
 		binary.BigEndian.PutUint32(b, uint32(len(jsonBytes)+1))
 		_, err = conn.Write(append(b, jsonBytes...))
 		if err != nil {
-			log.Printf("%s couldn't send indexer list to queues[%d] %s", GetName(), i, host)
-			log.Panicln(GetName(), "failing to update cluster may cause unexpected error")
+			logrus.WithField("id", i).Error("couldn't send indexer list to queue")
+			panic("failing to update cluster may cause unexpected error")
 		}
-		log.Printf("%s successfully informs queues about indexer list %s\n", GetName(), indexers)
+		logrus.WithField("indexers", indexers).Info("successfully informs queues about indexer list")
 	}
 	c.String(http.StatusOK, c.Query("host")+" added\n")
 }
@@ -216,7 +216,8 @@ func getMaintainers(c *gin.Context) {
 func addRemoteBatcher(c *gin.Context) {
 	dc, err := strconv.Atoi(c.Query("dc"))
 	if err != nil {
-		log.Println(GetName(), "received invalid parameter:", c.Query("dc"))
+		logrus.WithField("parameter", c.Query("dc")).Warning("received invalid parameter")
+		c.String(http.StatusBadRequest, "invalid parameter")
 		return
 	}
 	for len(remoteBatcher) <= dc {
@@ -226,8 +227,8 @@ func addRemoteBatcher(c *gin.Context) {
 	for i, host := range maintainers {
 		conn, err := net.Dial("tcp", host)
 		if err != nil {
-			log.Printf("%s couldn't connect to maintainers[%d] %s\n", GetName(), i, host)
-			log.Panicln(GetName(), "failing to update cluster may cause unexpected error")
+			logrus.WithField("id", i).Error("couldn't connect to maintainer")
+			panic("failing to update cluster may cause unexpected error")
 		}
 		defer conn.Close()
 		jsonBytes, err := json.Marshal(remoteBatcher)
@@ -236,10 +237,10 @@ func addRemoteBatcher(c *gin.Context) {
 		binary.BigEndian.PutUint32(b, uint32(len(jsonBytes)+1))
 		_, err = conn.Write(append(b, jsonBytes...))
 		if err != nil {
-			log.Printf("%s couldn't send remoteBatcher to maintainers[%d] %s", GetName(), i, host)
-			log.Panicln(GetName(), "failing to update cluster may cause unexpected error")
+			logrus.WithField("id", i).Error("couldn't send remoteBatcher to maintainer")
+			panic("failing to update cluster may cause unexpected error")
 		}
-		log.Printf("%s successfully informs maintainers[%d] about new remote batchers %s\n", GetName(), i, remoteBatcher)
+		logrus.WithField("batchers", remoteBatcher).Info("successfully informs maintainers about new remote batchers")
 	}
 	c.String(http.StatusOK, "remoteBatcher["+c.Query("dc")+"] = "+c.Query("host")+" updated\n")
 }

@@ -7,12 +7,12 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
-	"log"
 	"math/rand"
 	"net"
 	"sync"
+	"time"
 
-	"github.com/fasthall/gochariots/info"
+	"github.com/Sirupsen/logrus"
 	"github.com/fasthall/gochariots/misc/connection"
 	"github.com/fasthall/gochariots/record"
 )
@@ -51,7 +51,7 @@ func dialConn(queueID int) error {
 }
 
 func sendToQueue(records []record.Record) {
-	// info.LogTimestamp("sendToQueue")
+	logrus.WithField("timestamp", time.Now()).Info("sendToQueue")
 	bytes, err := record.ToGobArray(records)
 	if err != nil {
 		panic(err)
@@ -64,9 +64,9 @@ func sendToQueue(records []record.Record) {
 	if queueConn[queueID] == nil {
 		err = dialConn(queueID)
 		if err != nil {
-			log.Printf("%s couldn't connect to queuePool[%d] %s\n", info.GetName(), queueID, queuePool[queueID])
+			logrus.WithField("id", queueID).Error("couldn't connect to queue")
 		} else {
-			log.Printf("%s is connected to queuePool[%d] %s\n", info.GetName(), queueID, queuePool[queueID])
+			logrus.WithField("id", queueID).Info("connected to queue")
 		}
 	}
 	connMutex.Unlock()
@@ -87,15 +87,17 @@ func sendToQueue(records []record.Record) {
 				cnt--
 				err = dialConn(queueID)
 				if err != nil {
-					log.Printf("%s couldn't connect to queuePool[%d] %s, retrying...\n", info.GetName(), queueID, queuePool[queueID])
+					logrus.WithField("attempt", cnt).Warning("couldn't connect to queue, retrying...")
+				} else {
+					logrus.WithField("id", queueID).Info("connected to queue")
 				}
 			} else {
-				log.Printf("%s failed to connect to queuePool[%d] %s after retrying 5 times\n", info.GetName(), queueID, queuePool[queueID])
+				logrus.WithField("id", queueID).Error("failed to connect to the queue after retrying 5 times")
 				break
 			}
 		} else {
 			sent = true
-			// log.Printf("%s sent to queuePool[%d] %s\n", info.GetName(), queueID, queuePool[queueID])
+			logrus.WithField("id", queueID).Info("sent to queue")
 		}
 	}
 }
@@ -108,8 +110,7 @@ func HandleRequest(conn net.Conn) {
 		if err == io.EOF {
 			return
 		} else if err != nil {
-			log.Println(info.GetName(), "couldn't read incoming request")
-			log.Println(info.GetName(), err)
+			logrus.WithError(err).Error("couldn't read incoming request")
 			break
 		}
 		if buf[0] == 'r' { // received records
@@ -118,16 +119,18 @@ func HandleRequest(conn net.Conn) {
 			records := []record.Record{}
 			err := record.GobToRecordArray(buf[1:totalLength], &records)
 			if err != nil {
-				log.Println(info.GetName(), "couldn't convert buffer to record:", string(buf[1:totalLength]))
+				logrus.WithField("buffer", string(buf[1:totalLength])).Error("couldn't convert read buffer to record")
 				continue
 			}
-			// log.Println(info.GetName(), "received incoming records:", records)
+			logrus.WithField("records", records).Info("received incoming record")
 			arrival(records)
 			// log.Printf("TIMESTAMP %s:HandleRequest took %s\n", info.GetName(), time.Since(start))
 		} else if buf[0] == 'q' { // received queue hosts
 			queuePool = append(queuePool, string(buf[1:totalLength]))
 			queueConn = make([]net.Conn, len(queuePool))
-			log.Println(info.GetName(), "received new queue update:", string(buf[1:totalLength]))
+			logrus.WithField("queue", string(buf[1:totalLength])).Info("received new queue update")
+		} else {
+			logrus.WithField("header", buf[0]).Warning("couldn't understand request")
 		}
 	}
 }

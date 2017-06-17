@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"os"
 	"path/filepath"
@@ -16,6 +15,7 @@ import (
 
 	"sync"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/misc/connection"
 	"github.com/fasthall/gochariots/record"
@@ -39,13 +39,12 @@ func InitLogMaintainer(p string) {
 	LastLId = 0
 	err := os.MkdirAll(path, os.ModePerm)
 	if err != nil {
-		log.Println(info.GetName(), "couldn't access path", path)
-		log.Panicln(err)
+		logrus.WithField("path", path).Error("couldn't access path")
 	}
 	f, err = os.Create(filepath.Join(path, p))
 	if err != nil {
-		log.Println(info.GetName(), "couldn't create file", p)
-		log.Panicln(err)
+		logrus.WithField("path", p).Error("couldn't create file")
+		panic(err)
 	}
 }
 
@@ -57,13 +56,13 @@ func dialConn() error {
 
 // Append appends a new record to the maintainer.
 func Append(r record.Record) error {
-	// info.LogTimestamp("Append")
+	logrus.WithField("timestamp", time.Now()).Info("Append")
 	r.Timestamp = time.Now().UnixNano()
 	if LogRecordNth > 0 {
 		if r.LId == 1 {
 			logFirstTime = time.Now()
 		} else if r.LId == LogRecordNth {
-			log.Println("Appending", LogRecordNth, "records took", time.Since(logFirstTime))
+			logrus.WithField("duration", time.Since(logFirstTime)).Info("appended", LogRecordNth, "records")
 		}
 	}
 	b, err := record.ToJSON(r)
@@ -96,7 +95,7 @@ func InsertIndexer(r record.Record) {
 	enc := gob.NewEncoder(&buf)
 	err := enc.Encode(r.Tags)
 	if err != nil {
-		log.Println(info.GetName(), "couldn't encode tags")
+		logrus.WithField("tags", r.Tags).Error("couldn't encode tags")
 		return
 	}
 	b := make([]byte, 5)
@@ -107,9 +106,9 @@ func InsertIndexer(r record.Record) {
 	if indexerConn == nil {
 		err := dialConn()
 		if err != nil {
-			log.Printf("%s couldn't connect to indexerHost %s\n", info.GetName(), indexerHost)
+			logrus.WithField("host", indexerHost).Error("couldn't connect to indexer")
 		} else {
-			log.Printf("%s is connected to indexerHost %s\n", info.GetName(), indexerHost)
+			logrus.WithField("host", indexerHost).Info("connected to indexer")
 		}
 	}
 	indexerConnMutex.Unlock()
@@ -129,10 +128,12 @@ func InsertIndexer(r record.Record) {
 				cnt--
 				err = dialConn()
 				if err != nil {
-					log.Printf("%s couldn't connect to indexerHost %s, retrying...\n", info.GetName(), indexerHost)
+					logrus.WithField("attempt", cnt).Warning("couldn't connect to indexer, retrying...")
+				} else {
+					logrus.WithField("host", indexerHost).Info("connected to indexer")
 				}
 			} else {
-				log.Printf("%s failed to connect to indexerHost %s after retrying 5 times\n", info.GetName(), indexerHost)
+				logrus.WithField("host", indexerHost).Error("failed to connect to indexer after retrying 5 times")
 				break
 			}
 		} else {
@@ -177,7 +178,7 @@ func recordsArrival(records []record.Record) {
 	for _, record := range records {
 		err := Append(record)
 		if err != nil {
-			log.Println(info.GetName(), "couldn't append the record to the store")
+			logrus.WithError(err).Error("couldn't append the record to the store")
 		}
 	}
 }
@@ -190,26 +191,26 @@ func HandleRequest(conn net.Conn) {
 		if err == io.EOF {
 			return
 		} else if err != nil {
-			log.Println(info.GetName(), "couldn't read incoming request")
-			log.Println(info.GetName(), err)
+			logrus.WithError(err).Error("couldn't read incoming request")
 			break
 		}
 		if buf[0] == 'b' { // received remote batchers update
 			var batchers []string
 			err := json.Unmarshal(buf[1:totalLength], &batchers)
-			remoteBatchers = batchers
-			remoteBatchersConn = make([]net.Conn, len(remoteBatchers))
 			if err != nil {
-				log.Println(info.GetName(), "couldn't convert received bytes to string list:", string(buf[1:totalLength]))
-				log.Panicln(err)
+				logrus.WithField("buffer", string(buf[1:totalLength])).Error("couldn't convert read buffer to batcher list")
+				panic(err)
+			} else {
+				remoteBatchers = batchers
+				remoteBatchersConn = make([]net.Conn, len(remoteBatchers))
+				logrus.WithField("batchers", remoteBatchers).Info("received remote batchers update")
 			}
-			log.Println(info.GetName(), "received remote batchers update:", remoteBatchers)
 		} else if buf[0] == 'r' { // received records from queue
 			// info.LogTimestamp("HandleRequest")
 			records := []record.Record{}
 			err := record.GobToRecordArray(buf[1:totalLength], &records)
 			if err != nil {
-				log.Println(info.GetName(), "couldn't convert received bytes to records:", string(buf[1:totalLength]))
+				logrus.WithField("buffer", string(buf[1:totalLength])).Error("couldn't convert read buffer to records")
 			}
 			// log.Println(info.GetName(), "received records:", records)
 			recordsArrival(records)
@@ -221,7 +222,7 @@ func HandleRequest(conn net.Conn) {
 			} else {
 				b, err := json.Marshal(r)
 				if err != nil {
-					log.Println(info.GetName(), "couldn't convert record to bytes", r)
+					logrus.WithField("record", r).Error("couldn't convert record to bytes")
 					conn.Write([]byte(fmt.Sprint(err)))
 				} else {
 					conn.Write(b)
@@ -233,9 +234,9 @@ func HandleRequest(conn net.Conn) {
 				indexerConn.Close()
 				indexerConn = nil
 			}
-			log.Println(info.GetName(), "updates indexer host to:", indexerHost)
+			logrus.WithField("host", indexerHost).Info("updates indexer host")
 		} else {
-			log.Println(info.GetName(), "couldn't understand", string(buf))
+			logrus.WithField("header", buf[0]).Warning("couldn't understand request")
 		}
 	}
 }

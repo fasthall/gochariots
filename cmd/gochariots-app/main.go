@@ -1,8 +1,8 @@
 package main
 
 import (
+	"flag"
 	"fmt"
-	"os"
 	"strconv"
 
 	"github.com/fasthall/gochariots/app"
@@ -10,22 +10,24 @@ import (
 )
 
 func main() {
-	if len(os.Args) < 4 {
+	v := flag.Bool("v", false, "Turn on all logging")
+	flag.Parse()
+	if len(flag.Args()) < 3 {
 		fmt.Println("Usage: gochariots-app port num_dc dc_id")
 		return
 	}
-	numDc, err := strconv.Atoi(os.Args[2])
+	numDc, err := strconv.Atoi(flag.Arg(1))
 	if err != nil {
 		fmt.Println("Usage: gochariots-app port num_dc dc_id")
 		return
 	}
-	dcID, err := strconv.Atoi(os.Args[3])
+	dcID, err := strconv.Atoi(flag.Arg(2))
 	if err != nil {
 		fmt.Println("Usage: gochariots-app port num_dc dc_id")
 		return
 	}
 	info.InitChariots(numDc, dcID)
-	info.SetName("app" + os.Args[1])
-	info.RedirectLog(info.GetName() + ".log")
-	app.Run(os.Args[1])
+	info.SetName("app" + flag.Arg(0))
+	info.RedirectLog(info.GetName()+".log", *v)
+	app.Run(flag.Arg(0))
 }
