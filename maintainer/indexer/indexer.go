@@ -8,12 +8,11 @@ import (
 	"fmt"
 	"hash/fnv"
 	"io"
-	"log"
 	"net"
 	"strconv"
 	"sync"
 
-	"github.com/fasthall/gochariots/info"
+	"github.com/Sirupsen/logrus"
 )
 
 var indexMutex sync.Mutex
@@ -74,11 +73,12 @@ func notify(hash uint64, LId int) {
 		payload := map[string]string{"hash": fmt.Sprint(hash), "LId": strconv.Itoa(LId)}
 		bytes, err := json.Marshal(payload)
 		if err != nil {
-			log.Println(err)
+			logrus.WithField("payload", payload).Error("couldn't encode notification")
+			return
 		}
 		_, err = Subscriber.Write(append(bytes, byte('\n')))
 		if err != nil {
-			log.Println(err)
+			logrus.WithError(err).Error("couldn't send notification")
 		}
 	}
 }
@@ -91,7 +91,7 @@ func notifyTOId(TOId int, hash uint64) {
 		binary.BigEndian.PutUint64(hashBytes, hash)
 		_, err := Subscriber.Write(append(toidBytes, hashBytes...))
 		if err != nil {
-			log.Println(err)
+			logrus.WithError(err).Error("couldn't send notification")
 		}
 	}
 }
@@ -108,8 +108,7 @@ func HandleRequest(conn net.Conn) {
 			if err == io.EOF {
 				return
 			} else if err != nil {
-				log.Println(info.GetName(), "couldn't read incoming request")
-				log.Println(info.GetName(), err)
+				logrus.WithError(err).Error("couldn't read incoming request")
 				break
 			} else {
 				remain -= l
@@ -117,12 +116,12 @@ func HandleRequest(conn net.Conn) {
 			}
 		}
 		if remain != 0 {
-			log.Println(info.GetName(), "couldn't read incoming request length")
+			logrus.WithField("remain", remain).Error("couldn't read incoming request length")
 			break
 		}
 		totalLength := int(binary.BigEndian.Uint32(lenbuf))
 		if totalLength > cap(buf) {
-			log.Println(info.GetName(), "buffer is not large enough, allocate more", totalLength)
+			logrus.WithFields(logrus.Fields{"old": cap(buf), "new": totalLength}).Warning("buffer is not large enough, allocate more")
 			buf = make([]byte, totalLength)
 		}
 		remain = totalLength
@@ -132,8 +131,7 @@ func HandleRequest(conn net.Conn) {
 			if err == io.EOF {
 				return
 			} else if err != nil {
-				log.Println(info.GetName(), "couldn't read incoming request")
-				log.Println(info.GetName(), err)
+				logrus.WithError(err).Error("couldn't read incoming request")
 				break
 			} else {
 				remain -= l
@@ -141,15 +139,15 @@ func HandleRequest(conn net.Conn) {
 			}
 		}
 		if remain != 0 {
-			log.Println(info.GetName(), "couldn't read incoming request", remain)
+			logrus.WithField("remain", remain).Error("couldn't read incoming request length")
 			break
 		}
 		if buf[0] == 'i' { // get LId by tags
 			var tags map[string]string
 			err := json.Unmarshal(buf[1:totalLength], &tags)
 			if err != nil {
-				log.Println(info.GetName(), "couldn't unmarshal tags:", string(buf[1:totalLength]))
-				log.Panicln(err)
+				logrus.WithField("buffer", string(buf[1:totalLength])).Error("couldn't unmarshal tags:")
+				panic(err)
 			}
 			lids := GetByTags(tags)
 			tmp, err := json.Marshal(lids)
@@ -166,8 +164,8 @@ func HandleRequest(conn net.Conn) {
 			dec := gob.NewDecoder(bytes.NewBuffer(buf[9:totalLength]))
 			err := dec.Decode(&tags)
 			if err != nil {
-				log.Println(info.GetName(), "couldn't decode tags")
-				log.Panicln(err)
+				logrus.WithError(err).Error("couldn't decode tags")
+				panic(err)
 			}
 			for key, value := range tags {
 				Insert(key, value, lid)
@@ -188,36 +186,12 @@ func HandleRequest(conn net.Conn) {
 			} else {
 				conn.Write(append(b, tmp...))
 			}
-		} else if buf[0] == 'H' { // get LIds by hash
-			var hash []uint64
-			err := json.Unmarshal(buf[1:totalLength], &hash)
-			if err != nil {
-				log.Println(info.GetName(), "couldn't unmarshal hash:", string(buf[1:totalLength]))
-				log.Panicln(err)
-			}
-			result := make([]bool, len(hash))
-			indexMutex.Lock()
-			for i, h := range hash {
-				if len(indexes[h]) > 0 {
-					result[i] = true
-				}
-			}
-			indexMutex.Unlock()
-			tmp, err := json.Marshal(result)
-			b := make([]byte, 4)
-			binary.BigEndian.PutUint32(b, uint32(len(tmp)))
-			if err != nil {
-				log.Println(err)
-				conn.Write([]byte(fmt.Sprintln(err)))
-			} else {
-				conn.Write(append(b, tmp...))
-			}
 		} else if buf[0] == 'g' { // get LIds by tags
 			var tags map[string]string
 			err := json.Unmarshal(buf[1:totalLength], &tags)
 			if err != nil {
-				log.Println(info.GetName(), "couldn't unmarshal tags:", string(buf[1:totalLength]))
-				log.Panicln(err)
+				logrus.WithField("buffer", string(buf[1:totalLength])).Error("couldn't unmarshal tags")
+				panic(err)
 			}
 			lids := GetByTags(tags)
 			b, err := json.Marshal(lids)
@@ -227,10 +201,10 @@ func HandleRequest(conn net.Conn) {
 				conn.Write(b)
 			}
 		} else if buf[0] == 's' {
-			log.Println(info.GetName(), "got subscription")
+			logrus.Info("got subscription")
 			Subscriber = conn
 		} else {
-			log.Println(info.GetName(), "couldn't understand", string(buf))
+			logrus.WithField("header", buf[0]).Warning("couldn't understand request")
 		}
 	}
 }

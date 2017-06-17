@@ -3,10 +3,10 @@ package maintainer
 import (
 	"encoding/binary"
 	"errors"
-	"log"
 	"net"
 	"sync"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/record"
 )
@@ -30,8 +30,8 @@ func Propagate(r record.Record) {
 			// log.Printf("%s is propagating record to remoteBatchers[%d] %s", info.GetName(), dc, host)
 			jsonBytes, err := record.ToJSON(r)
 			if err != nil {
-				log.Println(info.GetName(), "couldn't convert record to bytes:", r)
-				log.Panicln(err)
+				logrus.WithField("record", r).Error("couldn't convert record to bytes")
+				panic(err)
 			}
 			b := make([]byte, 5)
 			b[4] = byte('r')
@@ -41,9 +41,9 @@ func Propagate(r record.Record) {
 			if remoteBatchersConn[dc] == nil {
 				err = dialRemoteBatchers(dc)
 				if err != nil {
-					log.Printf("%s couldn't connect to remoteBatchers[%d] %s\n", info.GetName(), dc, host)
+					logrus.WithField("id", dc).Error("couldn't connect to batcher")
 				} else {
-					log.Printf("%s is connected to remoteBatchers[%d] %s\n", info.GetName(), dc, host)
+					logrus.WithField("id", dc).Info("connected to batcher")
 				}
 			}
 			connMutex.Unlock()
@@ -62,26 +62,17 @@ func Propagate(r record.Record) {
 						cnt--
 						err = dialRemoteBatchers(dc)
 						if err != nil {
-							log.Printf("%s couldn't connect to remoteBatchers[%d] %s, retrying\n", info.GetName(), dc, host)
+							logrus.WithField("attempt", cnt).Warning("couldn't connect to batcher, retrying...")
+						} else {
+							logrus.WithField("id", dc).Info("connected to batcher")
 						}
 					} else {
-						log.Printf("%s failed to connect to remoteBatchers[%d] %s after retrying 5 times\n", info.GetName(), dc, host)
+						logrus.WithField("id", dc).Error("failed to connect to batcher after retrying 5 times")
 						break
 					}
 				} else {
 					sent = true
-					// log.Println(string(append(b, append(jsonBytes, byte('\n'))...)))
-					// log.Println(info.GetName(), "propagates to", host, r)
-				}
-
-				if err != nil {
-					if cnt == 0 {
-						log.Printf("%s failed to propagate to remoteBatchers[%d] %s after retrying 5 times", info.GetName(), dc, host)
-						break
-					}
-					log.Printf("%s couldn't send to remoteBatchers[%d] %s\n", info.GetName(), dc, host)
-					cnt--
-					continue
+					logrus.WithField("id", dc).Info("sucessfully propagated")
 				}
 			}
 		}

@@ -3,10 +3,9 @@ package connection
 import (
 	"encoding/binary"
 	"errors"
-	"log"
 	"net"
 
-	"github.com/fasthall/gochariots/info"
+	"github.com/Sirupsen/logrus"
 )
 
 func Read(conn net.Conn, buf *[]byte) (int, error) {
@@ -27,7 +26,7 @@ func Read(conn net.Conn, buf *[]byte) (int, error) {
 	totalLength := int(binary.BigEndian.Uint32(lenbuf))
 	if totalLength > cap(*buf) {
 		*buf = make([]byte, totalLength)
-		log.Println(info.GetName(), "buffer is not large enough, allocate more", totalLength)
+		logrus.WithFields(logrus.Fields{"old": cap(*buf), "new": totalLength}).Warning("buffer is not large enough, allocate more")
 	}
 	remain = totalLength
 	head = 0

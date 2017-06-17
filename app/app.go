@@ -3,13 +3,14 @@ package app
 import (
 	"encoding/binary"
 	"errors"
-	"log"
 	"math/rand"
 	"net"
 	"net/http"
 	"strconv"
 	"sync"
+	"time"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/maintainer"
 	"github.com/fasthall/gochariots/record"
@@ -54,7 +55,7 @@ func dialConn(hostID int) error {
 }
 
 func postRecord(c *gin.Context) {
-	info.LogTimestamp("postRecord")
+	logrus.WithField("timestamp", time.Now()).Info("postRecord")
 	var jsonRecord JsonRecord
 	err := c.Bind(&jsonRecord)
 	if err != nil {
@@ -72,7 +73,7 @@ func postRecord(c *gin.Context) {
 	}
 	jsonBytes, err := record.ToJSON(r)
 	if err != nil {
-		log.Panicln(info.GetName(), "couldn't convert record to bytes")
+		logrus.WithField("timestamp", time.Now()).Error("couldn't convert record to bytes")
 		c.String(http.StatusBadRequest, "Couldn't convert record to bytes")
 		return
 	}
@@ -85,9 +86,9 @@ func postRecord(c *gin.Context) {
 	if batcherConn[hostID] == nil {
 		err = dialConn(hostID)
 		if err != nil {
-			log.Printf("%s couldn't connect to batcherPool[%d] %s\n", info.GetName(), hostID, batcherPool[hostID])
+			logrus.WithField("id", hostID).Error("couldn't connect to batcher")
 		} else {
-			log.Printf("%s is connected to batcherPool[%d] %s\n", info.GetName(), hostID, batcherPool[hostID])
+			logrus.WithField("id", hostID).Info("connected to batcher")
 		}
 	}
 	connMutex.Unlock()
@@ -101,24 +102,24 @@ func postRecord(c *gin.Context) {
 			err = errors.New("batcherConn[hostID] == nil")
 		}
 		connMutex.Unlock()
-		info.LogTimestamp("sendToBatcher")
+		logrus.WithField("timestamp", time.Now()).Info("sendToBatcher")
 		if err != nil {
 			if cnt >= 0 {
 				cnt--
 				err = dialConn(hostID)
 				if err != nil {
-					log.Printf("%s couldn't connect to the batcherPool[%d] %s, retrying...", info.GetName(), hostID, batcherPool[hostID])
+					logrus.WithField("attempt", cnt).Warning("couldn't connect to batcher, retrying...")
 				} else {
-					log.Printf("%s is connected to batcherPool[%d] %s\n", info.GetName(), hostID, batcherPool[hostID])
+					logrus.WithField("id", hostID).Info("connected to batcher")
 				}
 			} else {
-				log.Printf("%s failed to connect to the batcherPool[%d] %s after retrying 5 times", info.GetName(), hostID, batcherPool[hostID])
+				logrus.WithField("id", hostID).Error("failed to connect to the batcher after retrying 5 times")
 				c.String(http.StatusServiceUnavailable, "Couldn't connect to the batcher")
 				return
 			}
 		} else {
 			sent = true
-			log.Printf("%s sent to batcherPool[%d] %s\n", info.GetName(), hostID, batcherPool[hostID])
+			logrus.WithField("id", hostID).Info("sent record to batcher")
 		}
 	}
 	c.String(http.StatusOK, "Record posted")
@@ -145,7 +146,6 @@ func getRecord(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"LId":       r.LId,
 		"Host":      r.Host,
-		"TOId":      r.TOId,
 		"Causality": r.Pre,
 		"Tags":      r.Tags,
 	})

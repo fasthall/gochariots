@@ -7,12 +7,11 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"log"
 	"net"
 	"sync"
 	"time"
 
-	"github.com/fasthall/gochariots/info"
+	"github.com/Sirupsen/logrus"
 	"github.com/fasthall/gochariots/misc/connection"
 	"github.com/fasthall/gochariots/record"
 )
@@ -35,7 +34,7 @@ func InitBatcher(n int) {
 	}
 	filterHost = make([]string, numFilters)
 	filterConn = make([]net.Conn, numFilters)
-	log.Printf("%s is initialized with %d filter channels\n", info.GetName(), n)
+	logrus.WithField("filter number", n).Info("initialized")
 }
 
 // arrival buffers arriving records.
@@ -65,11 +64,10 @@ func sendToFilter(dc int) {
 	if len(buffer[dc]) == 0 {
 		return
 	}
-	// info.LogTimestamp("sendToFilter")
-
+	logrus.WithField("timestamp", time.Now()).Info("sendToFilter")
 	bytes, err := record.ToGobArray(buffer[dc])
 	if err != nil {
-		log.Panicln(info.GetName(), "couldn't convert buffer to records")
+		logrus.WithError(err).Error("couldn't convert buffer to records")
 	}
 	b := make([]byte, 5)
 	b[4] = byte('r')
@@ -80,9 +78,9 @@ func sendToFilter(dc int) {
 	if filterConn[dc] == nil {
 		err = dialConn(dc)
 		if err != nil {
-			log.Printf("%s couldn't connect to filterHost[%d] %s\n", info.GetName(), dc, filterHost[dc])
+			logrus.WithField("id", dc).Error("couldn't connect to filter")
 		} else {
-			log.Printf("%s is connected to filterHost[%d] %s\n", info.GetName(), dc, filterHost[dc])
+			logrus.WithField("id", dc).Info("connected to filter")
 		}
 	}
 	connMutex.Unlock()
@@ -102,15 +100,17 @@ func sendToFilter(dc int) {
 				cnt--
 				err = dialConn(dc)
 				if err != nil {
-					log.Printf("%s couldn't connect to filterHost[%d] %s, retrying...\n", info.GetName(), dc, filterHost[dc])
+					logrus.WithField("attempt", cnt).Warning("couldn't connect to filter, retrying...")
+				} else {
+					logrus.WithField("id", dc).Info("connected to filter")
 				}
 			} else {
-				log.Printf("%s failed to connect to filterHost[%d] %s after retrying 5 times\n", info.GetName(), dc, filterHost[dc])
+				logrus.WithField("id", dc).Error("failed to connect to the filter after retrying 5 times")
 				break
 			}
 		} else {
 			sent = true
-			// log.Printf("%s sent to filterHost[%d] %s\n", info.GetName(), dc, filterHost[dc])
+			logrus.WithField("id", dc).Info("sent to filter")
 		}
 	}
 }
@@ -135,30 +135,29 @@ func HandleRequest(conn net.Conn) {
 		if err == io.EOF {
 			return
 		} else if err != nil {
-			log.Println(info.GetName(), "couldn't read incoming request")
-			log.Println(info.GetName(), err)
+			logrus.WithError(err).Error("couldn't read incoming request")
 			break
 		}
 		if buf[0] == 'r' { // received records
-			// info.LogTimestamp("HandleRequest")
+			// logrus.WithField("timestamp", time.Now()).Info("HandleRequest")
 			// start := time.Now()
 			var r record.Record
 			err := record.JSONToRecord(buf[1:totalLength], &r)
 			if err != nil {
-				log.Println(info.GetName(), "couldn't convert read buffer to record:", string(buf[1:totalLength]))
+				logrus.WithField("buffer", string(buf[1:totalLength])).Error("couldn't convert read buffer to record")
 				continue
 			}
-			log.Println(info.GetName(), "received incoming record:", string(buf[1:totalLength]))
+			logrus.WithField("record", r).Info("received incoming record")
 			arrival(r)
 			// elapsed := time.Since(start)
 			// log.Printf("TIMESTAMP %s:HandleRequest took %s\n", info.GetName(), elapsed)
 		} else if buf[0] == 's' { // received records
-			// info.LogTimestamp("HandleRequest")
+			// logrus.WithField("timestamp", time.Now()).Info("HandleRequest")
 			// start := time.Now()
 			var records []record.Record
 			err := record.JSONToRecordArray(buf[1:totalLength], &records)
 			if err != nil {
-				log.Println(info.GetName(), "couldn't convert read buffer to record:", string(buf[1:totalLength]))
+				logrus.WithField("buffer", string(buf[1:totalLength])).Error("couldn't convert read buffer to record")
 				continue
 			}
 			// log.Println(info.GetName(), "received incoming record:", string(buf[1:totalLength]))
@@ -170,11 +169,13 @@ func HandleRequest(conn net.Conn) {
 		} else if buf[0] == 'f' { //received filter update
 			err := json.Unmarshal(buf[1:totalLength], &filterHost)
 			if err != nil {
-				log.Println(info.GetName(), "couldn't convert bytes to filter list:", string(buf[1:totalLength]))
+				logrus.WithField("buffer", string(buf[1:totalLength])).Error("couldn't convert bytes to filter list")
 				continue
 			} else {
-				log.Println(info.GetName(), "updates filter:", filterHost)
+				logrus.WithField("filterHost", filterHost).Info("updates filter")
 			}
+		} else {
+			logrus.WithField("header", buf[0]).Warning("couldn't understand request")
 		}
 	}
 }

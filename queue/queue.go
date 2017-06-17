@@ -6,11 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"log"
 	"net"
 	"sync"
 	"time"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/maintainer"
 	"github.com/fasthall/gochariots/misc/connection"
@@ -55,9 +55,9 @@ func InitQueue(hasToken bool) {
 		TokenArrival(token)
 	}
 	if hasToken {
-		log.Println(info.GetName(), "initialized with token")
+		logrus.WithField("token", true).Info("initialized")
 	} else {
-		log.Println(info.GetName(), "initialized without token")
+		logrus.WithField("token", false).Info("initialized")
 	}
 	indexerBuf = make([]byte, 1024*1024*32)
 }
@@ -104,7 +104,6 @@ func TokenArrival(token Token) {
 	head := 0
 	for _, r := range token.DeferredRecords {
 		if r.Host != info.ID {
-			// log.Println(r.Pre.TOId)
 			// default value of TOId is 0 so no need to check if the record has dependency or not
 			if r.TOId == token.MaxTOId[r.Host]+1 && r.Pre.TOId <= token.MaxTOId[r.Pre.Host] {
 				dispatch = append(dispatch, r)
@@ -170,8 +169,8 @@ func passToken(token *Token) {
 	} else {
 		bytes, err := json.Marshal(token)
 		if err != nil {
-			log.Println(info.GetName(), "couldn't convert token to bytes:", token)
-			log.Panicln(err)
+			logrus.WithError(err).Warning("couldn't convert token to bytes")
+			panic(err)
 		}
 		b := make([]byte, 5)
 		b[4] = byte('t')
@@ -179,9 +178,9 @@ func passToken(token *Token) {
 		if nextQueueConn == nil {
 			err = dialNextQueue()
 			if err != nil {
-				log.Printf("%s couldn't connect to the next queue %s\n", info.GetName(), nextQueueHost)
+				logrus.WithField("host", nextQueueHost).Error("couldn't connect to the next queue")
 			} else {
-				log.Printf("%s is connected to the next queue %s\n", info.GetName(), nextQueueHost)
+				logrus.WithField("host", nextQueueHost).Info("connected to the next queue")
 			}
 		}
 
@@ -199,17 +198,17 @@ func passToken(token *Token) {
 					cnt--
 					err = dialNextQueue()
 					if err != nil {
-						log.Printf("%s couldn't connect to the next queue %s\n", info.GetName(), nextQueueHost)
+						logrus.WithField("attempt", cnt).Warning("connected to the next queue, retrying")
+					} else {
+						logrus.WithField("host", nextQueueHost).Info("connected to the next queue")
 					}
 				} else {
-					log.Printf("%s failed to connect to the next queue %s after retrying 5 times\n", info.GetName(), nextQueueHost)
+					logrus.WithField("host", nextQueueHost).Error("failed to connect to the next queue after retrying 5 times")
 					break
 				}
 			} else {
 				sent = true
-				// if len(token.DeferredRecords) > 0 {
-				// 	log.Println(info.GetName(), "sent the token to", nextQueueHost)
-				// }
+				logrus.WithField("host", nextQueueHost).Info("sent the token to the next queue")
 			}
 		}
 	}
@@ -232,7 +231,7 @@ func dispatchRecords(records []record.Record, maintainerID int) {
 	// info.LogTimestamp("dispatchRecords")
 	bytes, err := record.ToGobArray(records)
 	if err != nil {
-		log.Println(info.GetName(), "couldn't convert records to bytes:", records)
+		logrus.WithField("records", records).Error("couldn't convert records to bytes")
 		return
 	}
 	b := make([]byte, 5)
@@ -242,10 +241,9 @@ func dispatchRecords(records []record.Record, maintainerID int) {
 	if logMaintainerConn[maintainerID] == nil {
 		err = dialLogMaintainer(maintainerID)
 		if err != nil {
-			log.Printf("%s couldn't connect to log maintainer %s\n", info.GetName(), logMaintainerHost)
-			log.Println(err)
+			logrus.WithField("id", maintainerID).Error("couldn't connect to log maintainer")
 		} else {
-			log.Printf("%s is connected to log maintainer %s\n", info.GetName(), logMaintainerHost)
+			logrus.WithField("id", maintainerID).Info("connected to log maintainer")
 		}
 	}
 	maintainerConnMutex.Unlock()
@@ -265,223 +263,20 @@ func dispatchRecords(records []record.Record, maintainerID int) {
 				cnt--
 				err = dialLogMaintainer(maintainerID)
 				if err != nil {
-					log.Printf("%s couldn't connect to log maintainer %s\n", info.GetName(), logMaintainerHost)
+					logrus.WithField("attempt", cnt).Warning("couldn't connect to log maintainer, retrying...")
+				} else {
+					logrus.WithField("id", maintainerID).Info("connected to log maintainer")
 				}
 			} else {
-				log.Printf("%s failed to connect to log maintainer %s after retrying 5 times\n", info.GetName(), logMaintainerHost)
+				logrus.WithField("id", maintainerID).Error("failed to connect to log maintainer after retrying 5 times")
 				break
 			}
 		} else {
 			sent = true
-			// log.Println(info.GetName(), "sent the records to", logMaintainerHost[maintainerID], string(jsonBytes))
+			logrus.WithFields(logrus.Fields{"length": len(records), "id": maintainerID}).Info("ent the records to maintainer")
 		}
 	}
 	// log.Printf("TIMESTAMP %s:record in queue %s\n", info.GetName(), time.Since(lastTime))
-}
-
-func AskIndexerByTags(tags map[string]string, indexerID int) []int {
-	tmp, err := json.Marshal(tags)
-	if err != nil {
-		log.Println(info.GetName(), "couldn't convert tags to bytes:", tags)
-		return nil
-	}
-	b := make([]byte, 5)
-	b[4] = byte('i')
-	binary.BigEndian.PutUint32(b, uint32(len(tmp)+1))
-
-	indexerConnMutex.Lock()
-	if indexerConn[indexerID] == nil {
-		err := dialIndexer(indexerID)
-		if err != nil {
-			log.Printf("%s couldn't connect to indexer %s\n", info.GetName(), indexerHost[indexerID])
-			log.Println(err)
-		} else {
-			log.Printf("%s is connected to indexer %s\n", info.GetName(), indexerHost[indexerID])
-		}
-	}
-	indexerConnMutex.Unlock()
-
-	cnt := 5
-	sent := false
-	for sent == false {
-		indexerConnMutex.Lock()
-		if indexerConn[indexerID] != nil {
-			_, err = indexerConn[indexerID].Write(append(b, tmp...))
-		} else {
-			err = errors.New("indexerConn[indexerID] == nil")
-		}
-		indexerConnMutex.Unlock()
-		if err != nil {
-			if cnt >= 0 {
-				cnt--
-				err = dialIndexer(indexerID)
-				if err != nil {
-					log.Printf("%s couldn't connect to indexer %s\n", info.GetName(), indexerHost[indexerID])
-				}
-			} else {
-				log.Printf("%s failed to connect to indexer %s after retrying 5 times\n", info.GetName(), indexerHost[indexerID])
-				break
-			}
-		} else {
-			sent = true
-		}
-	}
-
-	lenbuf := make([]byte, 4)
-	_, err = indexerConn[indexerID].Read(lenbuf)
-	if err != nil {
-		log.Println(info.GetName(), "couldn't read response from indexer")
-		log.Panicln(err)
-		return nil
-	}
-	totalLength := int(binary.BigEndian.Uint32(lenbuf))
-	buf := make([]byte, totalLength)
-	_, err = indexerConn[indexerID].Read(buf)
-	if err != nil {
-		log.Println(info.GetName(), "couldn't read response from indexer")
-		log.Panicln(err)
-		return nil
-	}
-	var lids []int
-	err = json.Unmarshal(buf, &lids)
-	if err != nil {
-		log.Println(info.GetName(), "couldn't read response from indexer")
-		log.Panicln(err)
-		return nil
-	}
-	return lids
-}
-
-func AskIndexerByHash(hash uint64, indexerID int) []int {
-	tmp := make([]byte, 8)
-	binary.BigEndian.PutUint64(tmp, hash)
-	b := make([]byte, 5)
-	b[4] = byte('h')
-	binary.BigEndian.PutUint32(b, uint32(len(tmp)+1))
-
-	indexerConnMutex.Lock()
-	if indexerConn[indexerID] == nil {
-		err := dialIndexer(indexerID)
-		if err != nil {
-			log.Printf("%s couldn't connect to indexer %s\n", info.GetName(), indexerHost[indexerID])
-			log.Println(err)
-		} else {
-			log.Printf("%s is connected to indexer %s\n", info.GetName(), indexerHost[indexerID])
-		}
-	}
-	indexerConnMutex.Unlock()
-
-	cnt := 5
-	sent := false
-	var err error
-	for sent == false {
-		indexerConnMutex.Lock()
-		if indexerConn[indexerID] != nil {
-			_, err = indexerConn[indexerID].Write(append(b, tmp...))
-		} else {
-			err = errors.New("indexerConn[hostID] == nil")
-		}
-		indexerConnMutex.Unlock()
-		if err != nil {
-			if cnt >= 0 {
-				cnt--
-				err = dialIndexer(indexerID)
-				if err != nil {
-					log.Printf("%s couldn't connect to indexer %s\n", info.GetName(), indexerHost[indexerID])
-				}
-			} else {
-				log.Printf("%s failed to connect to indexer %s after retrying 5 times\n", info.GetName(), indexerHost[indexerID])
-				break
-			}
-		} else {
-			sent = true
-		}
-	}
-	lenbuf := make([]byte, 4)
-	_, err = indexerConn[indexerID].Read(lenbuf)
-	if err != nil {
-		log.Println(info.GetName(), "couldn't read response from indexer")
-		log.Panicln(err)
-		return nil
-	}
-	totalLength := int(binary.BigEndian.Uint32(lenbuf))
-	buf := make([]byte, totalLength)
-	_, err = indexerConn[indexerID].Read(buf)
-	if err != nil {
-		log.Println(info.GetName(), "couldn't read response from indexer")
-		log.Panicln(err)
-		return nil
-	}
-	var lids []int
-	err = json.Unmarshal(buf, &lids)
-	if err != nil {
-		log.Println(info.GetName(), "couldn't read response from indexer")
-		log.Panicln(err)
-		return nil
-	}
-	return lids
-}
-
-func AskIndexerByHashes(hash []uint64, indexerID int) []bool {
-	bytes, err := json.Marshal(hash)
-	if err != nil {
-		log.Println(info.GetName(), "couldn't convert hashes into bytes", hash)
-		log.Panicln(err)
-	}
-	b := make([]byte, 5)
-	b[4] = byte('H')
-	binary.BigEndian.PutUint32(b, uint32(len(bytes)+1))
-
-	indexerConnMutex.Lock()
-	if indexerConn[indexerID] == nil {
-		err := dialIndexer(indexerID)
-		if err != nil {
-			log.Printf("%s couldn't connect to indexer %s\n", info.GetName(), indexerHost[indexerID])
-			log.Println(err)
-		} else {
-			log.Printf("%s is connected to indexer %s\n", info.GetName(), indexerHost[indexerID])
-		}
-	}
-	indexerConnMutex.Unlock()
-
-	cnt := 5
-	sent := false
-	for sent == false {
-		indexerConnMutex.Lock()
-		if indexerConn[indexerID] != nil {
-			_, err = indexerConn[indexerID].Write(append(b, bytes...))
-		} else {
-			err = errors.New("indexerConn[hostID] == nil")
-		}
-		indexerConnMutex.Unlock()
-		if err != nil {
-			if cnt >= 0 {
-				cnt--
-				err = dialIndexer(indexerID)
-				if err != nil {
-					log.Printf("%s couldn't connect to indexer %s\n", info.GetName(), indexerHost[indexerID])
-				}
-			} else {
-				log.Printf("%s failed to connect to indexer %s after retrying 5 times\n", info.GetName(), indexerHost[indexerID])
-				break
-			}
-		} else {
-			sent = true
-		}
-	}
-	totalLength, err := connection.Read(indexerConn[indexerID], &indexerBuf)
-	if err != nil {
-		log.Println(info.GetName(), "couldn't read response from indexer")
-		log.Panicln(err)
-	}
-	var result []bool
-	err = json.Unmarshal(indexerBuf[:totalLength], &result)
-	if err != nil {
-		log.Println(info.GetName(), "couldn't unmarshal response from indexer")
-		log.Panicln(err)
-		return nil
-	}
-	return result
 }
 
 // HandleRequest handles incoming connection
@@ -492,8 +287,7 @@ func HandleRequest(conn net.Conn) {
 		if err == io.EOF {
 			return
 		} else if err != nil {
-			log.Println(info.GetName(), "couldn't read incoming request")
-			log.Println(info.GetName(), err)
+			logrus.WithError(err).Error("couldn't read incoming request")
 			break
 		}
 		if buf[0] == 'r' { // received records
@@ -502,10 +296,10 @@ func HandleRequest(conn net.Conn) {
 			records := []record.Record{}
 			err := record.GobToRecordArray(buf[1:totalLength], &records)
 			if err != nil {
-				log.Println(info.GetName(), "couldn't convert received bytes to records:", string(buf[1:totalLength]))
+				logrus.WithField("buffer", string(buf[1:totalLength])).Error("couldn't convert read buffer to record")
 				continue
 			}
-			// log.Println(info.GetName(), "received records:", records)
+			logrus.WithField("length", len(records)).Info("received incoming record")
 			recordsArrival(records)
 		} else if buf[0] == 'q' { // received next host update
 			nextQueueHost = string(buf[1:totalLength])
@@ -513,30 +307,31 @@ func HandleRequest(conn net.Conn) {
 				nextQueueConn.Close()
 				nextQueueConn = nil
 			}
-			log.Println(info.GetName(), "updates next queue host to:", nextQueueHost)
+			logrus.WithField("host", nextQueueHost).Info("updates next queue")
 		} else if buf[0] == 't' { // received token
 			var token Token
 			err := json.Unmarshal(buf[1:totalLength], &token)
 			if err != nil {
-				log.Println(info.GetName(), "couldn't convert received bytes to token:", string(buf[1:totalLength]))
-				log.Panicln(err)
+				logrus.WithField("buffer", string(buf[1:totalLength])).Error("couldn't convert read buffer to token")
+				panic(err)
 			}
 			TokenArrival(token)
-			// if len(token.DeferredRecords) > 0 {
-			// 	log.Println(info.GetName(), "received token:", token)
-			// }
+			logrus.Info("received token")
+
 		} else if buf[0] == 'm' { // received maintainer update
 			err := json.Unmarshal(buf[1:totalLength], &logMaintainerHost)
 			if err != nil {
-				log.Println(info.GetName(), "couldn't convert received bytes to maintainer hosts:", string(buf[1:totalLength]))
+				logrus.WithField("buffer", string(buf[1:totalLength])).Error("couldn't convert read buffer to maintainer hosts")
 			}
 			logMaintainerConn = make([]net.Conn, len(logMaintainerHost))
 		} else if buf[0] == 'i' { // received indexer update
 			err := json.Unmarshal(buf[1:totalLength], &indexerHost)
 			if err != nil {
-				log.Println(info.GetName(), "couldn't convert received bytes to indexer hosts:", string(buf[1:totalLength]))
+				logrus.WithField("buffer", string(buf[1:totalLength])).Error("couldn't convert read buffer to indexer hosts")
 			}
 			indexerConn = make([]net.Conn, len(indexerHost))
+		} else {
+			logrus.WithField("header", buf[0]).Warning("couldn't understand request")
 		}
 	}
 }
