@@ -31,7 +31,7 @@ var queueConnMutex sync.Mutex
 var nextQueueConn net.Conn
 var nextQueueHost string
 
-var indexerBuf []byte
+var Carry bool
 
 type queueHost int
 
@@ -43,7 +43,8 @@ type Token struct {
 }
 
 // InitQueue initializes the buffer and hashmap for queued records
-func InitQueue(hasToken bool) {
+func InitQueue(hasToken, carry bool) {
+	Carry = carry
 	buffered = make([]BufferHeap, info.NumDC)
 	for i := range buffered {
 		buffered[i] = BufferHeap{}
@@ -52,14 +53,17 @@ func InitQueue(hasToken bool) {
 	if hasToken {
 		var token Token
 		token.InitToken(make([]int, info.NumDC), 0)
-		TokenArrival(token)
+		if Carry {
+			TokenArrivalCarryDeferred(token)
+		} else {
+			TokenArrivalBufferDeferred(token)
+		}
 	}
 	if hasToken {
 		logrus.WithField("token", true).Info("initialized")
 	} else {
 		logrus.WithField("token", false).Info("initialized")
 	}
-	indexerBuf = make([]byte, 1024*1024*32)
 }
 
 // InitToken intializes a token. The IDs info should be accuired from log maintainers
@@ -73,25 +77,26 @@ func (token *Token) InitToken(maxTOId []int, lastLId int) {
 func recordsArrival(records []record.Record) {
 	// info.LogTimestamp("recordsArrival")
 	bufMutex.Lock()
-	for _, record := range records {
-		if record.Host == info.ID {
-			sameDCBuffered = append(sameDCBuffered, record)
+	for _, r := range records {
+		if r.Host == info.ID {
+			sameDCBuffered = append(sameDCBuffered, r)
 		} else {
-			heap.Push(&buffered[record.Host], record)
+			heap.Push(&buffered[r.Host], r)
 		}
 	}
 	bufMutex.Unlock()
 }
 
-// TokenArrival function deals with token received.
+// TokenArrivalCarryDeferred function deals with token received.
 // For each deferred records in the token, check if the current max TOId in shared log satisfies the dependency.
 // If so, the deferred records are sent to the log maintainers.
-func TokenArrival(token Token) {
+func TokenArrivalCarryDeferred(token Token) {
+	logrus.WithField("deferred", len(token.DeferredRecords)).Info("TokenArrivalCarryDeferred")
 	bufMutex.Lock()
 	// append buffered records to the token in order
-	for dc := range buffered {
-		for buffered[dc].Len() > 0 {
-			r := heap.Pop(&buffered[dc]).(record.Record)
+	for host := range buffered {
+		for buffered[host].Len() > 0 {
+			r := heap.Pop(&buffered[host]).(record.Record)
 			token.DeferredRecords = append(token.DeferredRecords, r)
 		}
 	}
@@ -125,6 +130,56 @@ func TokenArrival(token Token) {
 		}
 	}
 	token.DeferredRecords = token.DeferredRecords[:head]
+
+	if len(dispatch) > 0 {
+		// assign LId and send to log maintainers
+		lastID := assignLId(dispatch, token.LastLId)
+		token.LastLId = lastID
+		toDispatch := make([][]record.Record, len(logMaintainerConn))
+		for _, r := range dispatch {
+			id := maintainer.AssignToMaintainer(r.LId, len(logMaintainerConn))
+			toDispatch[id] = append(toDispatch[id], r)
+		}
+		for id, t := range toDispatch {
+			if len(t) > 0 {
+				dispatchRecords(t, id)
+			}
+		}
+	}
+	go passToken(&token)
+}
+
+// TokenArrivalBufferDeferred is similar to TokenArrivalCarryDeferred, except deferred records will be buffered rather than carried with token
+func TokenArrivalBufferDeferred(token Token) {
+	logrus.Info("TokenArrivalBufferDeferred")
+	dispatch := []record.Record{}
+	bufMutex.Lock()
+	for host := range buffered {
+		for buffered[host].Len() > 0 {
+			r := heap.Pop(&buffered[host]).(record.Record)
+			if r.TOId == token.MaxTOId[r.Host]+1 && r.Pre.TOId <= token.MaxTOId[r.Pre.Host] {
+				dispatch = append(dispatch, r)
+				token.MaxTOId[r.Host] = r.TOId
+			} else {
+				heap.Push(&buffered[host], r)
+				break
+			}
+		}
+	}
+	head := 0
+	for _, r := range sameDCBuffered {
+		if r.Pre.TOId <= token.MaxTOId[r.Pre.Host] {
+			r.TOId = token.MaxTOId[r.Host] + 1
+			dispatch = append(dispatch, r)
+			token.MaxTOId[r.Host] = r.TOId
+		} else {
+			sameDCBuffered[head] = r
+			head++
+		}
+	}
+	sameDCBuffered = sameDCBuffered[:head]
+	bufMutex.Unlock()
+	// put the deffered records with dependency satisfied into dispatch slice
 	if len(dispatch) > 0 {
 		// assign LId and send to log maintainers
 		lastID := assignLId(dispatch, token.LastLId)
@@ -165,7 +220,11 @@ func dialNextQueue() error {
 func passToken(token *Token) {
 	time.Sleep(100 * time.Millisecond)
 	if nextQueueHost == "" {
-		TokenArrival(*token)
+		if Carry {
+			TokenArrivalCarryDeferred(*token)
+		} else {
+			TokenArrivalBufferDeferred(*token)
+		}
 	} else {
 		bytes, err := json.Marshal(token)
 		if err != nil {
@@ -315,9 +374,12 @@ func HandleRequest(conn net.Conn) {
 				logrus.WithField("buffer", string(buf[1:totalLength])).Error("couldn't convert read buffer to token")
 				panic(err)
 			}
-			TokenArrival(token)
+			if Carry {
+				TokenArrivalCarryDeferred(token)
+			} else {
+				TokenArrivalBufferDeferred(token)
+			}
 			logrus.Info("received token")
-
 		} else if buf[0] == 'm' { // received maintainer update
 			err := json.Unmarshal(buf[1:totalLength], &logMaintainerHost)
 			if err != nil {
