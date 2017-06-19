@@ -1,5 +1,13 @@
 # June
 
+## June 18, 2017
+### Merge pretoid and no_deferred branches
+There are only master and pretoid branches now. In master branch we use hash, while in pretoid branch we use toid. By default, token doesn't carry deferred records. To carry deferred records with token, use *-c* option, for example: `gochariots-queue -c 9020 1 0 true`.
+
+## June 16, 2017
+### Rewrite system logging using logrus
+Rewrite system logging using [logrus](https://github.com/sirupsen/logrus), use *-v* option to turn on all logging infos. For example, `gochariots-app 8080 1 0` by default only write `WARNING` and `ERROR` level events into logging file. `gochariots-app -v 8080 1 0` will turn on all events of logging.
+
 ## June 8, 2017
 ### Compare the performance between carrying v.s. not carrying deferred records with token
 Not carrying deferred records with token may cause additional delay, but it's negligible. See [0606.md](experiment/0606.md).
