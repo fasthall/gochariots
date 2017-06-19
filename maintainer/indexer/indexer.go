@@ -12,6 +12,7 @@ import (
 	"net"
 	"sync"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/misc/connection"
 )
@@ -41,7 +42,7 @@ func NewIndexTable() IndexTable {
 	return index
 }
 
-func (it IndexTable) Insert(key, value string, lid int, seed uint64) {
+func (it *IndexTable) Insert(key, value string, lid int, seed uint64) {
 	hash := tagToHash(key, value)
 	it.mutex.Lock()
 	it.table[hash] = append(it.table[hash], IndexTableEntry{
@@ -51,17 +52,21 @@ func (it IndexTable) Insert(key, value string, lid int, seed uint64) {
 	it.mutex.Unlock()
 }
 
-func (it IndexTable) Get(key, value string) []IndexTableEntry {
+func (it *IndexTable) Get(key, value string) []IndexTableEntry {
 	hash := tagToHash(key, value)
 	return it.table[hash]
 }
 
-func (it IndexTable) GetByHash(hash uint64) []IndexTableEntry {
-	return it.table[hash]
+func (it *IndexTable) GetByHash(hash uint64) []IndexTableEntry {
+	it.mutex.Lock()
+	result := it.table[hash]
+	it.mutex.Unlock()
+	return result
 }
 
 func InitIndexer(p string) {
 	indexes = NewIndexTable()
+	logrus.Info("indexer initialized")
 }
 
 func tagToHash(key, value string) uint64 {
