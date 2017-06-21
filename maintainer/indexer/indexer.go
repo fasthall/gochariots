@@ -9,15 +9,18 @@ import (
 	"hash/fnv"
 	"io"
 	"net"
+	"time"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/boltdb/bolt"
 	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/misc/connection"
+	cache "github.com/patrickmn/go-cache"
 )
 
 var Subscriber net.Conn
 var db *bolt.DB
+var gocache *cache.Cache
 
 const bucket = "index"
 
@@ -31,46 +34,20 @@ type IndexTableEntry struct {
 	Seed uint64
 }
 
-func InsertEntry(key, value string, lid int, seed uint64) {
-	entry := IndexTableEntry{
-		LId:  lid,
-		Seed: seed,
+func bytesToEntryList(bytes []byte) ([]IndexTableEntry, error) {
+	var result []IndexTableEntry
+	if bytes != nil {
+		err := json.Unmarshal(bytes, &result)
+		if err != nil {
+			return nil, err
+		}
 	}
-	hash := tagToHash(key, value)
-	err := db.Update(func(tx *bolt.Tx) error {
-		b, err := tx.CreateBucketIfNotExists([]byte(bucket))
-		if err != nil {
-			return err
-		}
-
-		k := make([]byte, 8)
-		binary.BigEndian.PutUint64(k, hash)
-		tmp := b.Get(k)
-		var result []IndexTableEntry
-		if tmp != nil {
-			err = json.Unmarshal(b.Get(k), result)
-			if err != nil {
-				return err
-			}
-		}
-		result = append(result, entry)
-		bytes, err := json.Marshal(result)
-		if err != nil {
-			return err
-		}
-		err = b.Put(k, bytes)
-		if err != nil {
-			return err
-		}
-		return nil
-	})
-	if err != nil {
-		logrus.WithError(err).Error("couldn't insert entry")
-	}
+	return result, nil
 }
 
-func GetEntry(hash uint64) []IndexTableEntry {
-	var val []byte
+func getBytesFromDB(hash uint64) []byte {
+	logrus.WithField("hash", hash).Info("getBytesFromDB")
+	var buf []byte
 	err := db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(bucket))
 		if b == nil {
@@ -78,23 +55,70 @@ func GetEntry(hash uint64) []IndexTableEntry {
 		}
 		k := make([]byte, 8)
 		binary.BigEndian.PutUint64(k, hash)
-		val = b.Get(k)
+		tmp := b.Get(k)
+		if tmp != nil {
+			buf = make([]byte, len(tmp))
+			copy(buf, tmp)
+		}
 		return nil
 	})
 	if err != nil {
 		logrus.WithError(err).Error("couldn't read db")
 		panic(err)
 	}
-	if val == nil {
-		return []IndexTableEntry{}
+	return buf
+}
+
+func insertIndexEntry(key, value string, lid int, seed uint64) {
+	entry := IndexTableEntry{
+		LId:  lid,
+		Seed: seed,
 	}
-	var result []IndexTableEntry
-	err = json.Unmarshal(val, &result)
+	hash := tagToHash(key, value)
+	logrus.WithFields(logrus.Fields{"hash": hash, "entry": entry}).Info("insertIndexEntry")
+	k := make([]byte, 8)
+	binary.BigEndian.PutUint64(k, hash)
+	tmp, found := gocache.Get(string(hash))
+	if !found {
+		logrus.WithField("hash", hash).Warning("key not found in cache")
+		tmp = getBytesFromDB(hash)
+	}
+	result, err := bytesToEntryList(tmp.([]byte))
 	if err != nil {
-		logrus.WithError(err).Error("couldn't decode entry")
+		logrus.WithError(err).Error("couldn't convert DB entry to IndexEntry")
 		panic(err)
 	}
-	return result
+	result = append(result, entry)
+	bytes, err := json.Marshal(result)
+	if err != nil {
+		logrus.WithError(err).Error("couldn't marshal IndexEntry list")
+		panic(err)
+	}
+
+	err = db.Update(func(tx *bolt.Tx) error {
+		b, err := tx.CreateBucketIfNotExists([]byte(bucket))
+		if err != nil {
+			return err
+		}
+
+		err = b.Put(k, bytes)
+		if err != nil {
+			return err
+		}
+		gocache.Set(string(hash), bytes, cache.DefaultExpiration)
+		return nil
+	})
+	if err != nil {
+		logrus.WithError(err).Error("couldn't insert entry")
+	}
+	logrus.WithField("entry", entry).Info("entry inserted")
+}
+
+func getIndexEntry(hash uint64) ([]IndexTableEntry, error) {
+	bytes := getBytesFromDB(hash)
+	list, err := bytesToEntryList(bytes)
+	logrus.WithField("result", list).Info("getIndexEntry")
+	return list, err
 }
 
 func InitIndexer(p string) {
@@ -115,6 +139,7 @@ func InitIndexer(p string) {
 		logrus.WithError(err).Error("couldn't create bucket")
 		panic(err)
 	}
+	gocache = cache.New(5*time.Minute, 10*time.Minute)
 	logrus.Info("indexer initialized")
 }
 
@@ -144,7 +169,11 @@ func getLIdByTags(tags map[string]string) []int {
 }
 
 func getLIdByHash(hash uint64) []int {
-	result := GetEntry(hash)
+	result, err := getIndexEntry(hash)
+	if err != nil {
+		logrus.WithError(err).Error("couldn't read from indexer")
+		panic(err)
+	}
 	ans := []int{}
 	for _, r := range result {
 		ans = append(ans, r.LId)
@@ -173,7 +202,12 @@ func HandleRequest(conn net.Conn) {
 			}
 			ans := make([]bool, len(query))
 			for i, q := range query {
-				for _, s := range GetEntry(q.Hash) {
+				result, err := getIndexEntry(q.Hash)
+				if err != nil {
+					logrus.WithError(err).Error("couldn't read from indexer")
+					panic(err)
+				}
+				for _, s := range result {
 					if s.Seed == q.Seed {
 						ans[i] = true
 						break
@@ -201,7 +235,7 @@ func HandleRequest(conn net.Conn) {
 				panic(err)
 			}
 			for key, value := range tags {
-				InsertEntry(key, value, lid, seed)
+				insertIndexEntry(key, value, lid, seed)
 			}
 		} else if buf[0] == 'g' { // get LIds by tags
 			var tags map[string]string
