@@ -1,5 +1,9 @@
 # June
 
+## June 21, 2017
+### Use BoltDB to store indexes in indexer
+By default, all the indexes(hash and seed pair) are stored in memory. An instance with 4GB memory can roughly store 500 million entries. If exceeded, there's no overflow handling currently implemented. Using *-db* option to launch indexer will tell the indexer to use BoltDB and go-cache to access indexes. Each will be in the cache for 5 minutes then expire. The BoltDB file is stored as `indexes.db`. *Notice that this implementation is very slow, not optimized now*
+
 ## June 18, 2017
 ### Merge pretoid and no_deferred branches
 There are only master and pretoid branches now. In master branch we use hash, while in pretoid branch we use toid. By default, token doesn't carry deferred records. To carry deferred records with token, use *-c* option, for example: `gochariots-queue -c 9020 1 0 true`.

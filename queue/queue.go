@@ -283,7 +283,7 @@ func queryIndexer(query []indexer.Query, indexerID int) ([]bool, error) {
 	if indexerConn[indexerID] == nil {
 		err := dialIndexer(indexerID)
 		if err != nil {
-			logrus.WithField("id", indexerID).Error("couldn't connect to indexer")
+			logrus.WithField("host", indexerID).Error("couldn't connect to indexer")
 		} else {
 			logrus.WithField("id", indexerID).Info("connected to indexer")
 		}

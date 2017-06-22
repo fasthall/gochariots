@@ -12,6 +12,7 @@ import (
 
 func main() {
 	v := flag.Bool("v", false, "Turn on all logging")
+	b := flag.Bool("db", false, "Use BoltDB")
 	flag.Parse()
 	if len(flag.Args()) < 3 {
 		fmt.Println("Usage: gochariots-indexer port num_dc dc_id")
@@ -30,7 +31,7 @@ func main() {
 	info.InitChariots(numDc, dcID)
 	info.SetName("indexer" + flag.Arg(0))
 	info.RedirectLog(info.GetName()+".log", *v)
-	indexer.InitIndexer(info.GetName())
+	indexer.InitIndexer(info.GetName(), *b)
 	ln, err := net.Listen("tcp", ":"+flag.Arg(0))
 	if err != nil {
 		fmt.Println(info.GetName() + "couldn't listen on port " + flag.Arg(0))
