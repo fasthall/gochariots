@@ -1,5 +1,9 @@
 # June
 
+## June 22, 2017
+### Merge all three branches
+Use *-toid* option to use TOId version. By default use hash version. See [double_toid.sh](../test/script/double_toid.sh) as reference.
+
 ## June 21, 2017
 ### Use BoltDB to store indexes in indexer
 By default, all the indexes(hash and seed pair) are stored in memory. An instance with 4GB memory can roughly store 500 million entries. If exceeded, there's no overflow handling currently implemented. Using *-db* option to launch indexer will tell the indexer to use BoltDB and go-cache to access indexes. Each will be in the cache for 5 minutes then expire. The BoltDB file is stored as `indexes.db`. *Notice that this implementation is very slow, not optimized now*

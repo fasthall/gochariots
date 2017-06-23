@@ -12,6 +12,7 @@ import (
 
 func main() {
 	v := flag.Bool("v", false, "Turn on all logging")
+	toid := flag.Bool("toid", false, "TOId version")
 	flag.Parse()
 	if len(flag.Args()) < 3 {
 		fmt.Println("Usage: gochariots-filter port num_dc dc_id")
@@ -30,20 +31,36 @@ func main() {
 	info.InitChariots(numDc, dcID)
 	info.SetName("filter" + flag.Arg(0))
 	info.RedirectLog(info.GetName()+".log", *v)
-	filter.InitFilter(info.NumDC)
+	if *toid {
+		filter.TOIDInitFilter(info.NumDC)
+	} else {
+		filter.InitFilter(info.NumDC)
+	}
 	ln, err := net.Listen("tcp", ":"+flag.Arg(0))
 	if err != nil {
 		panic(err)
 	}
 	defer ln.Close()
 	fmt.Println(info.GetName()+" is listening to port", flag.Arg(0))
-	for {
-		// Listen for an incoming connection.
-		conn, err := ln.Accept()
-		if err != nil {
-			panic(err)
+	if *toid {
+		for {
+			// Listen for an incoming connection.
+			conn, err := ln.Accept()
+			if err != nil {
+				panic(err)
+			}
+			// Handle connections in a new goroutine.
+			go filter.TOIDHandleRequest(conn)
 		}
-		// Handle connections in a new goroutine.
-		go filter.HandleRequest(conn)
+	} else {
+		for {
+			// Listen for an incoming connection.
+			conn, err := ln.Accept()
+			if err != nil {
+				panic(err)
+			}
+			// Handle connections in a new goroutine.
+			go filter.HandleRequest(conn)
+		}
 	}
 }

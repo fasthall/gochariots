@@ -11,6 +11,7 @@ import (
 
 func main() {
 	v := flag.Bool("v", false, "Turn on all logging")
+	toid := flag.Bool("toid", false, "TOId version")
 	flag.Parse()
 	if len(flag.Args()) < 3 {
 		fmt.Println("Usage: gochariots-app port num_dc dc_id")
@@ -29,5 +30,9 @@ func main() {
 	info.InitChariots(numDc, dcID)
 	info.SetName("app" + flag.Arg(0))
 	info.RedirectLog(info.GetName()+".log", *v)
-	app.Run(flag.Arg(0))
+	if *toid {
+		app.TOIDRun(flag.Arg(0))
+	} else {
+		app.Run(flag.Arg(0))
+	}
 }

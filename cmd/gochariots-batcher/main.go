@@ -13,6 +13,7 @@ import (
 
 func main() {
 	v := flag.Bool("v", false, "Turn on all logging")
+	toid := flag.Bool("toid", false, "TOId version")
 	flag.Parse()
 	if len(flag.Args()) < 3 {
 		fmt.Println("Usage: gochariots-batcher port num_dc dc_id")
@@ -31,22 +32,40 @@ func main() {
 	info.InitChariots(numDc, dcID)
 	info.SetName("batcher" + flag.Arg(0))
 	info.RedirectLog(info.GetName()+".log", *v)
-	batcher.InitBatcher(numDc)
+	if *toid {
+		batcher.TOIDInitBatcher(numDc)
+	} else {
+		batcher.InitBatcher(numDc)
+	}
 	ln, err := net.Listen("tcp", ":"+flag.Arg(0))
 	if err != nil {
 		panic(err)
 	}
 	defer ln.Close()
 	fmt.Println(info.GetName()+" is listening to port", flag.Arg(0))
-	go batcher.Sweeper()
-	for {
-		// Listen for an incoming connection.
-		conn, err := ln.Accept()
-		if err != nil {
-			fmt.Println(info.GetName(), "Couldn't handle more connection", err)
-			continue
+	if *toid {
+		go batcher.TOIDSweeper()
+		for {
+			// Listen for an incoming connection.
+			conn, err := ln.Accept()
+			if err != nil {
+				fmt.Println(info.GetName(), "Couldn't handle more connection", err)
+				continue
+			}
+			// Handle connections in a new goroutine.
+			go batcher.TOIDHandleRequest(conn)
 		}
-		// Handle connections in a new goroutine.
-		go batcher.HandleRequest(conn)
+	} else {
+		go batcher.Sweeper()
+		for {
+			// Listen for an incoming connection.
+			conn, err := ln.Accept()
+			if err != nil {
+				fmt.Println(info.GetName(), "Couldn't handle more connection", err)
+				continue
+			}
+			// Handle connections in a new goroutine.
+			go batcher.HandleRequest(conn)
+		}
 	}
 }

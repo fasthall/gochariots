@@ -13,6 +13,7 @@ import (
 func main() {
 	n := flag.Int("n", 0, "Log the time maintainer takes to append the nth record")
 	v := flag.Bool("v", false, "Turn on all logging")
+	toid := flag.Bool("toid", false, "TOId version")
 	flag.Parse()
 	maintainer.LogRecordNth = *n
 	fmt.Println(maintainer.LogRecordNth)
@@ -41,13 +42,25 @@ func main() {
 	}
 	defer ln.Close()
 	fmt.Println(info.GetName()+" is listening to port", flag.Arg(0))
-	for {
-		// Listen for an incoming connection.
-		conn, err := ln.Accept()
-		if err != nil {
-			panic(err)
+	if *toid {
+		for {
+			// Listen for an incoming connection.
+			conn, err := ln.Accept()
+			if err != nil {
+				panic(err)
+			}
+			// Handle connections in a new goroutine.
+			go maintainer.TOIDHandleRequest(conn)
 		}
-		// Handle connections in a new goroutine.
-		go maintainer.HandleRequest(conn)
+	} else {
+		for {
+			// Listen for an incoming connection.
+			conn, err := ln.Accept()
+			if err != nil {
+				panic(err)
+			}
+			// Handle connections in a new goroutine.
+			go maintainer.HandleRequest(conn)
+		}
 	}
 }
