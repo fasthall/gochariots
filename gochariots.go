@@ -1,0 +1,274 @@
+package main
+
+import (
+	"fmt"
+	"net"
+	"os"
+
+	"github.com/fasthall/gochariots/app"
+	"github.com/fasthall/gochariots/batcher"
+	"github.com/fasthall/gochariots/filter"
+	"github.com/fasthall/gochariots/info"
+	"github.com/fasthall/gochariots/maintainer"
+	"github.com/fasthall/gochariots/maintainer/indexer"
+	"github.com/fasthall/gochariots/queue"
+
+	kingpin "gopkg.in/alecthomas/kingpin.v2"
+)
+
+var (
+	gochariots = kingpin.New("gochariots", "A distributed shared log system.")
+
+	appCommand = gochariots.Command("app", "Start an app instance.")
+	appPort    = appCommand.Arg("port", "The port app listens to.").Required().String()
+	appNumDC   = appCommand.Arg("num_dc", "The port app listens to.").Required().Int()
+	appID      = appCommand.Arg("id", "The port app listens to.").Required().Int()
+	appInfo    = appCommand.Flag("info", "Turn on all level logging").Short('i').Bool()
+	appTOId    = appCommand.Flag("toid", "Use TOId version.").Short('t').Bool()
+
+	batcherCommand = gochariots.Command("batcher", "Start a batcher instance.")
+	batcherPort    = batcherCommand.Arg("port", "The port batcher listens to.").Required().String()
+	batcherNumDC   = batcherCommand.Arg("num_dc", "The port batcher listens to.").Required().Int()
+	batcherID      = batcherCommand.Arg("id", "The port batcher listens to.").Required().Int()
+	batcherInfo    = batcherCommand.Flag("info", "Turn on all level logging").Short('i').Bool()
+	batcherTOId    = batcherCommand.Flag("toid", "Use TOId version.").Short('t').Bool()
+
+	controllerCommand = gochariots.Command("controller", "Start a controller instance.")
+	controllerPort    = controllerCommand.Arg("port", "The port controller listens to.").Required().String()
+	controllerNumDC   = controllerCommand.Arg("num_dc", "The port controller listens to.").Required().Int()
+	controllerID      = controllerCommand.Arg("id", "The port controller listens to.").Required().Int()
+	controllerInfo    = controllerCommand.Flag("info", "Turn on all level logging").Short('i').Bool()
+
+	filterCommand = gochariots.Command("filter", "Start a filter instance.")
+	filterPort    = filterCommand.Arg("port", "The port filter listens to.").Required().String()
+	filterNumDC   = filterCommand.Arg("num_dc", "The port filter listens to.").Required().Int()
+	filterID      = filterCommand.Arg("id", "The port contrfilteroller listens to.").Required().Int()
+	filterInfo    = filterCommand.Flag("info", "Turn on all level logging").Short('i').Bool()
+	filterTOId    = filterCommand.Flag("toid", "Use TOId version.").Short('t').Bool()
+
+	queueCommand = gochariots.Command("queue", "Start a queue instance.")
+	queuePort    = queueCommand.Arg("port", "The port queue listens to.").Required().String()
+	queueNumDC   = queueCommand.Arg("num_dc", "The port queue listens to.").Required().Int()
+	queueID      = queueCommand.Arg("id", "The port queue listens to.").Required().Int()
+	queueHold    = queueCommand.Flag("hold", "Whether this queue instance holds a token when launched.").Required().Short('h').Bool()
+	queueInfo    = queueCommand.Flag("info", "Turn on all level logging").Short('i').Bool()
+	queueTOId    = queueCommand.Flag("toid", "Use TOId version.").Short('t').Bool()
+	queueCarry   = queueCommand.Flag("carry", "Carry deferred records with token. Only work when toid is on.").Short('c').Bool()
+
+	maintainerCommand = gochariots.Command("maintainer", "Start a maintainer instance.")
+	maintainerPort    = maintainerCommand.Arg("port", "The port maintainer listens to.").Required().String()
+	maintainerNumDC   = maintainerCommand.Arg("num_dc", "The port maintainer listens to.").Required().Int()
+	maintainerID      = maintainerCommand.Arg("id", "The port maintainer listens to.").Required().Int()
+	maintainerInstN   = maintainerCommand.Arg("ntime", "Record the time maintainer takes to append n records").Int()
+	maintainerInfo    = maintainerCommand.Flag("info", "Turn on all level logging").Short('i').Bool()
+	maintainerTOId    = maintainerCommand.Flag("toid", "Use TOId version.").Short('t').Bool()
+
+	indexerCommand = gochariots.Command("indexer", "Start an indexer instance.")
+	indexerPort    = indexerCommand.Arg("port", "The port indexer listens to.").Required().String()
+	indexerNumDC   = indexerCommand.Arg("num_dc", "The port indexer listens to.").Required().Int()
+	indexerID      = indexerCommand.Arg("id", "The port indexer listens to.").Required().Int()
+	indexerInfo    = indexerCommand.Flag("info", "Turn on all level logging").Short('i').Bool()
+	indexerTOId    = indexerCommand.Flag("toid", "Use TOId version.").Short('t').Bool()
+	indexerBoltDB  = indexerCommand.Flag("boltdb", "Use BoltDB. Only work when not using TOId version.").Short('b').Bool()
+)
+
+func main() {
+	switch kingpin.MustParse(gochariots.Parse(os.Args[1:])) {
+	case appCommand.FullCommand():
+		info.InitChariots(*appNumDC, *appID)
+		info.SetName("app" + *appPort)
+		info.RedirectLog(info.GetName()+".log", *appInfo)
+		if *appTOId {
+			app.TOIDRun(*appPort)
+		} else {
+			app.Run(*appPort)
+		}
+	case controllerCommand.FullCommand():
+		info.InitChariots(*controllerNumDC, *controllerID)
+		info.SetName("controller" + *controllerPort)
+		info.RedirectLog(info.GetName()+".log", *controllerInfo)
+		info.StartController(*controllerPort)
+	case batcherCommand.FullCommand():
+		info.InitChariots(*batcherNumDC, *batcherID)
+		info.SetName("batcher" + *batcherPort)
+		info.RedirectLog(info.GetName()+".log", *batcherInfo)
+		if *batcherTOId {
+			batcher.TOIDInitBatcher(*batcherNumDC)
+		} else {
+			batcher.InitBatcher(*batcherNumDC)
+		}
+		ln, err := net.Listen("tcp", ":"+*batcherPort)
+		if err != nil {
+			panic(err)
+		}
+		defer ln.Close()
+		fmt.Println(info.GetName()+" is listening to port", *batcherPort)
+		if *batcherTOId {
+			go batcher.TOIDSweeper()
+			for {
+				// Listen for an incoming connection.
+				conn, err := ln.Accept()
+				if err != nil {
+					fmt.Println(info.GetName(), "Couldn't handle more connection", err)
+					continue
+				}
+				// Handle connections in a new goroutine.
+				go batcher.TOIDHandleRequest(conn)
+			}
+		} else {
+			go batcher.Sweeper()
+			for {
+				// Listen for an incoming connection.
+				conn, err := ln.Accept()
+				if err != nil {
+					fmt.Println(info.GetName(), "Couldn't handle more connection", err)
+					continue
+				}
+				// Handle connections in a new goroutine.
+				go batcher.HandleRequest(conn)
+			}
+		}
+	case filterCommand.FullCommand():
+		info.InitChariots(*filterNumDC, *filterID)
+		info.SetName("filter" + *filterPort)
+		info.RedirectLog(info.GetName()+".log", *filterInfo)
+		if *filterTOId {
+			filter.TOIDInitFilter(info.NumDC)
+		} else {
+			filter.InitFilter(info.NumDC)
+		}
+		ln, err := net.Listen("tcp", ":"+*filterPort)
+		if err != nil {
+			panic(err)
+		}
+		defer ln.Close()
+		fmt.Println(info.GetName()+" is listening to port", *filterPort)
+		if *filterTOId {
+			for {
+				// Listen for an incoming connection.
+				conn, err := ln.Accept()
+				if err != nil {
+					panic(err)
+				}
+				// Handle connections in a new goroutine.
+				go filter.TOIDHandleRequest(conn)
+			}
+		} else {
+			for {
+				// Listen for an incoming connection.
+				conn, err := ln.Accept()
+				if err != nil {
+					panic(err)
+				}
+				// Handle connections in a new goroutine.
+				go filter.HandleRequest(conn)
+			}
+		}
+	case queueCommand.FullCommand():
+		info.InitChariots(*queueNumDC, *queueID)
+		info.SetName("queue" + *queuePort)
+		info.RedirectLog(info.GetName()+".log", *queueInfo)
+		if *queueTOId {
+			queue.TOIDInitQueue(*queueHold, *queueCarry)
+		} else {
+			queue.InitQueue(*queueHold)
+		}
+		ln, err := net.Listen("tcp", ":"+*queuePort)
+		if err != nil {
+			panic(err)
+		}
+		defer ln.Close()
+		fmt.Println(info.GetName()+" is listening to port", *queuePort)
+		if *queueTOId {
+			for {
+				// Listen for an incoming connection.
+				conn, err := ln.Accept()
+				if err != nil {
+					panic(err)
+				}
+				// Handle connections in a new goroutine.
+				go queue.TOIDHandleRequest(conn)
+			}
+		} else {
+			for {
+				// Listen for an incoming connection.
+				conn, err := ln.Accept()
+				if err != nil {
+					panic(err)
+				}
+				// Handle connections in a new goroutine.
+				go queue.HandleRequest(conn)
+			}
+		}
+	case maintainerCommand.FullCommand():
+		info.InitChariots(*maintainerNumDC, *maintainerID)
+		info.SetName("maintainer" + *maintainerPort)
+		info.RedirectLog(info.GetName()+".log", *maintainerInfo)
+		maintainer.InitLogMaintainer(info.GetName(), *maintainerInstN)
+		ln, err := net.Listen("tcp", ":"+*maintainerPort)
+		if err != nil {
+			fmt.Println(info.GetName() + "couldn't listen on port " + *maintainerPort)
+			panic(err)
+		}
+		defer ln.Close()
+		fmt.Println(info.GetName()+" is listening to port", *maintainerPort)
+		if *maintainerTOId {
+			for {
+				// Listen for an incoming connection.
+				conn, err := ln.Accept()
+				if err != nil {
+					panic(err)
+				}
+				// Handle connections in a new goroutine.
+				go maintainer.TOIDHandleRequest(conn)
+			}
+		} else {
+			for {
+				// Listen for an incoming connection.
+				conn, err := ln.Accept()
+				if err != nil {
+					panic(err)
+				}
+				// Handle connections in a new goroutine.
+				go maintainer.HandleRequest(conn)
+			}
+		}
+	case indexerCommand.FullCommand():
+		info.InitChariots(*indexerNumDC, *indexerID)
+		info.SetName("indexer" + *indexerPort)
+		info.RedirectLog(info.GetName()+".log", *indexerInfo)
+		if *indexerTOId {
+			indexer.TOIDInitIndexer(info.GetName())
+		} else {
+			indexer.InitIndexer(info.GetName(), *indexerBoltDB)
+		}
+		ln, err := net.Listen("tcp", ":"+*indexerPort)
+		if err != nil {
+			fmt.Println(info.GetName() + "couldn't listen on port " + *indexerPort)
+			panic(err)
+		}
+		defer ln.Close()
+		fmt.Println(info.GetName()+" is listening to port", *indexerPort)
+		if *indexerTOId {
+			for {
+				// Listen for an incoming connection.
+				conn, err := ln.Accept()
+				if err != nil {
+					panic(err)
+				}
+				// Handle connections in a new goroutine.
+				go indexer.TOIDHandleRequest(conn)
+			}
+		} else {
+			for {
+				// Listen for an incoming connection.
+				conn, err := ln.Accept()
+				if err != nil {
+					panic(err)
+				}
+				// Handle connections in a new goroutine.
+				go indexer.HandleRequest(conn)
+			}
+		}
+	}
+}

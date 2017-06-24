@@ -21,11 +21,11 @@ import (
 func TOIDAppend(r record.TOIDRecord) error {
 	// info.LogTimestamp("Append")
 	r.Timestamp = time.Now().UnixNano()
-	if LogRecordNth > 0 {
+	if logRecordNth > 0 {
 		if r.LId == 1 {
 			logFirstTime = time.Now()
-		} else if r.LId == LogRecordNth {
-			logrus.WithField("duration", time.Since(logFirstTime)).Info("appended", LogRecordNth, "records")
+		} else if r.LId == logRecordNth {
+			logrus.WithField("duration", time.Since(logFirstTime)).Info("appended", logRecordNth, "records")
 		}
 	}
 	b, err := record.TOIDToJSON(r)

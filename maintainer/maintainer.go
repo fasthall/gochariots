@@ -32,10 +32,11 @@ var indexerConn net.Conn
 var indexerHost string
 
 var logFirstTime time.Time
-var LogRecordNth int
+var logRecordNth int
 
 // InitLogMaintainer initializes the maintainer and assign the path name to store the records
-func InitLogMaintainer(p string) {
+func InitLogMaintainer(p string, n int) {
+	logRecordNth = n
 	LastLId = 0
 	err := os.MkdirAll(path, os.ModePerm)
 	if err != nil {
@@ -58,11 +59,11 @@ func dialConn() error {
 func Append(r record.Record) error {
 	logrus.WithField("timestamp", time.Now()).Info("Append")
 	r.Timestamp = time.Now().UnixNano()
-	if LogRecordNth > 0 {
+	if logRecordNth > 0 {
 		if r.LId == 1 {
 			logFirstTime = time.Now()
-		} else if r.LId == LogRecordNth {
-			logrus.WithField("duration", time.Since(logFirstTime)).Info("appended", LogRecordNth, "records")
+		} else if r.LId == logRecordNth {
+			logrus.WithField("duration", time.Since(logFirstTime)).Info("appended", logRecordNth, "records")
 		}
 	}
 	b, err := record.ToJSON(r)

@@ -4,14 +4,14 @@ sh kill.sh
 mkdir logs
 
 # Cluster A
-nohup gochariots-app -toid 8080 2 0  > logs/$0.log &
-nohup gochariots-controller 8081 2 0 > /dev/null &
-nohup gochariots-batcher -toid 9000 2 0 > /dev/null &
-nohup gochariots-filter -toid 9010 2 0 > /dev/null &
-nohup gochariots-filter -toid 9011 2 0 > /dev/null &
-nohup gochariots-queue -toid 9020 2 0 true > /dev/null &
-nohup gochariots-maintainer -toid -n=100000 9030 2 0 > /dev/null &
-nohup gochariots-indexer -toid 9040 2 0 > /dev/null &
+nohup gochariots app 8080 2 0 -t > logs/$0.log &
+nohup gochariots controller 8081 2 0 > /dev/null &
+nohup gochariots batcher 9000 2 0 -t > /dev/null &
+nohup gochariots filter 9010 2 0 -t > /dev/null &
+nohup gochariots filter 9011 2 0 -t > /dev/null &
+nohup gochariots queue --hold 9020 2 0 -t > /dev/null &
+nohup gochariots maintainer 9030 2 0 -t > /dev/null &
+nohup gochariots indexer 9040 2 0 -t > /dev/null &
 
 sleep 1
 
@@ -23,14 +23,14 @@ curl -XPOST localhost:8081/queue?host=localhost:9020
 curl -XPOST localhost:8081/maintainer?host=localhost:9030\&indexer=localhost:9040
 
 # Cluster B
-nohup gochariots-app -toid 8180 2 1 > logs/$0.log &
-nohup gochariots-controller 8181 2 1 > /dev/null &
-nohup gochariots-batcher -toid 9100 2 1 > /dev/null &
-nohup gochariots-filter -toid 9110 2 1 > /dev/null &
-nohup gochariots-filter -toid 9111 2 1 > /dev/null &
-nohup gochariots-queue -toid 9120 2 1 true > /dev/null &
-nohup gochariots-maintainer -toid -n=100000 9130 2 1 > /dev/null &
-nohup gochariots-indexer -toid 9140 2 1 > /dev/null &
+nohup gochariots app 8180 2 1 -t > logs/$0.log &
+nohup gochariots controller 8181 2 1 > /dev/null &
+nohup gochariots batcher 9100 2 1 -t > /dev/null &
+nohup gochariots filter 9110 2 1 -t > /dev/null &
+nohup gochariots filter 9111 2 1 -t > /dev/null &
+nohup gochariots queue --hold 9120 2 1 -t > /dev/null &
+nohup gochariots maintainer 9130 2 1 -t > /dev/null &
+nohup gochariots indexer 9140 2 1 -t > /dev/null &
 
 sleep 1
 

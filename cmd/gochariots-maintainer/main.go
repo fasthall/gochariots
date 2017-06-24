@@ -15,8 +15,6 @@ func main() {
 	v := flag.Bool("v", false, "Turn on all logging")
 	toid := flag.Bool("toid", false, "TOId version")
 	flag.Parse()
-	maintainer.LogRecordNth = *n
-	fmt.Println(maintainer.LogRecordNth)
 	if len(flag.Args()) < 3 {
 		fmt.Println("Usage: gochariots-maintainer port num_dc dc_id")
 		return
@@ -34,7 +32,7 @@ func main() {
 	info.InitChariots(numDc, dcID)
 	info.SetName("maintainer" + flag.Arg(0))
 	info.RedirectLog(info.GetName()+".log", *v)
-	maintainer.InitLogMaintainer(info.GetName())
+	maintainer.InitLogMaintainer(info.GetName(), *n)
 	ln, err := net.Listen("tcp", ":"+flag.Arg(0))
 	if err != nil {
 		fmt.Println(info.GetName() + "couldn't listen on port " + flag.Arg(0))
