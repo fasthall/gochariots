@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"encoding/json"
+
 	"github.com/Sirupsen/logrus"
 	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/maintainer"
@@ -19,6 +21,7 @@ import (
 
 var batcherConn []net.Conn
 var batcherPool []string
+var batchersVer int
 var connMutex sync.Mutex
 
 type JsonRecord struct {
@@ -31,15 +34,26 @@ func Run(port string) {
 	router := gin.Default()
 	router.POST("/record", postRecord)
 	router.GET("/record/:lid", getRecord)
-	router.POST("/batcher", addBatcher)
+	router.POST("/batcher", addBatchers)
 	router.GET("/batcher", getBatchers)
 	router.Run(":" + port)
 }
 
-func addBatcher(c *gin.Context) {
-	batcherPool = append(batcherPool, c.Query("host"))
-	batcherConn = make([]net.Conn, len(batcherPool))
-	c.String(http.StatusOK, c.Query("host")+" added\n")
+func addBatchers(c *gin.Context) {
+	ver, err := strconv.Atoi(c.Query("ver"))
+	if err != nil {
+		c.String(http.StatusBadRequest, "invalid version $ver")
+		return
+	}
+	if ver > batchersVer {
+		json.Unmarshal([]byte(c.Query("host")), &batcherPool)
+		batcherConn = make([]net.Conn, len(batcherPool))
+		c.String(http.StatusOK, c.Query("host")+" added")
+		logrus.WithFields(logrus.Fields{"ver": batchersVer, "batchers": batcherPool}).Info("batcher list updated")
+	} else {
+		c.String(http.StatusOK, "received older version of batcher list")
+		logrus.WithFields(logrus.Fields{"current": batchersVer, "received": ver}).Info("received older version of batcher list")
+	}
 }
 
 func getBatchers(c *gin.Context) {

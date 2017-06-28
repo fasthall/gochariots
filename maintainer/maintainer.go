@@ -17,7 +17,6 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	"github.com/fasthall/gochariots/info"
-	"github.com/fasthall/gochariots/misc"
 	"github.com/fasthall/gochariots/misc/connection"
 	"github.com/fasthall/gochariots/record"
 )
@@ -48,35 +47,6 @@ func InitLogMaintainer(p string, n int) {
 	if err != nil {
 		logrus.WithField("path", p).Error("couldn't create file")
 		panic(err)
-	}
-}
-
-func Config(file string) {
-	config, err := misc.ReadConfig(file)
-	if err != nil {
-		logrus.WithError(err).Warn("read config file failed")
-		return
-	}
-	if config.Controller == "" {
-		logrus.Error("No controller information found in config file")
-		return
-	}
-	addr, err := misc.GetHostIP()
-	if err != nil {
-		logrus.WithError(err).Error("couldn't find local IP address")
-		return
-	}
-	p := misc.NewParams()
-	p.AddParam("host", addr+":"+info.GetPort())
-	logrus.WithFields(logrus.Fields{"controller": config.Controller}).Info("Config file read")
-
-	err = errors.New("")
-	for err != nil {
-		time.Sleep(3 * time.Second)
-		err = misc.Report(config.Controller, "maintainer", p)
-		if err != nil {
-			logrus.WithError(err).Error("couldn't report to the controller")
-		}
 	}
 }
 

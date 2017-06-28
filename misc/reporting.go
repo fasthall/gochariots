@@ -14,6 +14,8 @@ var controllerHost string
 
 type Config struct {
 	Controller string `yaml:"controller"`
+	NumDC      int    `yaml:"num_dc"`
+	ID         int    `yaml:"id`
 }
 
 func ReadConfig(file string) (Config, error) {
@@ -51,9 +53,9 @@ func (p *Params) ToString() string {
 	return str[:len(str)-1]
 }
 
-func Report(controllerURL, path string, params Params) error {
+func Report(host, path string, params Params) error {
 	arg := params.ToString()
-	request, err := http.NewRequest("POST", "http://"+controllerURL+"/"+path+"?"+arg, nil)
+	request, err := http.NewRequest("POST", "http://"+host+"/"+path+"?"+arg, nil)
 	if err != nil {
 		return err
 	}

@@ -10,13 +10,10 @@ import (
 	"math/rand"
 	"net"
 	"sync"
-	"time"
 
 	"encoding/json"
 
 	"github.com/Sirupsen/logrus"
-	"github.com/fasthall/gochariots/info"
-	"github.com/fasthall/gochariots/misc"
 	"github.com/fasthall/gochariots/misc/connection"
 	"github.com/fasthall/gochariots/record"
 )
@@ -38,35 +35,6 @@ func InitFilter(n int) {
 	bufMutex.Lock()
 	buffer = make([]record.Record, 0)
 	bufMutex.Unlock()
-}
-
-func Config(file string) {
-	config, err := misc.ReadConfig(file)
-	if err != nil {
-		logrus.WithError(err).Warn("read config file failed")
-		return
-	}
-	if config.Controller == "" {
-		logrus.Error("No controller information found in config file")
-		return
-	}
-	addr, err := misc.GetHostIP()
-	if err != nil {
-		logrus.WithError(err).Error("couldn't find local IP address")
-		return
-	}
-	p := misc.NewParams()
-	p.AddParam("host", addr+":"+info.GetPort())
-	logrus.WithFields(logrus.Fields{"controller": config.Controller}).Info("Config file read")
-
-	err = errors.New("")
-	for err != nil {
-		err = misc.Report(config.Controller, "filter", p)
-		if err != nil {
-			logrus.WithError(err).Error("couldn't report to the controller")
-			time.Sleep(3 * time.Second)
-		}
-	}
 }
 
 // arrival deals with the records the filter received.

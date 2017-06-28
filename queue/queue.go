@@ -12,10 +12,8 @@ import (
 	"time"
 
 	"github.com/Sirupsen/logrus"
-	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/maintainer"
 	"github.com/fasthall/gochariots/maintainer/indexer"
-	"github.com/fasthall/gochariots/misc"
 	"github.com/fasthall/gochariots/misc/connection"
 	"github.com/fasthall/gochariots/record"
 )
@@ -59,35 +57,6 @@ func InitQueue(hasToken bool) {
 		logrus.WithField("token", false).Info("initialized")
 	}
 	indexerBuf = make([]byte, 1024*1024*32)
-}
-
-func Config(file string) {
-	config, err := misc.ReadConfig(file)
-	if err != nil {
-		logrus.WithError(err).Warn("read config file failed")
-		return
-	}
-	if config.Controller == "" {
-		logrus.Error("No controller information found in config file")
-		return
-	}
-	addr, err := misc.GetHostIP()
-	if err != nil {
-		logrus.WithError(err).Error("couldn't find local IP address")
-		return
-	}
-	p := misc.NewParams()
-	p.AddParam("host", addr+":"+info.GetPort())
-	logrus.WithFields(logrus.Fields{"controller": config.Controller}).Info("Config file read")
-
-	err = errors.New("")
-	for err != nil {
-		err = misc.Report(config.Controller, "queue", p)
-		if err != nil {
-			logrus.WithError(err).Error("couldn't report to the controller")
-			time.Sleep(3 * time.Second)
-		}
-	}
 }
 
 // InitToken intializes a token. The IDs info should be accuired from log maintainers

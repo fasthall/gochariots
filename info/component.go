@@ -1,6 +1,7 @@
 package info
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/fasthall/gochariots/misc"
 )
 
 // Name is the name of this running component
@@ -43,6 +45,35 @@ func RedirectLog(name string, level logrus.Level) {
 		logrus.SetOutput(os.Stdout)
 	} else {
 		logrus.SetOutput(f)
+	}
+}
+
+func Config(file, component string) {
+	config, err := misc.ReadConfig(file)
+	if err != nil {
+		logrus.WithError(err).Warn("read config file failed")
+		return
+	}
+	if config.Controller == "" {
+		logrus.Error("No controller information found in config file")
+		return
+	}
+	addr, err := misc.GetHostIP()
+	if err != nil {
+		logrus.WithError(err).Error("couldn't find local IP address")
+		return
+	}
+	p := misc.NewParams()
+	p.AddParam("host", addr+":"+GetPort())
+	logrus.WithFields(logrus.Fields{"controller": config.Controller}).Info("Config file read")
+
+	err = errors.New("")
+	for err != nil {
+		time.Sleep(3 * time.Second)
+		err = misc.Report(config.Controller, component, p)
+		if err != nil {
+			logrus.WithError(err).Error("couldn't report to the controller")
+		}
 	}
 }
 

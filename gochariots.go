@@ -25,6 +25,7 @@ var (
 	appNumDC   = appCommand.Arg("num_dc", "The port app listens to.").Required().Int()
 	appID      = appCommand.Arg("id", "The port app listens to.").Required().Int()
 	appTOId    = appCommand.Flag("toid", "Use TOId version.").Short('t').Bool()
+	appConfig  = appCommand.Flag("config_file", "Configuration file to read.").Short('f').String()
 	appInfo    = appCommand.Flag("info", "Turn on info level logging.").Short('i').Bool()
 	appDebug   = appCommand.Flag("debug", "Turn on debug level logging.").Short('d').Bool()
 
@@ -89,6 +90,7 @@ func main() {
 	switch kingpin.MustParse(gochariots.Parse(os.Args[1:])) {
 	case appCommand.FullCommand():
 		info.InitChariots(*appNumDC, *appID)
+		indexerCommand.GetArg("info")
 		info.SetName("app" + *appPort)
 		info.SetPort(*appPort)
 		level := logrus.WarnLevel
@@ -98,6 +100,9 @@ func main() {
 			level = logrus.InfoLevel
 		}
 		info.RedirectLog(info.GetName()+".log", level)
+		if *appConfig != "" {
+			info.Config(*appConfig, "app")
+		}
 		if *appTOId {
 			app.TOIDRun(*appPort)
 		} else {
@@ -137,7 +142,7 @@ func main() {
 		}
 		defer ln.Close()
 		if *batcherConfig != "" {
-			batcher.Config(*batcherConfig)
+			info.Config(*batcherConfig, "batcher")
 		}
 		fmt.Println(info.GetName()+" is listening to port", *batcherPort)
 		if *batcherTOId {
@@ -187,7 +192,7 @@ func main() {
 		}
 		defer ln.Close()
 		if *filterConfig != "" {
-			filter.Config(*filterConfig)
+			info.Config(*filterConfig, "filter")
 		}
 		fmt.Println(info.GetName()+" is listening to port", *filterPort)
 		if *filterTOId {
@@ -233,7 +238,7 @@ func main() {
 		}
 		defer ln.Close()
 		if *queueConfig != "" {
-			queue.Config(*queueConfig)
+			info.Config(*queueConfig, "queue")
 		}
 		fmt.Println(info.GetName()+" is listening to port", *queuePort)
 		if *queueTOId {
@@ -276,7 +281,7 @@ func main() {
 		}
 		defer ln.Close()
 		if *maintainerConfig != "" {
-			maintainer.Config(*maintainerConfig)
+			info.Config(*maintainerConfig, "maintainer")
 		}
 		fmt.Println(info.GetName()+" is listening to port", *maintainerPort)
 		if *maintainerTOId {
@@ -323,7 +328,7 @@ func main() {
 		}
 		defer ln.Close()
 		if *indexerConfig != "" {
-			indexer.Config(*indexerConfig)
+			info.Config(*indexerConfig, "indexer")
 		}
 		fmt.Println(info.GetName()+" is listening to port", *indexerPort)
 		if *indexerTOId {

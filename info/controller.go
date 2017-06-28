@@ -10,9 +10,12 @@ import (
 	"sync"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/fasthall/gochariots/misc"
 	"github.com/gin-gonic/gin"
 )
 
+var apps []string
+var appsVersion int
 var batchers []string
 var batchersVersion int
 var filters []string
@@ -31,6 +34,9 @@ var mutex sync.Mutex
 func StartController(port string) {
 	router := gin.Default()
 
+	router.GET("/", getInfo)
+	router.POST("/app", addApps)
+	router.GET("/app", getApps)
 	router.POST("/batcher", addBatchers)
 	router.GET("/batcher", getBatchers)
 	router.POST("/filter", addFilter)
@@ -47,6 +53,48 @@ func StartController(port string) {
 	router.Run(":" + port)
 }
 
+func getInfo(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"apps":           apps,
+		"batchers":       batchers,
+		"filters":        filters,
+		"queues":         queues,
+		"maintainers":    maintainers,
+		"indexers":       indexers,
+		"remoteBatchers": remoteBatcher,
+	})
+}
+
+func addApps(c *gin.Context) {
+	if c.Query("host") == "" {
+		c.String(http.StatusBadRequest, "invalid parameter, needs $host")
+		return
+	}
+	mutex.Lock()
+	apps = append(apps, c.Query("host"))
+	appsVersion++
+	mutex.Unlock()
+
+	jsonBatchers, err := json.Marshal(batchers)
+	if err != nil {
+		logrus.WithError(err).Error("couldn't convert batchers to bytes")
+		panic("failing to update cluster may cause unexpected error")
+	}
+	p := misc.NewParams()
+	p.AddParam("host", string(jsonBatchers))
+	p.AddParam("ver", strconv.Itoa(batchersVersion))
+	misc.Report(c.Query("host"), "batcher", p)
+	logrus.WithField("host", c.Query("host")).Info("successfully informed app about batcher list")
+
+	c.String(http.StatusOK, c.Query("host")+" added")
+}
+
+func getApps(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"apps": apps,
+	})
+}
+
 func addBatchers(c *gin.Context) {
 	if c.Query("host") == "" {
 		c.String(http.StatusBadRequest, "invalid parameter, needs $host")
@@ -56,6 +104,18 @@ func addBatchers(c *gin.Context) {
 	batchers = append(batchers, c.Query("host"))
 	batchersVersion++
 	mutex.Unlock()
+	for _, host := range apps {
+		jsonBatchers, err := json.Marshal(batchers)
+		if err != nil {
+			logrus.WithError(err).Error("couldn't convert batchers to bytes")
+			panic("failing to update cluster may cause unexpected error")
+		}
+		p := misc.NewParams()
+		p.AddParam("host", string(jsonBatchers))
+		p.AddParam("ver", strconv.Itoa(batchersVersion))
+		misc.Report(host, "batcher", p)
+		logrus.WithField("host", host).Info("successfully informed app about batcher list")
+	}
 	for i, host := range batchers {
 		conn, err := net.Dial("tcp", host)
 		if err != nil {
@@ -77,7 +137,7 @@ func addBatchers(c *gin.Context) {
 			logrus.WithField("id", i).Error("couldn't send filter list to batcher")
 			panic("failing to update cluster may cause unexpected error")
 		}
-		logrus.WithFields(logrus.Fields{"id": i, "filters": filters}).Info("successfully informs batcher about filter list")
+		logrus.WithFields(logrus.Fields{"id": i, "filters": filters}).Info("successfully informed batcher about filter list")
 	}
 	c.String(http.StatusOK, c.Query("host")+" added")
 }
@@ -119,7 +179,7 @@ func addFilter(c *gin.Context) {
 			logrus.WithField("id", i).Error("couldn't send filter list to batcher")
 			panic("failing to update cluster may cause unexpected error")
 		}
-		logrus.WithFields(logrus.Fields{"id": i, "filters": filters}).Info("successfully informs batcher about filter list")
+		logrus.WithFields(logrus.Fields{"id": i, "filters": filters}).Info("successfully informed batcher about filter list")
 	}
 
 	// update filter about queues
@@ -139,7 +199,7 @@ func addFilter(c *gin.Context) {
 		logrus.WithField("host", c.Query("host")).Error("couldn't send new queue host")
 		panic("failing to update cluster may cause unexpected error")
 	}
-	logrus.WithFields(logrus.Fields{"filter": c.Query("host"), "queues": queues}).Info("successfully informs filter about new queue host")
+	logrus.WithFields(logrus.Fields{"filter": c.Query("host"), "queues": queues}).Info("successfully informed filter about new queue host")
 }
 
 func getFilters(c *gin.Context) {
@@ -176,7 +236,7 @@ func addQueue(c *gin.Context) {
 			logrus.WithField("id", i).Error("couldn't send next queue host")
 			panic("failing to update cluster may cause unexpected error")
 		}
-		logrus.WithFields(logrus.Fields{"id": i, "queue": queues[(i+1)%len(queues)]}).Info("successfully informs queue about next queue host")
+		logrus.WithFields(logrus.Fields{"id": i, "queue": queues[(i+1)%len(queues)]}).Info("successfully informed queue about next queue host")
 	}
 	// update filter about queues
 	for i, host := range filters {
@@ -196,7 +256,7 @@ func addQueue(c *gin.Context) {
 			logrus.WithField("id", i).Error("couldn't send new queue host")
 			panic("failing to update cluster may cause unexpected error")
 		}
-		logrus.WithFields(logrus.Fields{"filter": host, "queues": queues}).Info("successfully informs filter about new queue host")
+		logrus.WithFields(logrus.Fields{"filter": host, "queues": queues}).Info("successfully informed filter about new queue host")
 	}
 
 	// update queues' maintainer list
@@ -216,7 +276,7 @@ func addQueue(c *gin.Context) {
 		logrus.WithField("host", c.Query("host")).Error("couldn't send maintainer list to new queue")
 		panic("failing to update cluster may cause unexpected error")
 	}
-	logrus.WithField("maintainers", maintainers).Info("successfully informs new queue about maintainer list")
+	logrus.WithField("maintainers", maintainers).Info("successfully informed new queue about maintainer list")
 }
 
 func getQueues(c *gin.Context) {
@@ -275,7 +335,7 @@ func addMaintainer(c *gin.Context) {
 			logrus.WithField("id", i).Error("couldn't send maintainer list to queue")
 			panic("failing to update cluster may cause unexpected error")
 		}
-		logrus.WithField("maintainers", maintainers).Info("successfully informs queues about maintainer list")
+		logrus.WithField("maintainers", maintainers).Info("successfully informed queues about maintainer list")
 	}
 
 	// update remote batchers
@@ -295,7 +355,7 @@ func addMaintainer(c *gin.Context) {
 		logrus.WithField("id", i).Error("couldn't send remoteBatcher to maintainer")
 		panic("failing to update cluster may cause unexpected error")
 	}
-	logrus.WithField("batchers", remoteBatcher).Info("successfully informs maintainers about new remote batchers")
+	logrus.WithField("batchers", remoteBatcher).Info("successfully informed maintainers about new remote batchers")
 }
 
 func getMaintainers(c *gin.Context) {
@@ -355,7 +415,7 @@ func addIndexer(c *gin.Context) {
 			logrus.WithField("id", i).Error("couldn't send indexer list to queue")
 			panic("failing to update cluster may cause unexpected error")
 		}
-		logrus.WithField("indexers", indexers).Info("successfully informs queues about indexer list")
+		logrus.WithField("indexers", indexers).Info("successfully informed queues about indexer list")
 	}
 }
 
@@ -397,7 +457,7 @@ func addRemoteBatcher(c *gin.Context) {
 			logrus.WithField("id", i).Error("couldn't send remoteBatcher to maintainer")
 			panic("failing to update cluster may cause unexpected error")
 		}
-		logrus.WithField("batchers", remoteBatcher).Info("successfully informs maintainers about new remote batchers")
+		logrus.WithField("batchers", remoteBatcher).Info("successfully informed maintainers about new remote batchers")
 	}
 	c.String(http.StatusOK, "remoteBatcher["+c.Query("dc")+"] = "+c.Query("host")+" updated")
 }
