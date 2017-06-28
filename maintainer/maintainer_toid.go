@@ -169,15 +169,19 @@ func TOIDHandleRequest(conn net.Conn) {
 			break
 		}
 		if buf[0] == 'b' { // received remote batchers update
-			var batchers []string
-			err := json.Unmarshal(buf[1:totalLength], &batchers)
-			if err != nil {
-				logrus.WithField("buffer", string(buf[1:totalLength])).Error("couldn't convert read buffer to batcher list")
-				panic(err)
+			ver := int(binary.BigEndian.Uint32(buf[1:5]))
+			if ver > remoteBatcherVer {
+				remoteBatcherVer = ver
+				err := json.Unmarshal(buf[5:totalLength], &remoteBatchers)
+				if err != nil {
+					logrus.WithField("buffer", string(buf[1:totalLength])).Error("couldn't convert read buffer to batcher list")
+					panic(err)
+				} else {
+					remoteBatchersConn = make([]net.Conn, len(remoteBatchers))
+					logrus.WithField("batchers", remoteBatchers).Info("received remote batchers update")
+				}
 			} else {
-				remoteBatchers = batchers
-				remoteBatchersConn = make([]net.Conn, len(remoteBatchers))
-				logrus.WithField("batchers", remoteBatchers).Info("received remote batchers update")
+				logrus.WithFields(logrus.Fields{"current": remoteBatcherVer, "received": ver}).Debug("receiver older version of remote batcher")
 			}
 		} else if buf[0] == 'r' { // received records from queue
 			// info.LogTimestamp("HandleRequest")
@@ -203,12 +207,18 @@ func TOIDHandleRequest(conn net.Conn) {
 				}
 			}
 		} else if buf[0] == 'i' { // received indexer update
-			indexerHost = string(buf[1:totalLength])
-			if indexerConn != nil {
-				indexerConn.Close()
-				indexerConn = nil
+			ver := int(binary.BigEndian.Uint32(buf[1:5]))
+			if ver > indexerVer {
+				indexerVer = ver
+				indexerHost = string(buf[5:totalLength])
+				if indexerConn != nil {
+					indexerConn.Close()
+					indexerConn = nil
+				}
+				logrus.WithField("host", indexerHost).Info("updates indexer host")
+			} else {
+				logrus.WithFields(logrus.Fields{"current": indexerVer, "received": ver}).Debug("receiver older version of indexer host")
 			}
-			logrus.WithField("host", indexerHost).Info("updates indexer host")
 		} else {
 			logrus.WithField("header", buf[0]).Warning("couldn't understand request")
 		}

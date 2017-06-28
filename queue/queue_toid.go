@@ -121,9 +121,9 @@ func TokenArrivalCarryDeferred(token TOIDToken) {
 		// assign LId and send to log maintainers
 		lastID := TOIDassignLId(dispatch, token.LastLId)
 		token.LastLId = lastID
-		toDispatch := make([][]record.TOIDRecord, len(logMaintainerConn))
+		toDispatch := make([][]record.TOIDRecord, len(maintainersConn))
 		for _, r := range dispatch {
-			id := maintainer.AssignToMaintainer(r.LId, len(logMaintainerConn))
+			id := maintainer.AssignToMaintainer(r.LId, len(maintainersConn))
 			toDispatch[id] = append(toDispatch[id], r)
 		}
 		for id, t := range toDispatch {
@@ -170,9 +170,9 @@ func TokenArrivalBufferDeferred(token TOIDToken) {
 		// assign LId and send to log maintainers
 		lastID := TOIDassignLId(dispatch, token.LastLId)
 		token.LastLId = lastID
-		toDispatch := make([][]record.TOIDRecord, len(logMaintainerConn))
+		toDispatch := make([][]record.TOIDRecord, len(maintainersConn))
 		for _, r := range dispatch {
-			id := maintainer.AssignToMaintainer(r.LId, len(logMaintainerConn))
+			id := maintainer.AssignToMaintainer(r.LId, len(maintainersConn))
 			toDispatch[id] = append(toDispatch[id], r)
 		}
 		for id, t := range toDispatch {
@@ -263,7 +263,7 @@ func TOIDdispatchRecords(records []record.TOIDRecord, maintainerID int) {
 	b[4] = byte('r')
 	binary.BigEndian.PutUint32(b, uint32(len(bytes)+1))
 	maintainerConnMutex.Lock()
-	if logMaintainerConn[maintainerID] == nil {
+	if maintainersConn[maintainerID] == nil {
 		err = dialLogMaintainer(maintainerID)
 		if err != nil {
 			logrus.WithField("id", maintainerID).Error("couldn't connect to log maintainer")
@@ -277,8 +277,8 @@ func TOIDdispatchRecords(records []record.TOIDRecord, maintainerID int) {
 	sent := false
 	for sent == false {
 		maintainerConnMutex.Lock()
-		if logMaintainerConn[maintainerID] != nil {
-			_, err = logMaintainerConn[maintainerID].Write(append(b, bytes...))
+		if maintainersConn[maintainerID] != nil {
+			_, err = maintainersConn[maintainerID].Write(append(b, bytes...))
 		} else {
 			err = errors.New("logMaintainerConn[hostID] == nil")
 		}
@@ -327,12 +327,18 @@ func TOIDHandleRequest(conn net.Conn) {
 			logrus.WithField("length", len(records)).Info("received incoming record")
 			TOIDrecordsArrival(records)
 		} else if buf[0] == 'q' { // received next host update
-			nextQueueHost = string(buf[1:totalLength])
-			if nextQueueConn != nil {
-				nextQueueConn.Close()
-				nextQueueConn = nil
+			ver := int(binary.BigEndian.Uint32(buf[1:5]))
+			nextQueueHost = string(buf[5:totalLength])
+			if ver > nextQueueVer {
+				nextQueueVer = ver
+				if nextQueueConn != nil {
+					nextQueueConn.Close()
+					nextQueueConn = nil
+				}
+				logrus.WithField("host", nextQueueHost).Info("received next host update")
+			} else {
+				logrus.WithFields(logrus.Fields{"current": nextQueueVer, "received": ver}).Debug("receiver older version of next queue host")
 			}
-			logrus.WithField("host", nextQueueHost).Info("updates next queue")
 		} else if buf[0] == 't' { // received token
 			var token TOIDToken
 			err := json.Unmarshal(buf[1:totalLength], &token)
@@ -347,17 +353,33 @@ func TOIDHandleRequest(conn net.Conn) {
 			}
 			logrus.Info("received token")
 		} else if buf[0] == 'm' { // received maintainer update
-			err := json.Unmarshal(buf[1:totalLength], &logMaintainerHost)
-			if err != nil {
-				logrus.WithField("buffer", string(buf[1:totalLength])).Error("couldn't convert read buffer to maintainer hosts")
+			ver := int(binary.BigEndian.Uint32(buf[1:5]))
+			if ver > maintainersVer {
+				maintainersVer = ver
+				err := json.Unmarshal(buf[5:totalLength], &maintainersHost)
+				if err != nil {
+					logrus.WithField("buffer", string(buf[1:totalLength])).Error("couldn't convert read buffer to maintainer hosts")
+				} else {
+					maintainersConn = make([]net.Conn, len(maintainersHost))
+					logrus.WithField("host", maintainersHost).Info("receiver maintainer hosts update")
+				}
+			} else {
+				logrus.WithFields(logrus.Fields{"current": maintainersVer, "received": ver}).Debug("receiver older version of maintainer list")
 			}
-			logMaintainerConn = make([]net.Conn, len(logMaintainerHost))
 		} else if buf[0] == 'i' { // received indexer update
-			err := json.Unmarshal(buf[1:totalLength], &indexerHost)
-			if err != nil {
-				logrus.WithField("buffer", string(buf[1:totalLength])).Error("couldn't convert read buffer to indexer hosts")
+			ver := int(binary.BigEndian.Uint32(buf[1:5]))
+			if ver > indexersVer {
+				indexersVer = ver
+				err := json.Unmarshal(buf[5:totalLength], &indexerHost)
+				if err != nil {
+					logrus.WithField("buffer", string(buf[5:totalLength])).Error("couldn't convert read buffer to indexer hosts")
+				} else {
+					indexerConn = make([]net.Conn, len(indexerHost))
+					logrus.WithField("host", indexerHost).Info("receiver indexer hosts update")
+				}
+			} else {
+				logrus.WithFields(logrus.Fields{"current": indexersVer, "received": ver}).Debug("receiver older version of indexer list")
 			}
-			indexerConn = make([]net.Conn, len(indexerHost))
 		} else {
 			logrus.WithField("header", buf[0]).Warning("couldn't understand request")
 		}

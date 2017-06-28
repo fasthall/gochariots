@@ -12,6 +12,7 @@ import (
 
 // Name is the name of this running component
 var name string
+var port string
 
 func SetName(n string) {
 	name = n
@@ -21,13 +22,17 @@ func GetName() string {
 	return name
 }
 
-func RedirectLog(name string, info bool) {
+func SetPort(p string) {
+	port = p
+}
+
+func GetPort() string {
+	return port
+}
+
+func RedirectLog(name string, level logrus.Level) {
 	// logrus.SetFormatter(&logrus.JSONFormatter{})
-	if info {
-		logrus.SetLevel(logrus.InfoLevel)
-	} else {
-		logrus.SetLevel(logrus.WarnLevel)
-	}
+	logrus.SetLevel(level)
 	logrus.SetFormatter(&logrus.TextFormatter{ForceColors: true})
 	err := os.Mkdir("logs", 0755)
 	filepath := path.Join("logs", name)

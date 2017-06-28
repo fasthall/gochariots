@@ -1,5 +1,9 @@
 # June
 
+## June 27, 2017
+### Rewrite how component reports to controller
+Use *--config_file* or *-f* option to specify the YAML file location. In this file, user can specify the controller's host address. If the option is used, the component will report to the controller automatically until succeed. [Example of yaml file](../test/script/config1.yaml). [Example of new launch script](../test/script/double.sh). 
+
 ## June 22, 2017
 ### Merge all three branches
 Use *-toid* option to use TOId version. By default use hash version. See [double_toid.sh](../test/script/double_toid.sh) as reference.

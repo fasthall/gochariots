@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/fasthall/gochariots/info"
+	"github.com/fasthall/gochariots/misc"
 	"github.com/fasthall/gochariots/misc/connection"
 	"github.com/fasthall/gochariots/record"
 )
@@ -23,6 +25,7 @@ var buffer [][]record.Record
 var connMutex sync.Mutex
 var filterConn []net.Conn
 var filterHost []string
+var filterHostVer int
 var numFilters int
 
 // InitBatcher allocates n buffers, where n is the number of filters
@@ -35,6 +38,35 @@ func InitBatcher(n int) {
 	filterHost = make([]string, numFilters)
 	filterConn = make([]net.Conn, numFilters)
 	logrus.WithField("filter number", n).Info("initialized")
+}
+
+func Config(file string) {
+	config, err := misc.ReadConfig(file)
+	if err != nil {
+		logrus.WithError(err).Warn("read config file failed")
+		return
+	}
+	if config.Controller == "" {
+		logrus.Error("No controller information found in config file")
+		return
+	}
+	addr, err := misc.GetHostIP()
+	if err != nil {
+		logrus.WithError(err).Error("couldn't find local IP address")
+		return
+	}
+	p := misc.NewParams()
+	p.AddParam("host", addr+":"+info.GetPort())
+	logrus.WithFields(logrus.Fields{"controller": config.Controller}).Info("Config file read")
+
+	err = errors.New("")
+	for err != nil {
+		time.Sleep(3 * time.Second)
+		err = misc.Report(config.Controller, "batcher", p)
+		if err != nil {
+			logrus.WithError(err).Error("couldn't report to the controller")
+		}
+	}
 }
 
 // arrival buffers arriving records.
@@ -64,7 +96,7 @@ func sendToFilter(dc int) {
 	if len(buffer[dc]) == 0 {
 		return
 	}
-	logrus.WithField("timestamp", time.Now()).Info("sendToFilter")
+	// logrus.WithField("timestamp", time.Now()).Info("sendToFilter")
 	bytes, err := record.ToGobArray(buffer[dc])
 	if err != nil {
 		logrus.WithError(err).Error("couldn't convert buffer to records")
@@ -110,7 +142,7 @@ func sendToFilter(dc int) {
 			}
 		} else {
 			sent = true
-			logrus.WithField("id", dc).Info("sent to filter")
+			logrus.WithField("id", dc).Debug("sent to filter")
 		}
 	}
 }
@@ -147,7 +179,7 @@ func HandleRequest(conn net.Conn) {
 				logrus.WithField("buffer", string(buf[1:totalLength])).Error("couldn't convert read buffer to record")
 				continue
 			}
-			logrus.WithField("record", r).Info("received incoming record")
+			logrus.WithField("record", r).Debug("received incoming record")
 			arrival(r)
 			// elapsed := time.Since(start)
 			// log.Printf("TIMESTAMP %s:HandleRequest took %s\n", info.GetName(), elapsed)
@@ -167,12 +199,18 @@ func HandleRequest(conn net.Conn) {
 			// elapsed := time.Since(start)
 			// log.Printf("TIMESTAMP %s:HandleRequest took %s\n", info.GetName(), elapsed)
 		} else if buf[0] == 'f' { //received filter update
-			err := json.Unmarshal(buf[1:totalLength], &filterHost)
-			if err != nil {
-				logrus.WithField("buffer", string(buf[1:totalLength])).Error("couldn't convert bytes to filter list")
-				continue
+			ver := int(binary.BigEndian.Uint32(buf[1:5]))
+			if ver > filterHostVer {
+				filterHostVer = ver
+				err := json.Unmarshal(buf[5:totalLength], &filterHost)
+				if err != nil {
+					logrus.WithField("buffer", string(buf[5:totalLength])).Error("couldn't convert bytes to filter list")
+					continue
+				} else {
+					logrus.WithField("filterHost", filterHost).Info("updates filter")
+				}
 			} else {
-				logrus.WithField("filterHost", filterHost).Info("updates filter")
+				logrus.WithFields(logrus.Fields{"current": filterHostVer, "received": ver}).Debug("receiver older version of filter list")
 			}
 		} else {
 			logrus.WithField("header", buf[0]).Warning("couldn't understand request")

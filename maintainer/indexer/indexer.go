@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/gob"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"hash/fnv"
 	"io"
@@ -15,6 +16,7 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/boltdb/bolt"
 	"github.com/fasthall/gochariots/info"
+	"github.com/fasthall/gochariots/misc"
 	"github.com/fasthall/gochariots/misc/connection"
 	cache "github.com/patrickmn/go-cache"
 )
@@ -152,7 +154,7 @@ func insertIndexEntry(key, value string, lid int, seed uint64) {
 			logrus.WithError(err).Error("couldn't insert entry")
 		}
 	}
-	logrus.WithField("entry", entry).Info("entry inserted")
+	logrus.WithField("entry", entry).Debug("entry inserted")
 }
 
 func getIndexEntry(hash uint64) ([]IndexTableEntry, error) {
@@ -190,6 +192,35 @@ func InitIndexer(p string, boltdb bool) {
 		gocache = cache.New(5*time.Minute, 10*time.Minute)
 	}
 	logrus.Info("indexer initialized")
+}
+
+func Config(file string) {
+	config, err := misc.ReadConfig(file)
+	if err != nil {
+		logrus.WithError(err).Warn("read config file failed")
+		return
+	}
+	if config.Controller == "" {
+		logrus.Error("No controller information found in config file")
+		return
+	}
+	addr, err := misc.GetHostIP()
+	if err != nil {
+		logrus.WithError(err).Error("couldn't find local IP address")
+		return
+	}
+	p := misc.NewParams()
+	p.AddParam("host", addr+":"+info.GetPort())
+	logrus.WithFields(logrus.Fields{"controller": config.Controller}).Info("Config file read")
+
+	err = errors.New("")
+	for err != nil {
+		time.Sleep(3 * time.Second)
+		err = misc.Report(config.Controller, "indexer", p)
+		if err != nil {
+			logrus.WithError(err).Error("couldn't report to the controller")
+		}
+	}
 }
 
 func tagToHash(key, value string) uint64 {
