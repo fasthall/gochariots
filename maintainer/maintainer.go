@@ -58,7 +58,7 @@ func dialConn() error {
 
 // Append appends a new record to the maintainer.
 func Append(r record.Record) error {
-	logrus.WithField("timestamp", time.Now()).Debug("Append")
+	// logrus.WithField("timestamp", time.Now()).Debug("Append")
 	r.Timestamp = time.Now().UnixNano()
 	if logRecordNth > 0 {
 		if r.LId == 1 {
@@ -218,7 +218,7 @@ func HandleRequest(conn net.Conn) {
 			if err != nil {
 				logrus.WithField("buffer", string(buf[1:totalLength])).Error("couldn't convert read buffer to records")
 			}
-			// log.Println(info.GetName(), "received records:", records)
+			logrus.WithField("records", records).Debug("received incoming record")
 			recordsArrival(records)
 		} else if buf[0] == 'l' { // read records by LIds
 			lid := int(binary.BigEndian.Uint32(buf[1:totalLength]))

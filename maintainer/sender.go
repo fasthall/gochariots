@@ -88,7 +88,7 @@ func Propagate(r record.Record) {
 					continue
 				}
 			}
-			logrus.WithField("batcher", host).Debug("sent to remote batcher")
+			logrus.WithFields(logrus.Fields{"batcher": host, "record": r}).Debug("sent to remote batcher")
 		}
 	}
 }

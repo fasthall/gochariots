@@ -99,6 +99,7 @@ func tokenArrival(token Token) {
 	if len(query) > 0 {
 		existed := make([]bool, len(query))
 		for i := range indexerConn {
+			logrus.WithField("query", query).Debug("queryIndexer")
 			result, err := queryIndexer(query, i)
 			if err != nil {
 				logrus.WithField("id", i).Warning("indexer stops responding")
@@ -200,7 +201,7 @@ func passToken(token *Token) {
 				}
 			} else {
 				sent = true
-				logrus.WithField("host", nextQueueHost).Debug("sent the token to the next queue")
+				// logrus.WithField("host", nextQueueHost).Debug("sent the token to the next queue")
 			}
 		}
 	}
@@ -265,7 +266,7 @@ func dispatchRecords(records []record.Record, maintainerID int) {
 			}
 		} else {
 			sent = true
-			logrus.WithFields(logrus.Fields{"length": len(records), "id": maintainerID}).Debug("sent the records to maintainer")
+			logrus.WithFields(logrus.Fields{"records": records, "id": maintainerID}).Debug("sent the records to maintainer")
 		}
 	}
 	// log.Printf("TIMESTAMP %s:record in queue %s\n", info.GetName(), time.Since(lastTime))
@@ -352,7 +353,7 @@ func HandleRequest(conn net.Conn) {
 				logrus.WithField("buffer", string(buf[1:totalLength])).Error("couldn't convert read buffer to record")
 				continue
 			}
-			logrus.WithField("length", len(records)).Debug("received incoming record")
+			logrus.WithField("records", records).Debug("received incoming record")
 
 			recordsArrival(records)
 		} else if buf[0] == 'q' { // received next host update
@@ -375,7 +376,7 @@ func HandleRequest(conn net.Conn) {
 				logrus.WithField("buffer", string(buf[1:totalLength])).Error("couldn't convert read buffer to token")
 			}
 			tokenArrival(token)
-			logrus.Debug("received token")
+			// logrus.Debug("received token")
 		} else if buf[0] == 'm' { // received maintainer update
 			ver := int(binary.BigEndian.Uint32(buf[1:5]))
 			if ver > maintainersVer {

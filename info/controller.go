@@ -265,7 +265,6 @@ func addQueue(c *gin.Context) {
 		logrus.WithField("host", c.Query("host")).Error("couldn't connect to queue")
 		panic("failing to update cluster may cause unexpected error")
 	}
-	defer conn.Close()
 	jsonBytes, err := json.Marshal(maintainers)
 	b := make([]byte, 9)
 	b[4] = byte('m')
@@ -276,7 +275,31 @@ func addQueue(c *gin.Context) {
 		logrus.WithField("host", c.Query("host")).Error("couldn't send maintainer list to new queue")
 		panic("failing to update cluster may cause unexpected error")
 	}
+	conn.Close()
 	logrus.WithField("maintainers", maintainers).Info("successfully informed new queue about maintainer list")
+
+	// tell queue about indexer
+	conn, err = net.Dial("tcp", c.Query("host"))
+	if err != nil {
+		logrus.WithField("host", c.Query("host")).Error("couldn't connect to queue")
+		panic("failing to update cluster may cause unexpected error")
+	}
+	defer conn.Close()
+	jsonBytes, err = json.Marshal(indexers)
+	if err != nil {
+		logrus.WithError(err).Error("couldn't convert indexer list to json bytes")
+		panic(err)
+	}
+	b = make([]byte, 9)
+	b[4] = byte('i')
+	binary.BigEndian.PutUint32(b[5:], uint32(indexersVersion))
+	binary.BigEndian.PutUint32(b, uint32(len(jsonBytes)+5))
+	_, err = conn.Write(append(b, jsonBytes...))
+	if err != nil {
+		logrus.WithField("host", c.Query("host")).Error("couldn't send indexer list to queue")
+		panic("failing to update cluster may cause unexpected error")
+	}
+	logrus.WithField("indexers", indexers).Info("successfully informed queue about indexer list")
 }
 
 func getQueues(c *gin.Context) {
@@ -398,21 +421,25 @@ func addIndexer(c *gin.Context) {
 	}
 
 	// update queues' indexer list
-	for i, host := range queues {
+	for _, host := range queues {
 		conn, err := net.Dial("tcp", host)
 		if err != nil {
-			logrus.WithField("id", i).Error("couldn't connect to queue")
+			logrus.WithField("host", host).Error("couldn't connect to queue")
 			panic("failing to update cluster may cause unexpected error")
 		}
 		defer conn.Close()
 		jsonBytes, err := json.Marshal(indexers)
+		if err != nil {
+			logrus.WithError(err).Error("couldn't convert indexer list to json bytes")
+			panic(err)
+		}
 		b := make([]byte, 9)
 		b[4] = byte('i')
 		binary.BigEndian.PutUint32(b[5:], uint32(indexersVersion))
 		binary.BigEndian.PutUint32(b, uint32(len(jsonBytes)+5))
 		_, err = conn.Write(append(b, jsonBytes...))
 		if err != nil {
-			logrus.WithField("id", i).Error("couldn't send indexer list to queue")
+			logrus.WithField("host", host).Error("couldn't send indexer list to queue")
 			panic("failing to update cluster may cause unexpected error")
 		}
 		logrus.WithField("indexers", indexers).Info("successfully informed queues about indexer list")
