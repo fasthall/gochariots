@@ -8,6 +8,8 @@ import (
 	"path"
 	"time"
 
+	"net/http"
+
 	"github.com/Sirupsen/logrus"
 	"github.com/fasthall/gochariots/misc"
 )
@@ -69,11 +71,16 @@ func Config(file, component string) {
 
 	err = errors.New("")
 	for err != nil {
-		time.Sleep(3 * time.Second)
-		err = misc.Report(config.Controller, component, p)
-		if err != nil {
-			logrus.WithError(err).Error("couldn't report to the controller")
+		time.Sleep(1 * time.Second)
+		code := http.StatusBadRequest
+		response := ""
+		for code != http.StatusOK {
+			code, response, err = misc.Report(config.Controller, component, p)
+			if err != nil {
+				logrus.WithError(err).Error("couldn't report to the controller")
+			}
 		}
+		logrus.WithField("response", response).Info("reported to controller")
 	}
 }
 

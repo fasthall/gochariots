@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"time"
 
 	"sync"
 
@@ -75,6 +76,12 @@ func addApps(c *gin.Context) {
 	appsVersion++
 	mutex.Unlock()
 
+	go informApp(c.Query("host"))
+
+	c.String(http.StatusOK, c.Query("host")+" added")
+}
+
+func informApp(host string) {
 	jsonBatchers, err := json.Marshal(batchers)
 	if err != nil {
 		logrus.WithError(err).Error("couldn't convert batchers to bytes")
@@ -83,10 +90,15 @@ func addApps(c *gin.Context) {
 	p := misc.NewParams()
 	p.AddParam("host", string(jsonBatchers))
 	p.AddParam("ver", strconv.Itoa(batchersVersion))
-	misc.Report(c.Query("host"), "batcher", p)
-	logrus.WithField("host", c.Query("host")).Info("successfully informed app about batcher list")
-
-	c.String(http.StatusOK, c.Query("host")+" added")
+	code := http.StatusBadRequest
+	for code != http.StatusOK {
+		time.Sleep(1 * time.Second)
+		code, _, err = misc.Report(host, "batcher", p)
+		if err != nil {
+			logrus.WithError(err).Error("couldn't inform app about batchers")
+		}
+	}
+	logrus.WithFields(logrus.Fields{"host": host, "batchers": batchers}).Info("successfully informed app about batcher list")
 }
 
 func getApps(c *gin.Context) {
@@ -105,16 +117,7 @@ func addBatchers(c *gin.Context) {
 	batchersVersion++
 	mutex.Unlock()
 	for _, host := range apps {
-		jsonBatchers, err := json.Marshal(batchers)
-		if err != nil {
-			logrus.WithError(err).Error("couldn't convert batchers to bytes")
-			panic("failing to update cluster may cause unexpected error")
-		}
-		p := misc.NewParams()
-		p.AddParam("host", string(jsonBatchers))
-		p.AddParam("ver", strconv.Itoa(batchersVersion))
-		misc.Report(host, "batcher", p)
-		logrus.WithField("host", host).Info("successfully informed app about batcher list")
+		informApp(host)
 	}
 	for i, host := range batchers {
 		conn, err := net.Dial("tcp", host)

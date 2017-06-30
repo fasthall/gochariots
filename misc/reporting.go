@@ -6,8 +6,6 @@ import (
 	"net/http"
 
 	yaml "gopkg.in/yaml.v2"
-
-	"github.com/Sirupsen/logrus"
 )
 
 var controllerHost string
@@ -53,11 +51,11 @@ func (p *Params) ToString() string {
 	return str[:len(str)-1]
 }
 
-func Report(host, path string, params Params) error {
+func Report(host, path string, params Params) (int, string, error) {
 	arg := params.ToString()
 	request, err := http.NewRequest("POST", "http://"+host+"/"+path+"?"+arg, nil)
 	if err != nil {
-		return err
+		return 0, "", err
 	}
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	request.Header.Set("Connection", "Keep-Alive")
@@ -65,17 +63,16 @@ func Report(host, path string, params Params) error {
 	var resp *http.Response
 	resp, err = http.DefaultClient.Do(request)
 	if err != nil {
-		return err
+		return 0, "", err
 	}
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return err
+		return 0, "", err
 	}
+
 	if resp.StatusCode == http.StatusOK {
-		logrus.WithField("response", string(body)).Info("reported to controller")
-		return nil
+		return http.StatusOK, string(body), nil
 	} else {
-		logrus.WithField("response", string(body)).Info("failed reporting to controller")
-		return errors.New("HTTP response code isn't 200")
+		return resp.StatusCode, string(body), errors.New("HTTP response code isn't 200")
 	}
 }

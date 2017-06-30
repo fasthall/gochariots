@@ -46,6 +46,7 @@ func addBatchers(c *gin.Context) {
 		return
 	}
 	if ver > batchersVer {
+		batchersVer = ver
 		json.Unmarshal([]byte(c.Query("host")), &batcherPool)
 		batcherConn = make([]net.Conn, len(batcherPool))
 		c.String(http.StatusOK, c.Query("host")+" added")
@@ -100,9 +101,9 @@ func postRecord(c *gin.Context) {
 	if batcherConn[hostID] == nil {
 		err = dialConn(hostID)
 		if err != nil {
-			logrus.WithField("id", hostID).Error("couldn't connect to batcher")
+			logrus.WithField("host", batcherPool[hostID]).Error("couldn't connect to batcher")
 		} else {
-			logrus.WithField("id", hostID).Info("connected to batcher")
+			logrus.WithField("host", batcherPool[hostID]).Info("connected to batcher")
 		}
 	}
 	connMutex.Unlock()
