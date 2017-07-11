@@ -1,0 +1,69 @@
+version: '3'
+services:
+  controller:
+    image: fasthall/gochariots:controller
+    entrypoint: gochariots controller -p 8081 1 0 -i
+    volumes:
+      - ./logs:/go/logs
+    ports: 
+      - "8081:8081"
+    networks:
+      - cluster
+  app:
+    image: fasthall/gochariots:controller
+    entrypoint: gochariots app -p 8080 1 0 -i -f config/config.yaml
+    volumes:
+      - ./config:/go/config
+      - ./logs:/go/logs
+    depends_on:
+      - controller
+    ports:
+      - "8080:8080"
+    networks:
+      - cluster
+  batcher:
+    image: fasthall/gochariots:controller
+    entrypoint: gochariots batcher -p 9000 1 0 -i -f config/config.yaml
+    volumes:
+      - ./config:/go/config
+      - ./logs:/go/logs
+    ports: 
+      - "9000:9000"
+    networks:
+      - cluster
+  filter:
+    image: fasthall/gochariots:controller
+    entrypoint: gochariots filter 1 0 -i -f config/config.yaml
+    volumes:
+      - ./config:/go/config
+      - ./logs:/go/logs
+    networks:
+      - cluster
+  queue:
+    image: fasthall/gochariots:controller
+    entrypoint: gochariots queue --hold 1 0 -i -f config/config.yaml
+    volumes:
+      - ./config:/go/config
+      - ./logs:/go/logs
+    networks:
+      - cluster
+  maintainer:
+    image: fasthall/gochariots:controller
+    entrypoint: gochariots maintainer 1 0 -i -f config/config.yaml
+    volumes:
+      - ./config:/go/config
+      - ./logs:/go/logs
+      - ./flstore:/go/flstore
+    networks:
+      - cluster
+  indexer:
+    image: fasthall/gochariots:controller
+    entrypoint: gochariots indexer 1 0 -i -f config/config.yaml
+    volumes:
+      - ./config:/go/config
+      - ./logs:/go/logs
+    networks:
+      - cluster
+
+networks:
+  cluster:
