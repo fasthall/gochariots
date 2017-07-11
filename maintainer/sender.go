@@ -3,10 +3,10 @@ package maintainer
 import (
 	"encoding/binary"
 	"errors"
-	"log"
 	"net"
 	"sync"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/record"
 )
@@ -16,6 +16,7 @@ var lastSentTOId int
 var connMutex sync.Mutex
 var remoteBatchersConn []net.Conn
 var remoteBatchers []string
+var remoteBatcherVer int
 
 func dialRemoteBatchers(dc int) error {
 	var err error
@@ -30,8 +31,8 @@ func Propagate(r record.Record) {
 			// log.Printf("%s is propagating record to remoteBatchers[%d] %s", info.GetName(), dc, host)
 			jsonBytes, err := record.ToJSON(r)
 			if err != nil {
-				log.Println(info.GetName(), "couldn't convert record to bytes:", r)
-				log.Panicln(err)
+				logrus.WithError(err).Error("couldn't convert record to bytes")
+				panic(err)
 			}
 			b := make([]byte, 5)
 			b[4] = byte('r')
@@ -41,9 +42,10 @@ func Propagate(r record.Record) {
 			if remoteBatchersConn[dc] == nil {
 				err = dialRemoteBatchers(dc)
 				if err != nil {
-					log.Printf("%s couldn't connect to remoteBatchers[%d] %s\n", info.GetName(), dc, host)
+					logrus.WithField("batcher", host).Error("couldn't connect to remoteBatcher")
+					panic(err)
 				} else {
-					log.Printf("%s is connected to remoteBatchers[%d] %s\n", info.GetName(), dc, host)
+					logrus.WithField("batcher", host).Info("connected to remoteBatcher")
 				}
 			}
 			connMutex.Unlock()
@@ -62,10 +64,12 @@ func Propagate(r record.Record) {
 						cnt--
 						err = dialRemoteBatchers(dc)
 						if err != nil {
-							log.Printf("%s couldn't connect to remoteBatchers[%d] %s, retrying\n", info.GetName(), dc, host)
+							logrus.WithField("attempt", cnt).Warning("couldn't connect to remote batcher, retrying...")
+						} else {
+							logrus.WithField("batcher", host).Info("connected to remote batcher")
 						}
 					} else {
-						log.Printf("%s failed to connect to remoteBatchers[%d] %s after retrying 5 times\n", info.GetName(), dc, host)
+						logrus.WithField("batcher", host).Error("failed to connect to the remote batcher after retrying 5 times")
 						break
 					}
 				} else {
@@ -76,14 +80,15 @@ func Propagate(r record.Record) {
 
 				if err != nil {
 					if cnt == 0 {
-						log.Printf("%s failed to propagate to remoteBatchers[%d] %s after retrying 5 times", info.GetName(), dc, host)
+						logrus.WithField("batcher", host).Error("failed to connect to the remote batcher after retrying 5 times")
 						break
 					}
-					log.Printf("%s couldn't send to remoteBatchers[%d] %s\n", info.GetName(), dc, host)
+					logrus.WithField("attempt", cnt).Error("couldn't send to remote batcher")
 					cnt--
 					continue
 				}
 			}
+			logrus.WithFields(logrus.Fields{"batcher": host, "record": r}).Debug("sent to remote batcher")
 		}
 	}
 }

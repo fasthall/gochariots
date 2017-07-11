@@ -3,5 +3,5 @@ MAINTAINER Wei-Tsung Lin <fasthall@gmail.com>
 
 RUN apk update
 RUN apk add git
-RUN go get github.com/fasthall/gochariots/...
-
+COPY . /go/src/github.com/fasthall/gochariots/
+RUN go get github.com/fasthall/gochariots

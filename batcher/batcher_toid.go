@@ -153,12 +153,18 @@ func TOIDHandleRequest(conn net.Conn) {
 			// elapsed := time.Since(start)
 			// log.Printf("TIMESTAMP %s:HandleRequest took %s\n", info.GetName(), elapsed)
 		} else if buf[0] == 'f' { //received filter update
-			err := json.Unmarshal(buf[1:totalLength], &filterHost)
-			if err != nil {
-				logrus.WithField("buffer", string(buf[1:totalLength])).Error("couldn't convert bytes to filter list")
-				continue
+			ver := int(binary.BigEndian.Uint32(buf[1:5]))
+			if ver > filterHostVer {
+				filterHostVer = ver
+				err := json.Unmarshal(buf[5:totalLength], &filterHost)
+				if err != nil {
+					logrus.WithField("buffer", string(buf[5:totalLength])).Error("couldn't convert bytes to filter list")
+					continue
+				} else {
+					logrus.WithField("filterHost", filterHost).Info("updates filter")
+				}
 			} else {
-				logrus.WithField("filterHost", filterHost).Info("updates filter")
+				logrus.WithFields(logrus.Fields{"current": filterHostVer, "received": ver}).Debug("receiver older version of filter list")
 			}
 		} else {
 			logrus.WithField("header", buf[0]).Warning("couldn't understand request")

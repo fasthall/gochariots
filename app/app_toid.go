@@ -25,7 +25,7 @@ func TOIDRun(port string) {
 	router := gin.Default()
 	router.POST("/record", TOIDpostRecord)
 	router.GET("/record/:lid", TOIDgetRecord)
-	router.POST("/batcher", addBatcher)
+	router.POST("/batcher", addBatchers)
 	router.GET("/batcher", getBatchers)
 	router.Run(":" + port)
 }

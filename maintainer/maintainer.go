@@ -30,12 +30,14 @@ var f *os.File
 var indexerConnMutex sync.Mutex
 var indexerConn net.Conn
 var indexerHost string
+var indexerVer int
 
 var logFirstTime time.Time
-var LogRecordNth int
+var logRecordNth int
 
 // InitLogMaintainer initializes the maintainer and assign the path name to store the records
-func InitLogMaintainer(p string) {
+func InitLogMaintainer(p string, n int) {
+	logRecordNth = n
 	LastLId = 0
 	err := os.MkdirAll(path, os.ModePerm)
 	if err != nil {
@@ -56,13 +58,13 @@ func dialConn() error {
 
 // Append appends a new record to the maintainer.
 func Append(r record.Record) error {
-	logrus.WithField("timestamp", time.Now()).Info("Append")
+	// logrus.WithField("timestamp", time.Now()).Debug("Append")
 	r.Timestamp = time.Now().UnixNano()
-	if LogRecordNth > 0 {
+	if logRecordNth > 0 {
 		if r.LId == 1 {
 			logFirstTime = time.Now()
-		} else if r.LId == LogRecordNth {
-			logrus.WithField("duration", time.Since(logFirstTime)).Info("appended", LogRecordNth, "records")
+		} else if r.LId == logRecordNth {
+			logrus.WithField("duration", time.Since(logFirstTime)).Info("appended", logRecordNth, "records")
 		}
 	}
 	b, err := record.ToJSON(r)
@@ -195,15 +197,19 @@ func HandleRequest(conn net.Conn) {
 			break
 		}
 		if buf[0] == 'b' { // received remote batchers update
-			var batchers []string
-			err := json.Unmarshal(buf[1:totalLength], &batchers)
-			if err != nil {
-				logrus.WithField("buffer", string(buf[1:totalLength])).Error("couldn't convert read buffer to batcher list")
-				panic(err)
+			ver := int(binary.BigEndian.Uint32(buf[1:5]))
+			if ver > remoteBatcherVer {
+				remoteBatcherVer = ver
+				err := json.Unmarshal(buf[5:totalLength], &remoteBatchers)
+				if err != nil {
+					logrus.WithField("buffer", string(buf[1:totalLength])).Error("couldn't convert read buffer to batcher list")
+					panic(err)
+				} else {
+					remoteBatchersConn = make([]net.Conn, len(remoteBatchers))
+					logrus.WithField("batchers", remoteBatchers).Info("received remote batchers update")
+				}
 			} else {
-				remoteBatchers = batchers
-				remoteBatchersConn = make([]net.Conn, len(remoteBatchers))
-				logrus.WithField("batchers", remoteBatchers).Info("received remote batchers update")
+				logrus.WithFields(logrus.Fields{"current": remoteBatcherVer, "received": ver}).Debug("receiver older version of remote batcher")
 			}
 		} else if buf[0] == 'r' { // received records from queue
 			// info.LogTimestamp("HandleRequest")
@@ -212,7 +218,7 @@ func HandleRequest(conn net.Conn) {
 			if err != nil {
 				logrus.WithField("buffer", string(buf[1:totalLength])).Error("couldn't convert read buffer to records")
 			}
-			// log.Println(info.GetName(), "received records:", records)
+			logrus.WithField("records", records).Debug("received incoming record")
 			recordsArrival(records)
 		} else if buf[0] == 'l' { // read records by LIds
 			lid := int(binary.BigEndian.Uint32(buf[1:totalLength]))
@@ -229,12 +235,18 @@ func HandleRequest(conn net.Conn) {
 				}
 			}
 		} else if buf[0] == 'i' { // received indexer update
-			indexerHost = string(buf[1:totalLength])
-			if indexerConn != nil {
-				indexerConn.Close()
-				indexerConn = nil
+			ver := int(binary.BigEndian.Uint32(buf[1:5]))
+			if ver > indexerVer {
+				indexerVer = ver
+				indexerHost = string(buf[5:totalLength])
+				if indexerConn != nil {
+					indexerConn.Close()
+					indexerConn = nil
+				}
+				logrus.WithField("host", indexerHost).Info("updates indexer host")
+			} else {
+				logrus.WithFields(logrus.Fields{"current": indexerVer, "received": ver}).Debug("receiver older version of indexer host")
 			}
-			logrus.WithField("host", indexerHost).Info("updates indexer host")
 		} else {
 			logrus.WithField("header", buf[0]).Warning("couldn't understand request")
 		}

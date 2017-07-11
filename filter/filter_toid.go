@@ -5,6 +5,7 @@ package filter
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"io"
 	"math/rand"
@@ -113,9 +114,19 @@ func TOIDHandleRequest(conn net.Conn) {
 			TOIDarrival(records)
 			// log.Printf("TIMESTAMP %s:HandleRequest took %s\n", info.GetName(), time.Since(start))
 		} else if buf[0] == 'q' { // received queue hosts
-			queuePool = append(queuePool, string(buf[1:totalLength]))
-			queueConn = make([]net.Conn, len(queuePool))
-			logrus.WithField("queue", string(buf[1:totalLength])).Info("received new queue update")
+			ver := int(binary.BigEndian.Uint32(buf[1:5]))
+			if ver > queuePoolVer {
+				queuePoolVer = ver
+				err := json.Unmarshal(buf[5:totalLength], &queuePool)
+				if err != nil {
+					logrus.WithField("buffer", string(buf[5:totalLength])).Error("couldn't convert read buffer to queue list")
+					continue
+				}
+				queueConn = make([]net.Conn, len(queuePool))
+				logrus.WithField("queues", queuePool).Info("received new queue update")
+			} else {
+				logrus.WithFields(logrus.Fields{"current": queuePoolVer, "received": ver}).Debug("receiver older version of queue list")
+			}
 		} else {
 			logrus.WithField("header", buf[0]).Warning("couldn't understand request")
 		}

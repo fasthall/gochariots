@@ -10,7 +10,8 @@ import (
 	"math/rand"
 	"net"
 	"sync"
-	"time"
+
+	"encoding/json"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/fasthall/gochariots/misc/connection"
@@ -20,6 +21,7 @@ import (
 var connMutex sync.Mutex
 var queueConn []net.Conn
 var queuePool []string
+var queuePoolVer int
 var nextTOId []int
 var bufMutex sync.Mutex
 var buffer []record.Record
@@ -51,7 +53,7 @@ func dialConn(queueID int) error {
 }
 
 func sendToQueue(records []record.Record) {
-	logrus.WithField("timestamp", time.Now()).Info("sendToQueue")
+	// logrus.WithField("timestamp", time.Now()).Debug("sendToQueue")
 	bytes, err := record.ToGobArray(records)
 	if err != nil {
 		panic(err)
@@ -97,7 +99,7 @@ func sendToQueue(records []record.Record) {
 			}
 		} else {
 			sent = true
-			logrus.WithField("id", queueID).Info("sent to queue")
+			logrus.WithField("id", queueID).Debug("sent to queue")
 		}
 	}
 }
@@ -122,13 +124,23 @@ func HandleRequest(conn net.Conn) {
 				logrus.WithField("buffer", string(buf[1:totalLength])).Error("couldn't convert read buffer to record")
 				continue
 			}
-			logrus.WithField("records", records).Info("received incoming record")
+			logrus.WithField("records", records).Debug("received incoming record")
 			arrival(records)
 			// log.Printf("TIMESTAMP %s:HandleRequest took %s\n", info.GetName(), time.Since(start))
 		} else if buf[0] == 'q' { // received queue hosts
-			queuePool = append(queuePool, string(buf[1:totalLength]))
-			queueConn = make([]net.Conn, len(queuePool))
-			logrus.WithField("queue", string(buf[1:totalLength])).Info("received new queue update")
+			ver := int(binary.BigEndian.Uint32(buf[1:5]))
+			if ver > queuePoolVer {
+				queuePoolVer = ver
+				err := json.Unmarshal(buf[5:totalLength], &queuePool)
+				if err != nil {
+					logrus.WithField("buffer", string(buf[5:totalLength])).Error("couldn't convert read buffer to queue list")
+					continue
+				}
+				queueConn = make([]net.Conn, len(queuePool))
+				logrus.WithField("queues", queuePool).Info("received new queue update")
+			} else {
+				logrus.WithFields(logrus.Fields{"current": queuePoolVer, "received": ver}).Debug("receiver older version of queue list")
+			}
 		} else {
 			logrus.WithField("header", buf[0]).Warning("couldn't understand request")
 		}

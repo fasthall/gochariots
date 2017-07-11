@@ -68,6 +68,7 @@ func (it *IndexTable) GetByHash(hash uint64) []IndexTableEntry {
 	it.mutex.Lock()
 	result := it.table[hash]
 	it.mutex.Unlock()
+	logrus.WithFields(logrus.Fields{"hash": hash, "return": result}).Debug("GetByHash")
 	return result
 }
 
@@ -152,7 +153,7 @@ func insertIndexEntry(key, value string, lid int, seed uint64) {
 			logrus.WithError(err).Error("couldn't insert entry")
 		}
 	}
-	logrus.WithField("entry", entry).Info("entry inserted")
+	logrus.WithFields(logrus.Fields{"LId": entry.LId, "seed": entry.Seed, "hash": hash}).Debug("entry inserted")
 }
 
 func getIndexEntry(hash uint64) ([]IndexTableEntry, error) {
@@ -189,7 +190,7 @@ func InitIndexer(p string, boltdb bool) {
 		}
 		gocache = cache.New(5*time.Minute, 10*time.Minute)
 	}
-	logrus.Info("indexer initialized")
+	logrus.WithField("BoltDB", boltDB).Info("indexer initialized with BoltDB")
 }
 
 func tagToHash(key, value string) uint64 {
