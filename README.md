@@ -17,7 +17,7 @@ The shared log system consists of several parts:
 * **maintainer** for physical storage of records
 
 Each part can be scaled independently.
-To quickstart a shared log cluster, use the [docker-compose.yaml](../deploy/docker-compose.yaml) file in deploy folder.
+To quickstart a shared log cluster, use the [docker-compose.yaml](deploy/docker-compose.yaml) file in deploy folder.
 
     $ cd deploy
     $ docker-compose up -d
@@ -38,7 +38,7 @@ The internal logs of the system will be mounted as `logs`. The records will be m
 Use docker service scale to scale the components.
 
 ## Start your own cluster
-Modify [docker-compose.yaml](../deploy/docker-compose.yaml).
+Modify [docker-compose.yaml](deploy/docker-compose.yaml).
 **TO BE UPDATED**
 
 ## Appending record
