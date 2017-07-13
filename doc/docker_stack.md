@@ -128,7 +128,7 @@ If your working directory is not `/home/ubuntu/deploy`, make sure you modify the
 
 On your manager machine with [docker-stack.yaml](https://github.com/fasthall/gochariots/blob/master/deploy/docker-stack.yaml) prepared, run the following command:
 
-    docker stack deploy -c docker-stack.yaml gochariots
+    $ docker stack deploy -c docker-stack.yaml gochariots
 
 Wait for swarm to create services for few seconds. Now there will be several services running.
 
@@ -148,7 +148,7 @@ Wait for swarm to create services for few seconds. Now there will be several ser
 #### Scaling
 To scale the service, type
 
-    docker service scale gochariots_batcher=5
+    $ docker service scale gochariots_batcher=5
 
 Like Docker Compose, the batchers are load balanced and can be accessed by port 9000 of any of the nodes.
 
@@ -180,8 +180,20 @@ Each function invocation has its own record, named record A and record B. The ar
 
 Both record A and record B should share a same seed. The seed can be assigned arbitrarily, as long as it's a 64bit integer. To make sure record B is casually dependent on record A, we need to get the fnv-1a hash of `k1:v1`, 9489172654252433228, and assign this value as record B's prehash. All the provided libraries have function to calculate the hash.
 
+The JSON objects of record A and record B should look like this:
+
+* Record A
+
+  `{"tags": {"k1": "v1"}, "prehash": 0, "seed": 9527}`
+
+* Record B
+
+  `{"tags": {"k2": "v2"}, "prehash": 9489172654252433228, "seed": 9527}`
+
+Notice that both records share the same seed `9527`. It can be any 64bit integer, but they need to be the same to indicate that the records are in the same event chain. The `prehash` value of record B is a 64 bit hash `9489172654252433228`, which is acquired by `fnv-1a("k1:v1")`.
+
 ### TCP stream
-Use can also opt to directly send the data to batcher. To achieve that, simply establish a TCP connection to any of batchers, and send the data.
+User can also opt to directly send the data to batcher. To achieve that, simply establish a TCP connection to any of batchers, and send the data.
 
 The data should follow the following format:
 
@@ -191,9 +203,13 @@ The data should follow the following format:
 
 The JSON object is slightly different with the JSON object we used to post record via HTTP post, but the context and meaning of fields is same. This is an example of JSON object:
 
-    {"Host":0,"Tags":{"key:value"},"Pre":{"Hash":0},"Seed":0}
+    {"Host":0,"Tags":{"k2":"v2"},"Pre":{"Hash":9489172654252433228},"Seed":9527}
 
-Refer to [rawpost.py](../test/script/rawpost.py) for python implement.
+The length of the JSON object is 76. Plus the 5th bit 'r', the total length is 77. Therefore, the raw data sent to batcher should look like this:
+
+    [0 0 0 77 114 the JSON object...]
+
+Please see [rawpost.py](../test/script/rawpost.py) for the example of python implement.
 
 ### Libraries
 Libraries for [Python](https://github.com/fasthall/gochariots-python-lib), [Node.js](https://github.com/fasthall/gochariots-nodejs-lib), and [Java](https://github.com/fasthall/gochariots-java-lib) are provided.
