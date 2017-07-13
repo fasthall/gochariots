@@ -4,7 +4,9 @@ services:
     image: fasthall/gochariots
     entrypoint: gochariots controller -p 8081 1 0 -i
     volumes:
-      - ./logs:/go/logs
+      - /home/ubuntu/deploy/logs:/go/logs
+    depends_on:
+      - controller
     ports: 
       - 8081:8081
     networks:
@@ -12,11 +14,9 @@ services:
   app:
     image: fasthall/gochariots
     entrypoint: gochariots app -p 8080 1 0 -i -f config/config.yaml
-    depends_on:
-      - controller
     volumes:
-      - ./config:/go/config
-      - ./logs:/go/logs
+      - /home/ubuntu/deploy/config:/go/config
+      - /home/ubuntu/deploy/logs:/go/logs
     depends_on:
       - controller
     ports:
@@ -26,78 +26,84 @@ services:
   batcher:
     image: fasthall/gochariots
     entrypoint: gochariots batcher -p 9000 1 0 -i -f config/config.yaml
+    volumes:
+      - /home/ubuntu/deploy/config:/go/config
+      - /home/ubuntu/deploy/logs:/go/logs
     depends_on:
       - controller
-    volumes:
-      - ./config:/go/config
-      - ./logs:/go/logs
-    ports: 
-      - 9000
     environment:
       - TCP_PORTS=9000
+      - SERVICE_PORTS=9000
+    deploy:
+      replicas: 3
     networks:
       - cluster
   filter:
     image: fasthall/gochariots
     entrypoint: gochariots filter 1 0 -i -f config/config.yaml
+    volumes:
+      - /home/ubuntu/deploy/config:/go/config
+      - /home/ubuntu/deploy/logs:/go/logs
     depends_on:
       - controller
-    volumes:
-      - ./config:/go/config
-      - ./logs:/go/logs
     networks:
       - cluster
   queue-leader:
     image: fasthall/gochariots
     entrypoint: gochariots queue --hold 1 0 -i -f config/config.yaml
+    volumes:
+      - /home/ubuntu/deploy/config:/go/config
+      - /home/ubuntu/deploy/logs:/go/logs
     depends_on:
       - controller
-    volumes:
-      - ./config:/go/config
-      - ./logs:/go/logs
     networks:
       - cluster
   queue:
     image: fasthall/gochariots
     entrypoint: gochariots queue --no-hold 1 0 -i -f config/config.yaml
+    volumes:
+      - /home/ubuntu/deploy/config:/go/config
+      - /home/ubuntu/deploy/logs:/go/logs
     depends_on:
       - controller
-    volumes:
-      - ./config:/go/config
-      - ./logs:/go/logs
     networks:
       - cluster
   maintainer:
     image: fasthall/gochariots
     entrypoint: gochariots maintainer 1 0 -i -f config/config.yaml
+    volumes:
+      - /home/ubuntu/deploy/config:/go/config
+      - /home/ubuntu/deploy/logs:/go/logs
+      - /home/ubuntu/deploy/flstore:/go/flstore
     depends_on:
       - controller
-    volumes:
-      - ./config:/go/config
-      - ./logs:/go/logs
-      - ./flstore:/go/flstore
     networks:
       - cluster
   indexer:
     image: fasthall/gochariots
     entrypoint: gochariots indexer 1 0 -i -f config/config.yaml
+    volumes:
+      - /home/ubuntu/deploy/config:/go/config
+      - /home/ubuntu/deploy/logs:/go/logs
     depends_on:
       - controller
-    volumes:
-      - ./config:/go/config
-      - ./logs:/go/logs
     networks:
       - cluster
   batcher_lb:
     image: dockercloud/haproxy
-    depends_on:
-      - batcher
     ports:
       - 9000:9000
     links:
       - batcher
     networks:                                                                                                                                  
       - cluster
+    depends_on:
+      - batcher
+      - controller
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
 
