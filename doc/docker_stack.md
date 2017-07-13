@@ -194,3 +194,6 @@ The JSON object is slightly different with the JSON object we used to post recor
     {"Host":0,"Tags":{"key:value"},"Pre":{"Hash":0},"Seed":0}
 
 Refer to [rawpost.py](../test/script/rawpost.py) for python implement.
+
+### Libraries
+Libraries for [Python](https://github.com/fasthall/gochariots-python-lib), [Node.js](https://github.com/fasthall/gochariots-nodejs-lib), and [Java](https://github.com/fasthall/gochariots-java-lib) are provided.
