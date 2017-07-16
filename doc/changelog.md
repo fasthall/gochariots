@@ -1,4 +1,31 @@
+# July
+
+## July 
+
+## July 16, 2017
+### Launch option change
+Give default value to num_dc and id. By default, when launching a new component, the number of DC is 1 and the id of the said component is 0. To change the value, use option *--num_dc** and *--id*. Run gochariots --help for details. 
+
+## July 12, 2017
+### Docker Swarm support
+A [docker-stack.yaml](../deploy/docker-stack.yaml) file is provided for quick deploying a log over Docker Swarm network. See the [instructions](docker_stack.md).
+
+## July 10, 2017
+### Docker Compose support
+A [docker-compose.yaml](../deploy/docker-compose.yaml) file is provided for quick deploying a log on localhost. See the [instructions](docker_stack.md).
+
 # June
+
+## June 29, 2017
+### Bug fixed
+Fix a bug that sometimes app doesn't receive update on batcher list. 
+
+## June 28, 2017
+### Bug fixed
+Fix a bug that controller won't notify queues about indexer. This bug happened when indexer is ready before queue is reported.
+
+### App report to controller
+Now apps will report to controller too, if option *-f* is used and config file is provided.
 
 ## June 27, 2017
 ### Rewrite how component reports to controller

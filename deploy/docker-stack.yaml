@@ -2,7 +2,7 @@ version: '3'
 services:
   controller:
     image: fasthall/gochariots
-    entrypoint: gochariots controller -p 8081 1 0 -i
+    entrypoint: gochariots controller -p 8081 -i
     volumes:
       - /home/ubuntu/deploy/logs:/go/logs
     depends_on:
@@ -13,7 +13,7 @@ services:
       - cluster
   app:
     image: fasthall/gochariots
-    entrypoint: gochariots app -p 8080 1 0 -i -f config/config.yaml
+    entrypoint: gochariots app -p 8080 -i -f config/config.yaml
     volumes:
       - /home/ubuntu/deploy/config:/go/config
       - /home/ubuntu/deploy/logs:/go/logs
@@ -25,7 +25,7 @@ services:
       - cluster
   batcher:
     image: fasthall/gochariots
-    entrypoint: gochariots batcher -p 9000 1 0 -i -f config/config.yaml
+    entrypoint: gochariots batcher -p 9000 -i -f config/config.yaml
     volumes:
       - /home/ubuntu/deploy/config:/go/config
       - /home/ubuntu/deploy/logs:/go/logs
@@ -40,7 +40,7 @@ services:
       - cluster
   filter:
     image: fasthall/gochariots
-    entrypoint: gochariots filter 1 0 -i -f config/config.yaml
+    entrypoint: gochariots filter -i -f config/config.yaml
     volumes:
       - /home/ubuntu/deploy/config:/go/config
       - /home/ubuntu/deploy/logs:/go/logs
@@ -50,7 +50,7 @@ services:
       - cluster
   queue-leader:
     image: fasthall/gochariots
-    entrypoint: gochariots queue --hold 1 0 -i -f config/config.yaml
+    entrypoint: gochariots queue --hold -i -f config/config.yaml
     volumes:
       - /home/ubuntu/deploy/config:/go/config
       - /home/ubuntu/deploy/logs:/go/logs
@@ -60,7 +60,7 @@ services:
       - cluster
   queue:
     image: fasthall/gochariots
-    entrypoint: gochariots queue --no-hold 1 0 -i -f config/config.yaml
+    entrypoint: gochariots queue --no-hold -i -f config/config.yaml
     volumes:
       - /home/ubuntu/deploy/config:/go/config
       - /home/ubuntu/deploy/logs:/go/logs
@@ -70,7 +70,7 @@ services:
       - cluster
   maintainer:
     image: fasthall/gochariots
-    entrypoint: gochariots maintainer 1 0 -i -f config/config.yaml
+    entrypoint: gochariots maintainer -i -f config/config.yaml
     volumes:
       - /home/ubuntu/deploy/config:/go/config
       - /home/ubuntu/deploy/logs:/go/logs
@@ -81,7 +81,7 @@ services:
       - cluster
   indexer:
     image: fasthall/gochariots
-    entrypoint: gochariots indexer 1 0 -i -f config/config.yaml
+    entrypoint: gochariots indexer -i -f config/config.yaml
     volumes:
       - /home/ubuntu/deploy/config:/go/config
       - /home/ubuntu/deploy/logs:/go/logs
