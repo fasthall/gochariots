@@ -13,6 +13,7 @@ We can use Docker Compose to run a local shared log, or Docker Swarm to run a cl
 To append to the shared log, send POST request to http://localhost:8080/record. The payload needs to be in JSON format. See [post_example.sh](test/post_example.sh) and [example.json](test/example.json).
 
 ## Issues (TODO)
+When a component of any stage stops working and the controller couldn't connect to it, the controller should prompt a warning message rather than just panic. 
 
 ## Design discussion
 

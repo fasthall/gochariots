@@ -95,8 +95,8 @@ func main() {
 		if *appNumDC == 0 {
 			*appNumDC = 1
 		}
-		fmt.Println(*appNumDC, *appID)
-		info.InitChariots(*appNumDC, *appID)
+		info.NumDC = *appNumDC
+		info.ID = *appID
 		indexerCommand.GetArg("info")
 		info.SetName("app" + *appPort)
 		info.SetPort(*appPort)
@@ -122,7 +122,8 @@ func main() {
 		if *controllerNumDC == 0 {
 			*controllerNumDC = 1
 		}
-		info.InitChariots(*controllerNumDC, *controllerID)
+		info.NumDC = *controllerNumDC
+		info.ID = *controllerID
 		info.SetName("controller" + *controllerPort)
 		info.SetPort(*controllerPort)
 		level := logrus.WarnLevel
@@ -140,7 +141,8 @@ func main() {
 		if *batcherNumDC == 0 {
 			*batcherNumDC = 1
 		}
-		info.InitChariots(*batcherNumDC, *batcherID)
+		info.NumDC = *batcherNumDC
+		info.ID = *batcherID
 		info.SetName("batcher" + *batcherPort)
 		info.SetPort(*batcherPort)
 		level := logrus.WarnLevel
@@ -150,19 +152,19 @@ func main() {
 			level = logrus.InfoLevel
 		}
 		info.RedirectLog(info.GetName()+".log", level)
+		if *batcherConfig != "" {
+			info.Config(*batcherConfig, "batcher")
+		}
 		if *batcherTOId {
-			batcher.TOIDInitBatcher(*batcherNumDC)
+			batcher.TOIDInitBatcher()
 		} else {
-			batcher.InitBatcher(*batcherNumDC)
+			batcher.InitBatcher()
 		}
 		ln, err := net.Listen("tcp", ":"+*batcherPort)
 		if err != nil {
 			panic(err)
 		}
 		defer ln.Close()
-		if *batcherConfig != "" {
-			info.Config(*batcherConfig, "batcher")
-		}
 		fmt.Println(info.GetName()+" is listening to port", *batcherPort)
 		if *batcherTOId {
 			go batcher.TOIDSweeper()
@@ -196,7 +198,8 @@ func main() {
 		if *filterNumDC == 0 {
 			*filterNumDC = 1
 		}
-		info.InitChariots(*filterNumDC, *filterID)
+		info.NumDC = *filterNumDC
+		info.ID = *filterID
 		info.SetName("filter" + *filterPort)
 		info.SetPort(*filterPort)
 		level := logrus.WarnLevel
@@ -206,19 +209,19 @@ func main() {
 			level = logrus.InfoLevel
 		}
 		info.RedirectLog(info.GetName()+".log", level)
+		if *filterConfig != "" {
+			info.Config(*filterConfig, "filter")
+		}
 		if *filterTOId {
-			filter.TOIDInitFilter(info.NumDC)
+			filter.TOIDInitFilter()
 		} else {
-			filter.InitFilter(info.NumDC)
+			filter.InitFilter()
 		}
 		ln, err := net.Listen("tcp", ":"+*filterPort)
 		if err != nil {
 			panic(err)
 		}
 		defer ln.Close()
-		if *filterConfig != "" {
-			info.Config(*filterConfig, "filter")
-		}
 		fmt.Println(info.GetName()+" is listening to port", *filterPort)
 		if *filterTOId {
 			for {
@@ -248,7 +251,8 @@ func main() {
 		if *queueNumDC == 0 {
 			*queueNumDC = 1
 		}
-		info.InitChariots(*queueNumDC, *queueID)
+		info.NumDC = *queueNumDC
+		info.ID = *queueID
 		info.SetName("queue" + *queuePort)
 		info.SetPort(*queuePort)
 		level := logrus.WarnLevel
@@ -258,6 +262,9 @@ func main() {
 			level = logrus.InfoLevel
 		}
 		info.RedirectLog(info.GetName()+".log", level)
+		if *queueConfig != "" {
+			info.Config(*queueConfig, "queue")
+		}
 		if *queueTOId {
 			queue.TOIDInitQueue(*queueHold, *queueCarry)
 		} else {
@@ -268,9 +275,6 @@ func main() {
 			panic(err)
 		}
 		defer ln.Close()
-		if *queueConfig != "" {
-			info.Config(*queueConfig, "queue")
-		}
 		fmt.Println(info.GetName()+" is listening to port", *queuePort)
 		if *queueTOId {
 			for {
@@ -300,7 +304,8 @@ func main() {
 		if *maintainerNumDC == 0 {
 			*maintainerNumDC = 1
 		}
-		info.InitChariots(*maintainerNumDC, *maintainerID)
+		info.NumDC = *maintainerNumDC
+		info.ID = *maintainerID
 		info.SetName("maintainer" + *maintainerPort)
 		info.SetPort(*maintainerPort)
 		level := logrus.WarnLevel
@@ -310,6 +315,9 @@ func main() {
 			level = logrus.InfoLevel
 		}
 		info.RedirectLog(info.GetName()+".log", level)
+		if *maintainerConfig != "" {
+			info.Config(*maintainerConfig, "maintainer")
+		}
 		maintainer.InitLogMaintainer(info.GetName(), *maintainerInstN)
 		ln, err := net.Listen("tcp", ":"+*maintainerPort)
 		if err != nil {
@@ -317,9 +325,6 @@ func main() {
 			panic(err)
 		}
 		defer ln.Close()
-		if *maintainerConfig != "" {
-			info.Config(*maintainerConfig, "maintainer")
-		}
 		fmt.Println(info.GetName()+" is listening to port", *maintainerPort)
 		if *maintainerTOId {
 			for {
@@ -349,7 +354,8 @@ func main() {
 		if *indexerNumDC == 0 {
 			*indexerNumDC = 1
 		}
-		info.InitChariots(*indexerNumDC, *indexerID)
+		info.NumDC = *indexerNumDC
+		info.ID = *indexerID
 		info.SetName("indexer" + *indexerPort)
 		info.SetPort(*indexerPort)
 		level := logrus.WarnLevel
@@ -359,6 +365,9 @@ func main() {
 			level = logrus.InfoLevel
 		}
 		info.RedirectLog(info.GetName()+".log", level)
+		if *indexerConfig != "" {
+			info.Config(*indexerConfig, "indexer")
+		}
 		if *indexerTOId {
 			indexer.TOIDInitIndexer(info.GetName())
 		} else {
@@ -370,9 +379,6 @@ func main() {
 			panic(err)
 		}
 		defer ln.Close()
-		if *indexerConfig != "" {
-			info.Config(*indexerConfig, "indexer")
-		}
 		fmt.Println(info.GetName()+" is listening to port", *indexerPort)
 		if *indexerTOId {
 			for {

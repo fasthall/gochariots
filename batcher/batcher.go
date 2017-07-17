@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/misc/connection"
 	"github.com/fasthall/gochariots/record"
 )
@@ -27,15 +28,15 @@ var filterHostVer int
 var numFilters int
 
 // InitBatcher allocates n buffers, where n is the number of filters
-func InitBatcher(n int) {
-	numFilters = n
+func InitBatcher() {
+	numFilters = info.NumDC
 	buffer = make([][]record.Record, numFilters)
 	for i := range buffer {
 		buffer[i] = make([]record.Record, 0, bufferSize)
 	}
 	filterHost = make([]string, numFilters)
 	filterConn = make([]net.Conn, numFilters)
-	logrus.WithField("filter number", n).Info("initialized")
+	logrus.WithField("filter number", numFilters).Info("initialized")
 }
 
 // arrival buffers arriving records.

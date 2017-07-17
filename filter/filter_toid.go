@@ -13,15 +13,16 @@ import (
 	"time"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/misc/connection"
 	"github.com/fasthall/gochariots/record"
 )
 
 var TOIDbuffer []record.TOIDRecord
 
-// InitFilter Initializes all the expected TOId as 1
-func TOIDInitFilter(n int) {
-	nextTOId = make([]int, n)
+// TOIDInitFilter Initializes all the expected TOId as 1
+func TOIDInitFilter() {
+	nextTOId = make([]int, info.NumDC)
 	for i := range nextTOId {
 		nextTOId[i] = 1
 	}

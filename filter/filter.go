@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/misc/connection"
 	"github.com/fasthall/gochariots/record"
 )
@@ -27,8 +28,8 @@ var bufMutex sync.Mutex
 var buffer []record.Record
 
 // InitFilter Initializes all the expected TOId as 1
-func InitFilter(n int) {
-	nextTOId = make([]int, n)
+func InitFilter() {
+	nextTOId = make([]int, info.NumDC)
 	for i := range nextTOId {
 		nextTOId[i] = 1
 	}

@@ -12,8 +12,8 @@ var controllerHost string
 
 type Config struct {
 	Controller string `yaml:"controller"`
-	NumDC      int    `yaml:"num_dc"`
-	ID         int    `yaml:"id`
+	NumDC      string `yaml:"num_dc"`
+	ID         string `yaml:"id`
 }
 
 func ReadConfig(file string) (Config, error) {

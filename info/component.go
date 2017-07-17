@@ -10,6 +10,8 @@ import (
 
 	"net/http"
 
+	"strconv"
+
 	"github.com/Sirupsen/logrus"
 	"github.com/fasthall/gochariots/misc"
 )
@@ -53,33 +55,67 @@ func RedirectLog(name string, level logrus.Level) {
 func Config(file, component string) {
 	config, err := misc.ReadConfig(file)
 	if err != nil {
+		fmt.Println("Read config file failed")
 		logrus.WithError(err).Warn("read config file failed")
 		return
 	}
 	if config.Controller == "" {
-		logrus.Error("No controller information found in config file")
+		fmt.Println("No controller information found in config file")
+		logrus.Error("no controller information found in config file")
 		return
+	}
+	if config.NumDC != "" {
+		fmt.Println("Found num_dc in config file")
+		logrus.Info("found num_dc in config file")
+		NumDC, err = strconv.Atoi(config.NumDC)
+		if err != nil {
+			fmt.Println("Read config file failed")
+			logrus.WithError(err).Warn("read config file failed")
+			return
+		}
+	}
+	if config.ID != "" {
+		fmt.Println("Found id in config file")
+		logrus.Info("found id in config file")
+		ID, err = strconv.Atoi(config.ID)
+		if err != nil {
+			fmt.Println("Read config file failed")
+			logrus.WithError(err).Warn("read config file failed")
+			return
+		}
 	}
 	addr, err := misc.GetHostIP()
 	if err != nil {
+		fmt.Println("Couldn't find local IP address")
 		logrus.WithError(err).Error("couldn't find local IP address")
 		return
 	}
 	p := misc.NewParams()
 	p.AddParam("host", addr+":"+GetPort())
-	logrus.WithFields(logrus.Fields{"controller": config.Controller}).Info("Config file read")
+	fmt.Println("Config file read")
+	logrus.WithFields(logrus.Fields{"controller": config.Controller}).Info("config file read")
 
-	err = errors.New("")
+	go report(config.Controller, component, p)
+}
+
+func report(host, path string, p misc.Params) {
+	// wait for a second to avoid the component is not ready which causes controller not able to connect to it
+	// it should had been handled in controller
+	time.Sleep(1 * time.Second)
+
+	err := errors.New("")
 	for err != nil {
-		time.Sleep(1 * time.Second)
 		code := http.StatusBadRequest
 		response := ""
 		for code != http.StatusOK {
-			code, response, err = misc.Report(config.Controller, component, p)
+			code, response, err = misc.Report(host, path, p)
 			if err != nil {
+				time.Sleep(1 * time.Second)
+				fmt.Println("Couldn't report to the controller")
 				logrus.WithError(err).Error("couldn't report to the controller")
 			}
 		}
+		fmt.Println("Reported to controller")
 		logrus.WithField("response", response).Info("reported to controller")
 	}
 }
