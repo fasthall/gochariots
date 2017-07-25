@@ -6,14 +6,21 @@ import (
 )
 
 func GetHostIP() (string, error) {
-	addrs, err := net.InterfaceAddrs()
+	ifs, err := net.Interfaces()
 	if err != nil {
 		return "", err
 	}
-	for _, addr := range addrs {
-		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
-			if ipnet.IP.To4() != nil {
-				return ipnet.IP.String(), nil
+	for _, ifi := range ifs {
+		if ifi.Name == "eth0" {
+			addrs, err := ifi.Addrs()
+			if err == nil {
+				for _, addr := range addrs {
+					if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+						if ipnet.IP.To4() != nil {
+							return ipnet.IP.String(), nil
+						}
+					}
+				}
 			}
 		}
 	}
