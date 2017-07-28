@@ -17,6 +17,8 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	"github.com/fasthall/gochariots/info"
+	"github.com/fasthall/gochariots/maintainer/adapter"
+	"github.com/fasthall/gochariots/maintainer/adapter/dynamodb"
 	"github.com/fasthall/gochariots/misc/connection"
 	"github.com/fasthall/gochariots/record"
 )
@@ -31,12 +33,13 @@ var indexerConnMutex sync.Mutex
 var indexerConn net.Conn
 var indexerHost string
 var indexerVer int
+var maintainerInterface int
 
 var logFirstTime time.Time
 var logRecordNth int
 
 // InitLogMaintainer initializes the maintainer and assign the path name to store the records
-func InitLogMaintainer(p string, n int) {
+func InitLogMaintainer(p string, n int, itf int) {
 	logRecordNth = n
 	LastLId = 0
 	err := os.MkdirAll(path, os.ModePerm)
@@ -48,6 +51,7 @@ func InitLogMaintainer(p string, n int) {
 		logrus.WithField("path", p).Error("couldn't create file")
 		panic(err)
 	}
+	maintainerInterface = itf
 }
 
 func dialConn() error {
@@ -67,20 +71,28 @@ func Append(r record.Record) error {
 			logrus.WithField("duration", time.Since(logFirstTime)).Info("appended", logRecordNth, "records")
 		}
 	}
-	b, err := record.ToJSON(r)
-	if err != nil {
-		return err
-	}
-	lenbuf := make([]byte, 4)
-	binary.BigEndian.PutUint32(lenbuf, uint32(len(b)))
-	lid := r.LId
-	_, err = f.WriteAt(append(lenbuf, b...), int64(512*lid))
-	if err != nil {
-		return err
-	}
-	// log.Println(info.GetName(), "wrote record ", lid)
-	InsertIndexer(r)
 
+	if maintainerInterface == adapter.DYNAMODB {
+		err := dynamodb.PutRecord(r)
+		if err != nil {
+			return err
+		}
+	} else if maintainerInterface == adapter.FLSTORE {
+		b, err := record.ToJSON(r)
+		if err != nil {
+			return err
+		}
+		lenbuf := make([]byte, 4)
+		binary.BigEndian.PutUint32(lenbuf, uint32(len(b)))
+		lid := r.LId
+		_, err = f.WriteAt(append(lenbuf, b...), int64(512*lid))
+		if err != nil {
+			return err
+		}
+		// log.Println(info.GetName(), "wrote record ", lid)
+	}
+
+	InsertIndexer(r)
 	LastLId = r.LId
 	if r.Host == info.ID {
 		Propagate(r)

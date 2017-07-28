@@ -2,6 +2,14 @@
 
 ## July 
 
+## July 27, 2017
+### Add DynamoDB adapter
+User can use DynamoDB to store records now. [Detail](../doc/adapter_dynamodb.md)
+
+## July 25, 2017
+### Bug fixed
+Fix a problem gochariots may fetch wrong local IP when run as docker container.
+
 ## July 16, 2017
 ### Launch option change
 Give default value to num_dc and id. By default, when launching a new component, the number of DC is 1 and the id of the said component is 0. To change the value, use option *--num_dc** and *--id*. Run gochariots --help for details. 
