@@ -66,16 +66,17 @@ var (
 	queueInfo    = queueCommand.Flag("info", "Turn on info level logging.").Short('i').Bool()
 	queueDebug   = queueCommand.Flag("debug", "Turn on debug level logging.").Short('d').Bool()
 
-	maintainerCommand  = gochariots.Command("maintainer", "Start a maintainer instance.")
-	maintainerInstN    = maintainerCommand.Arg("ntime", "Record the time maintainer takes to append n records").Int()
-	maintainerNumDC    = maintainerCommand.Flag("num_dc", "The port maintainer listens to.").Int()
-	maintainerID       = maintainerCommand.Flag("id", "The port maintainer listens to.").Int()
-	maintainerPort     = maintainerCommand.Flag("port", "The port app listens to. By default it's 9030").Short('p').String()
-	maintainerTOId     = maintainerCommand.Flag("toid", "Use TOId version.").Short('t').Bool()
-	maintainerConfig   = maintainerCommand.Flag("config_file", "Configuration file to read.").Short('f').String()
-	maintainerInfo     = maintainerCommand.Flag("info", "Turn on info level logging.").Short('i').Bool()
-	maintainerDebug    = maintainerCommand.Flag("debug", "Turn on debug level logging.").Short('d').Bool()
-	maintainerDynamoDB = maintainerCommand.Flag("dynamodb", "Use DynamoDB as physical storage.").Bool()
+	maintainerCommand   = gochariots.Command("maintainer", "Start a maintainer instance.")
+	maintainerInstN     = maintainerCommand.Arg("ntime", "Record the time maintainer takes to append n records").Int()
+	maintainerNumDC     = maintainerCommand.Flag("num_dc", "The port maintainer listens to.").Int()
+	maintainerID        = maintainerCommand.Flag("id", "The port maintainer listens to.").Int()
+	maintainerPort      = maintainerCommand.Flag("port", "The port app listens to. By default it's 9030").Short('p').String()
+	maintainerTOId      = maintainerCommand.Flag("toid", "Use TOId version.").Short('t').Bool()
+	maintainerConfig    = maintainerCommand.Flag("config_file", "Configuration file to read.").Short('f').String()
+	maintainerInfo      = maintainerCommand.Flag("info", "Turn on info level logging.").Short('i').Bool()
+	maintainerDebug     = maintainerCommand.Flag("debug", "Turn on debug level logging.").Short('d').Bool()
+	maintainerDynamoDB  = maintainerCommand.Flag("dynamodb", "Use DynamoDB as physical storage.").Bool()
+	maintainerDatastore = maintainerCommand.Flag("datastore", "Use Datastore as physical storage.").Bool()
 
 	indexerCommand = gochariots.Command("indexer", "Start an indexer instance.")
 	indexerNumDC   = indexerCommand.Flag("num_dc", "The port indexer listens to.").Int()
@@ -323,6 +324,8 @@ func main() {
 		adap := adapter.FLSTORE
 		if *maintainerDynamoDB {
 			adap = adapter.DYNAMODB
+		} else if *maintainerDatastore {
+			adap = adapter.DATASTORE
 		}
 		maintainer.InitLogMaintainer(info.GetName(), *maintainerInstN, adap)
 		ln, err := net.Listen("tcp", ":"+*maintainerPort)

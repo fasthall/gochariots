@@ -2,6 +2,10 @@
 
 ## July 
 
+## July 28, 2017
+### Add Google Datastore adapter
+User can use Datastore to store records now. [Detail](../doc/adapter_datastore.md)
+
 ## July 27, 2017
 ### Add DynamoDB adapter
 User can use DynamoDB to store records now. [Detail](../doc/adapter_dynamodb.md)

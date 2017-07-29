@@ -18,6 +18,7 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/maintainer/adapter"
+	"github.com/fasthall/gochariots/maintainer/adapter/datastore"
 	"github.com/fasthall/gochariots/maintainer/adapter/dynamodb"
 	"github.com/fasthall/gochariots/misc/connection"
 	"github.com/fasthall/gochariots/record"
@@ -74,6 +75,11 @@ func Append(r record.Record) error {
 
 	if maintainerInterface == adapter.DYNAMODB {
 		err := dynamodb.PutRecord(r)
+		if err != nil {
+			return err
+		}
+	} else if maintainerInterface == adapter.DATASTORE {
+		err := datastore.PutRecord(r)
 		if err != nil {
 			return err
 		}

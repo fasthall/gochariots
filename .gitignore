@@ -34,3 +34,4 @@ _testmain.go
 
 # yaml with credential
 *_cred.yaml
+cred.json
