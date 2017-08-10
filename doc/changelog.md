@@ -1,3 +1,9 @@
+# August
+
+## August 10, 2017
+### Multiple prerequiste hashes support
+Now an event record can have more than one prerequiste hash. For example, when record `r3` has hashes of both `r1` and `r2`, both `r1` and `r2` need to be appended before `r3` does. 
+
 # July
 
 ## July 
