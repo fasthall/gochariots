@@ -18,7 +18,7 @@ type Record struct {
 	Host      int
 	LId       int
 	Tags      map[string]string
-	Hash      uint64
+	Hash      []uint64
 	Seed      uint64
 }
 

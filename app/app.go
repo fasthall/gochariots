@@ -26,8 +26,10 @@ var connMutex sync.Mutex
 
 type JsonRecord struct {
 	Tags    map[string]string `json:"tags"`
-	PreHash uint64            `json:"prehash"`
+	Hash    []uint64          `json:"prehash"`
+	StrHash []string          `json:"strhash"`
 	Seed    uint64            `json:"seed"`
+	StrSeed string            `json:"strseed"`
 }
 
 func Run(port string) {
@@ -77,11 +79,25 @@ func postRecord(c *gin.Context) {
 		panic(err)
 	}
 
+	for _, strHash := range jsonRecord.StrHash {
+		hash, err := strconv.ParseUint(strHash, 10, 64)
+		if err != nil {
+			panic(err)
+		}
+		jsonRecord.Hash = append(jsonRecord.Hash, hash)
+	}
+	if jsonRecord.StrSeed != "" {
+		seed, err := strconv.ParseUint(jsonRecord.StrSeed, 10, 64)
+		if err != nil {
+			panic(err)
+		}
+		jsonRecord.Seed = seed
+	}
 	// send to batcher
 	r := record.Record{
 		Host: info.ID,
 		Tags: jsonRecord.Tags,
-		Hash: jsonRecord.PreHash,
+		Hash: jsonRecord.Hash,
 		Seed: jsonRecord.Seed,
 	}
 	jsonBytes, err := record.ToJSON(r)

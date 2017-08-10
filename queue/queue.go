@@ -82,7 +82,7 @@ func tokenArrival(token Token) {
 	bufMutex.Lock()
 	head := 0
 	for _, r := range buffered {
-		if r.Hash == 0 {
+		if len(r.Hash) == 0 {
 			dispatch = append(dispatch, r)
 		} else {
 			query = append(query, indexer.Query{

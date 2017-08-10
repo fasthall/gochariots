@@ -28,7 +28,7 @@ var indexes IndexTable
 const bucket = "index"
 
 type Query struct {
-	Hash uint64
+	Hash []uint64
 	Seed uint64
 }
 
@@ -252,17 +252,29 @@ func HandleRequest(conn net.Conn) {
 			}
 			ans := make([]bool, len(query))
 			for i, q := range query {
-				result, err := getIndexEntry(q.Hash)
-				if err != nil {
-					logrus.WithError(err).Error("couldn't read from indexer")
-					panic(err)
-				}
-				for _, s := range result {
-					if s.Seed == q.Seed {
-						ans[i] = true
+				result := true
+				for _, hash := range q.Hash {
+					seeds, err := getIndexEntry(hash)
+					if err != nil {
+						logrus.WithError(err).Error("couldn't read from indexer")
+						panic(err)
+					}
+					in := false
+					for _, s := range seeds {
+						if s.Seed == q.Seed {
+							in = true
+							break
+						}
+					}
+					if in == false {
+						result = false
 						break
 					}
 				}
+				if result {
+					ans[i] = true
+				}
+
 			}
 			var tmp bytes.Buffer
 			enc := gob.NewEncoder(&tmp)
