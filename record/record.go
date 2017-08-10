@@ -18,13 +18,8 @@ type Record struct {
 	Host      int
 	LId       int
 	Tags      map[string]string
-	Pre       Causality
+	Hash      uint64
 	Seed      uint64
-}
-
-// Causality structure is used in Record structure. It shows the record which should present before.
-type Causality struct {
-	Hash uint64
 }
 
 // ToJSON encodes a record into bytes

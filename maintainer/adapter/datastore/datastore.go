@@ -16,16 +16,12 @@ var ctx context.Context
 var client *datastore.Client
 
 type Record struct {
-	Timestamp int64     `datastore:"Timestamp"`
-	Host      int       `datastore:"Host"`
-	LId       int       `datastore:"LId"`
-	Tags      string    `datastore:"Tags"`
-	Pre       Causality `datastore:"Causality"`
-	Seed      string    `datastore:"Seed"`
-}
-
-type Causality struct {
-	Hash string `datastore:"Hash"`
+	Timestamp int64  `datastore:"Timestamp"`
+	Host      int    `datastore:"Host"`
+	LId       int    `datastore:"LId"`
+	Tags      string `datastore:"Tags"`
+	Hash      string `datastore:"Hash"`
+	Seed      string `datastore:"Seed"`
 }
 
 func init() {
@@ -51,10 +47,8 @@ func PutRecord(r record.Record) error {
 		Host:      r.Host,
 		LId:       r.LId,
 		Tags:      string(tags),
-		Pre: Causality{
-			Hash: fmt.Sprintf("%v", r.Pre.Hash),
-		},
-		Seed: fmt.Sprintf("%v", r.Seed),
+		Hash:      fmt.Sprintf("%v", r.Hash),
+		Seed:      fmt.Sprintf("%v", r.Seed),
 	}
 	key := datastore.IncompleteKey("Record", nil)
 	key, err = client.Put(ctx, key, entity)

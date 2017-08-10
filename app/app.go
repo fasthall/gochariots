@@ -81,9 +81,7 @@ func postRecord(c *gin.Context) {
 	r := record.Record{
 		Host: info.ID,
 		Tags: jsonRecord.Tags,
-		Pre: record.Causality{
-			Hash: jsonRecord.PreHash,
-		},
+		Hash: jsonRecord.PreHash,
 		Seed: jsonRecord.Seed,
 	}
 	jsonBytes, err := record.ToJSON(r)
@@ -159,10 +157,10 @@ func getRecord(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"LId":       r.LId,
-		"Host":      r.Host,
-		"Causality": r.Pre,
-		"Tags":      r.Tags,
-		"Seed":      r.Seed,
+		"LId":  r.LId,
+		"Host": r.Host,
+		"Hash": r.Hash,
+		"Tags": r.Tags,
+		"Seed": r.Seed,
 	})
 }
