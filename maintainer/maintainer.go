@@ -18,6 +18,7 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/maintainer/adapter"
+	"github.com/fasthall/gochariots/maintainer/adapter/cosmos"
 	"github.com/fasthall/gochariots/maintainer/adapter/datastore"
 	"github.com/fasthall/gochariots/maintainer/adapter/dynamodb"
 	"github.com/fasthall/gochariots/misc/connection"
@@ -96,6 +97,11 @@ func Append(r record.Record) error {
 			return err
 		}
 		// log.Println(info.GetName(), "wrote record ", lid)
+	} else if maintainerInterface == adapter.COSMOSDB {
+		err := cosmos.PutRecord(r)
+		if err != nil {
+			return err
+		}
 	}
 
 	InsertIndexer(r)
