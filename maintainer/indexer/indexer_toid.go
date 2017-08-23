@@ -6,7 +6,6 @@ import (
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
-	"hash/fnv"
 	"io"
 	"net"
 	"strconv"
@@ -20,12 +19,6 @@ var TOIDindexes = make(map[uint64][]int)
 
 func TOIDInitIndexer(p string) {
 
-}
-
-func TagToHash(key, value string) uint64 {
-	hash := fnv.New64a()
-	hash.Write([]byte(key + ":" + value))
-	return hash.Sum64()
 }
 
 func TOIDInsert(key, value string, LId int) {

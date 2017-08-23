@@ -18,6 +18,7 @@ import (
 	"github.com/fasthall/gochariots/record"
 )
 
+var nextTOId []int
 var TOIDbuffer []record.TOIDRecord
 
 // TOIDInitFilter Initializes all the expected TOId as 1

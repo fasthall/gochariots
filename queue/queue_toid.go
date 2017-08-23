@@ -77,7 +77,6 @@ func TOIDrecordsArrival(records []record.TOIDRecord) {
 // For each deferred records in the token, check if the current max TOId in shared log satisfies the dependency.
 // If so, the deferred records are sent to the log maintainers.
 func TokenArrivalCarryDeferred(token TOIDToken) {
-	logrus.WithField("deferred", len(token.DeferredRecords)).Info("TokenArrivalCarryDeferred")
 	bufMutex.Lock()
 	// append buffered records to the token in order
 	for host := range TOIDbuffered {
@@ -137,7 +136,6 @@ func TokenArrivalCarryDeferred(token TOIDToken) {
 
 // TokenArrivalBufferDeferred is similar to TokenArrivalCarryDeferred, except deferred records will be buffered rather than carried with token
 func TokenArrivalBufferDeferred(token TOIDToken) {
-	logrus.Info("TokenArrivalBufferDeferred")
 	dispatch := []record.TOIDRecord{}
 	bufMutex.Lock()
 	for host := range TOIDbuffered {
@@ -245,7 +243,6 @@ func TOIDpassToken(token *TOIDToken) {
 				}
 			} else {
 				sent = true
-				logrus.WithField("host", nextQueueHost).Info("sent the token to the next queue")
 			}
 		}
 	}
@@ -298,7 +295,6 @@ func TOIDdispatchRecords(records []record.TOIDRecord, maintainerID int) {
 			}
 		} else {
 			sent = true
-			logrus.WithFields(logrus.Fields{"length": len(records), "id": maintainerID}).Info("ent the records to maintainer")
 		}
 	}
 	// log.Printf("TIMESTAMP %s:record in queue %s\n", info.GetName(), time.Since(lastTime))
@@ -351,7 +347,6 @@ func TOIDHandleRequest(conn net.Conn) {
 			} else {
 				TokenArrivalBufferDeferred(token)
 			}
-			logrus.Info("received token")
 		} else if buf[0] == 'm' { // received maintainer update
 			ver := int(binary.BigEndian.Uint32(buf[1:5]))
 			if ver > maintainersVer {
@@ -361,7 +356,7 @@ func TOIDHandleRequest(conn net.Conn) {
 					logrus.WithField("buffer", string(buf[1:totalLength])).Error("couldn't convert read buffer to maintainer hosts")
 				} else {
 					maintainersConn = make([]net.Conn, len(maintainersHost))
-					logrus.WithField("host", maintainersHost).Info("receiver maintainer hosts update")
+					logrus.WithField("host", maintainersHost).Info("received maintainer hosts update")
 				}
 			} else {
 				logrus.WithFields(logrus.Fields{"current": maintainersVer, "received": ver}).Debug("receiver older version of maintainer list")
@@ -375,7 +370,7 @@ func TOIDHandleRequest(conn net.Conn) {
 					logrus.WithField("buffer", string(buf[5:totalLength])).Error("couldn't convert read buffer to indexer hosts")
 				} else {
 					indexerConn = make([]net.Conn, len(indexerHost))
-					logrus.WithField("host", indexerHost).Info("receiver indexer hosts update")
+					logrus.WithField("host", indexerHost).Info("received indexer hosts update")
 				}
 			} else {
 				logrus.WithFields(logrus.Fields{"current": indexersVer, "received": ver}).Debug("receiver older version of indexer list")

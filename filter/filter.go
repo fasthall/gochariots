@@ -14,7 +14,6 @@ import (
 	"encoding/json"
 
 	"github.com/Sirupsen/logrus"
-	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/misc/connection"
 	"github.com/fasthall/gochariots/record"
 )
@@ -23,16 +22,11 @@ var connMutex sync.Mutex
 var queueConn []net.Conn
 var queuePool []string
 var queuePoolVer int
-var nextTOId []int
 var bufMutex sync.Mutex
 var buffer []record.Record
 
 // InitFilter Initializes all the expected TOId as 1
 func InitFilter() {
-	nextTOId = make([]int, info.NumDC)
-	for i := range nextTOId {
-		nextTOId[i] = 1
-	}
 	bufMutex.Lock()
 	buffer = make([]record.Record, 0)
 	bufMutex.Unlock()

@@ -7,12 +7,12 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"math/rand"
 	"net"
 	"sync"
 	"time"
 
 	"github.com/Sirupsen/logrus"
-	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/misc/connection"
 	"github.com/fasthall/gochariots/record"
 )
@@ -20,23 +20,16 @@ import (
 const bufferSize int = 256
 
 var bufMutex sync.Mutex
-var buffer [][]record.Record
+var buffer []record.Record
 var connMutex sync.Mutex
-var filterConn []net.Conn
-var filterHost []string
-var filterHostVer int
+var queueConn []net.Conn
+var queuePool []string
+var queuePoolVer int
 var numFilters int
 
 // InitBatcher allocates n buffers, where n is the number of filters
 func InitBatcher() {
-	numFilters = info.NumDC
-	buffer = make([][]record.Record, numFilters)
-	for i := range buffer {
-		buffer[i] = make([]record.Record, 0, bufferSize)
-	}
-	filterHost = make([]string, numFilters)
-	filterConn = make([]net.Conn, numFilters)
-	logrus.WithField("filter number", numFilters).Info("initialized")
+	buffer = make([]record.Record, 0, bufferSize)
 }
 
 // arrival buffers arriving records.
@@ -46,53 +39,55 @@ func InitBatcher() {
 func arrival(r record.Record) {
 	// r.Timestamp = time.Now()
 	bufMutex.Lock()
-	dc := r.Host
-	buffer[dc] = append(buffer[dc], r)
+	buffer = append(buffer, r)
 
 	// if the buffer is full, send all records to the filter
-	if len(buffer[dc]) == cap(buffer[dc]) {
-		sendToFilter(dc)
+	if len(buffer) == cap(buffer) {
+		sendToQueue()
 	}
 	bufMutex.Unlock()
 }
 
-func dialConn(dc int) error {
+func dialConn(queueID int) error {
+	host := queuePool[queueID]
 	var err error
-	filterConn[dc], err = net.Dial("tcp", filterHost[dc])
+	queueConn[queueID], err = net.Dial("tcp", host)
 	return err
 }
 
-func sendToFilter(dc int) {
-	if len(buffer[dc]) == 0 {
+func sendToQueue() {
+	if len(buffer) == 0 {
 		return
 	}
-	// logrus.WithField("timestamp", time.Now()).Info("sendToFilter")
-	bytes, err := record.ToGobArray(buffer[dc])
+	// logrus.WithField("timestamp", time.Now()).Debug("sendToQueue")
+	bytes, err := record.ToGobArray(buffer)
 	if err != nil {
-		logrus.WithError(err).Error("couldn't convert buffer to records")
+		panic(err)
 	}
 	b := make([]byte, 5)
 	b[4] = byte('r')
 	binary.BigEndian.PutUint32(b, uint32(len(bytes)+1))
+	queueID := rand.Intn(len(queuePool))
 
-	buffer[dc] = buffer[dc][:0]
+	buffer = buffer[:0]
 	connMutex.Lock()
-	if filterConn[dc] == nil {
-		err = dialConn(dc)
+	if queueConn[queueID] == nil {
+		err = dialConn(queueID)
 		if err != nil {
-			logrus.WithField("id", dc).Error("couldn't connect to filter")
+			logrus.WithField("id", queueID).Error("couldn't connect to queue")
 		} else {
-			logrus.WithField("id", dc).Info("connected to filter")
+			logrus.WithField("id", queueID).Info("connected to queue")
 		}
 	}
 	connMutex.Unlock()
+
 	cnt := 5
 	sent := false
 	for sent == false {
 		var err error
 		connMutex.Lock()
-		if filterConn[dc] != nil {
-			_, err = filterConn[dc].Write(append(b, bytes...))
+		if queueConn[queueID] != nil {
+			_, err = queueConn[queueID].Write(append(b, bytes...))
 		} else {
 			err = errors.New("batcherConn[hostID] == nil")
 		}
@@ -100,19 +95,19 @@ func sendToFilter(dc int) {
 		if err != nil {
 			if cnt >= 0 {
 				cnt--
-				err = dialConn(dc)
+				err = dialConn(queueID)
 				if err != nil {
-					logrus.WithField("attempt", cnt).Warning("couldn't connect to filter, retrying...")
+					logrus.WithField("attempt", cnt).Warning("couldn't connect to queue, retrying...")
 				} else {
-					logrus.WithField("id", dc).Info("connected to filter")
+					logrus.WithField("id", queueID).Info("connected to queue")
 				}
 			} else {
-				logrus.WithField("id", dc).Error("failed to connect to the filter after retrying 5 times")
+				logrus.WithField("id", queueID).Error("failed to connect to the queue after retrying 5 times")
 				break
 			}
 		} else {
 			sent = true
-			logrus.WithField("id", dc).Debug("sent to filter")
+			logrus.WithField("id", queueID).Debug("sent to queue")
 		}
 	}
 }
@@ -122,9 +117,7 @@ func Sweeper() {
 	for {
 		time.Sleep(10 * time.Millisecond)
 		bufMutex.Lock()
-		for i := range buffer {
-			sendToFilter(i)
-		}
+		sendToQueue()
 		bufMutex.Unlock()
 	}
 }
@@ -168,19 +161,19 @@ func HandleRequest(conn net.Conn) {
 			}
 			// elapsed := time.Since(start)
 			// log.Printf("TIMESTAMP %s:HandleRequest took %s\n", info.GetName(), elapsed)
-		} else if buf[0] == 'f' { //received filter update
+		} else if buf[0] == 'q' { // received queue hosts
 			ver := int(binary.BigEndian.Uint32(buf[1:5]))
-			if ver > filterHostVer {
-				filterHostVer = ver
-				err := json.Unmarshal(buf[5:totalLength], &filterHost)
+			if ver > queuePoolVer {
+				queuePoolVer = ver
+				err := json.Unmarshal(buf[5:totalLength], &queuePool)
 				if err != nil {
-					logrus.WithField("buffer", string(buf[5:totalLength])).Error("couldn't convert bytes to filter list")
+					logrus.WithField("buffer", string(buf[5:totalLength])).Error("couldn't convert read buffer to queue list")
 					continue
-				} else {
-					logrus.WithField("filterHost", filterHost).Info("updates filter")
 				}
+				queueConn = make([]net.Conn, len(queuePool))
+				logrus.WithField("queues", queuePool).Info("received new queue update")
 			} else {
-				logrus.WithFields(logrus.Fields{"current": filterHostVer, "received": ver}).Debug("receiver older version of filter list")
+				logrus.WithFields(logrus.Fields{"current": queuePoolVer, "received": ver}).Debug("receiver older version of queue list")
 			}
 		} else {
 			logrus.WithField("header", buf[0]).Warning("couldn't understand request")

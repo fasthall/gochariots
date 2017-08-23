@@ -19,8 +19,6 @@ var apps []string
 var appsVersion int
 var batchers []string
 var batchersVersion int
-var filters []string
-var filtersVersion int
 var queues []string
 var queuesVersion int
 var maintainers []string
@@ -40,8 +38,6 @@ func StartController(port string) {
 	router.GET("/app", getApps)
 	router.POST("/batcher", addBatchers)
 	router.GET("/batcher", getBatchers)
-	router.POST("/filter", addFilter)
-	router.GET("/filter", getFilters)
 	router.POST("/queue", addQueue)
 	router.GET("/queue", getQueues)
 	router.POST("/maintainer", addMaintainer)
@@ -58,7 +54,6 @@ func getInfo(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"apps":           apps,
 		"batchers":       batchers,
-		"filters":        filters,
 		"queues":         queues,
 		"maintainers":    maintainers,
 		"indexers":       indexers,
@@ -126,21 +121,21 @@ func addBatchers(c *gin.Context) {
 			panic("failing to update cluster may cause unexpected error")
 		}
 		defer conn.Close()
-		jsonBytes, err := json.Marshal(filters)
+		jsonBytes, err := json.Marshal(queues)
 		if err != nil {
-			logrus.WithField("filters", filters).Error("couldn't convert filter list to bytes")
+			logrus.WithField("queues", queues).Error("couldn't convert queue list to bytes")
 			panic("failing to update cluster may cause unexpected error")
 		}
 		b := make([]byte, 9)
-		b[4] = byte('f')
-		binary.BigEndian.PutUint32(b[5:], uint32(filtersVersion))
+		b[4] = byte('q')
+		binary.BigEndian.PutUint32(b[5:], uint32(queuesVersion))
 		binary.BigEndian.PutUint32(b, uint32(len(jsonBytes)+5))
 		_, err = conn.Write(append(b, jsonBytes...))
 		if err != nil {
-			logrus.WithField("id", i).Error("couldn't send filter list to batcher")
+			logrus.WithField("id", i).Error("couldn't send queue list to batcher")
 			panic("failing to update cluster may cause unexpected error")
 		}
-		logrus.WithFields(logrus.Fields{"id": i, "filters": filters}).Info("successfully informed batcher about filter list")
+		logrus.WithFields(logrus.Fields{"id": i, "queues": queues}).Info("successfully informed batcher about queue list")
 	}
 	c.String(http.StatusOK, c.Query("host")+" added")
 }
@@ -148,66 +143,6 @@ func addBatchers(c *gin.Context) {
 func getBatchers(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"batchers": batchers,
-	})
-}
-
-func addFilter(c *gin.Context) {
-	if c.Query("host") == "" {
-		c.String(http.StatusBadRequest, "invalid parameter, needs $host")
-		return
-	}
-	mutex.Lock()
-	filters = append(filters, c.Query("host"))
-	filtersVersion++
-	mutex.Unlock()
-	c.String(http.StatusOK, c.Query("host")+" added")
-	for i, host := range batchers {
-		conn, err := net.Dial("tcp", host)
-		if err != nil {
-			logrus.WithField("id", i).Error("couldn't connect to batcher")
-			panic("failing to update cluster may cause unexpected error")
-		}
-		defer conn.Close()
-		jsonBytes, err := json.Marshal(filters)
-		if err != nil {
-			logrus.WithField("filters", filters).Error("couldn't convert filter list to bytes")
-			panic("failing to update cluster may cause unexpected error")
-		}
-		b := make([]byte, 9)
-		b[4] = byte('f')
-		binary.BigEndian.PutUint32(b[5:], uint32(filtersVersion))
-		binary.BigEndian.PutUint32(b, uint32(len(jsonBytes)+5))
-		_, err = conn.Write(append(b, jsonBytes...))
-		if err != nil {
-			logrus.WithField("id", i).Error("couldn't send filter list to batcher")
-			panic("failing to update cluster may cause unexpected error")
-		}
-		logrus.WithFields(logrus.Fields{"id": i, "filters": filters}).Info("successfully informed batcher about filter list")
-	}
-
-	// update filter about queues
-	conn, err := net.Dial("tcp", c.Query("host"))
-	if err != nil {
-		logrus.WithField("host", c.Query("host")).Error("couldn't connect to filter")
-		panic("failing to update cluster may cause unexpected error")
-	}
-	defer conn.Close()
-	b := make([]byte, 9)
-	b[4] = byte('q')
-	jsonBytes, err := json.Marshal(queues)
-	binary.BigEndian.PutUint32(b[5:], uint32(queuesVersion))
-	binary.BigEndian.PutUint32(b, uint32(len(jsonBytes)+5))
-	_, err = conn.Write(append(b, []byte(jsonBytes)...))
-	if err != nil {
-		logrus.WithField("host", c.Query("host")).Error("couldn't send new queue host")
-		panic("failing to update cluster may cause unexpected error")
-	}
-	logrus.WithFields(logrus.Fields{"filter": c.Query("host"), "queues": queues}).Info("successfully informed filter about new queue host")
-}
-
-func getFilters(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"filters": filters,
 	})
 }
 
@@ -242,10 +177,10 @@ func addQueue(c *gin.Context) {
 		logrus.WithFields(logrus.Fields{"id": i, "queue": queues[(i+1)%len(queues)]}).Info("successfully informed queue about next queue host")
 	}
 	// update filter about queues
-	for i, host := range filters {
+	for i, host := range batchers {
 		conn, err := net.Dial("tcp", host)
 		if err != nil {
-			logrus.WithField("id", i).Error("couldn't connect to filter")
+			logrus.WithField("id", i).Error("couldn't connect to batcher")
 			panic("failing to update cluster may cause unexpected error")
 		}
 		defer conn.Close()
@@ -259,7 +194,7 @@ func addQueue(c *gin.Context) {
 			logrus.WithField("id", i).Error("couldn't send new queue host")
 			panic("failing to update cluster may cause unexpected error")
 		}
-		logrus.WithFields(logrus.Fields{"filter": host, "queues": queues}).Info("successfully informed filter about new queue host")
+		logrus.WithFields(logrus.Fields{"batcher": host, "queues": queues}).Info("successfully informed batcher about new queue host")
 	}
 
 	// update queues' maintainer list

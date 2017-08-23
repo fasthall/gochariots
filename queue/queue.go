@@ -386,7 +386,7 @@ func HandleRequest(conn net.Conn) {
 					logrus.WithField("buffer", string(buf[1:totalLength])).Error("couldn't convert read buffer to maintainer hosts")
 				} else {
 					maintainersConn = make([]net.Conn, len(maintainersHost))
-					logrus.WithField("host", maintainersHost).Info("receiver maintainer hosts update")
+					logrus.WithField("host", maintainersHost).Info("received maintainer hosts update")
 				}
 			} else {
 				logrus.WithFields(logrus.Fields{"current": maintainersVer, "received": ver}).Debug("receiver older version of maintainer list")
@@ -400,7 +400,7 @@ func HandleRequest(conn net.Conn) {
 					logrus.WithField("buffer", string(buf[5:totalLength])).Error("couldn't convert read buffer to indexer hosts")
 				} else {
 					indexerConn = make([]net.Conn, len(indexerHost))
-					logrus.WithField("host", indexerHost).Info("receiver indexer hosts update")
+					logrus.WithField("host", indexerHost).Info("received indexer hosts update")
 				}
 			} else {
 				logrus.WithFields(logrus.Fields{"current": indexersVer, "received": ver}).Debug("receiver older version of indexer list")

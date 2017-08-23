@@ -1,5 +1,9 @@
 # August
 
+## August 23, 2017
+### Remove filter
+In the current design there is no need of filter.
+
 ## August 14, 2017
 ### Add Azure Cosmos DB as data store option
 User can use Azure Cosmos DB to store records now. 
