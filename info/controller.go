@@ -71,12 +71,13 @@ func addApps(c *gin.Context) {
 	appsVersion++
 	mutex.Unlock()
 
-	go informApp(c.Query("host"))
+	go informAppBatcher(c.Query("host"))
+	go informAppIndexer(c.Query("host"))
 
 	c.String(http.StatusOK, c.Query("host")+" added")
 }
 
-func informApp(host string) {
+func informAppBatcher(host string) {
 	jsonBatchers, err := json.Marshal(batchers)
 	if err != nil {
 		logrus.WithError(err).Error("couldn't convert batchers to bytes")
@@ -96,6 +97,26 @@ func informApp(host string) {
 	logrus.WithFields(logrus.Fields{"host": host, "batchers": batchers}).Info("successfully informed app about batcher list")
 }
 
+func informAppIndexer(host string) {
+	jsonIndexers, err := json.Marshal(indexers)
+	if err != nil {
+		logrus.WithError(err).Error("couldn't convert indexers to bytes")
+		panic("failing to update cluster may cause unexpected error")
+	}
+	p := misc.NewParams()
+	p.AddParam("host", string(jsonIndexers))
+	p.AddParam("ver", strconv.Itoa(indexersVersion))
+	code := http.StatusBadRequest
+	for code != http.StatusOK {
+		time.Sleep(1 * time.Second)
+		code, _, err = misc.Report(host, "indexer", p)
+		if err != nil {
+			logrus.WithError(err).Error("couldn't inform app about indexers")
+		}
+	}
+	logrus.WithFields(logrus.Fields{"host": host, "indexers": indexers}).Info("successfully informed app about indexer list")
+}
+
 func getApps(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"apps": apps,
@@ -112,7 +133,7 @@ func addBatchers(c *gin.Context) {
 	batchersVersion++
 	mutex.Unlock()
 	for _, host := range apps {
-		informApp(host)
+		informAppBatcher(host)
 	}
 	for i, host := range batchers {
 		conn, err := net.Dial("tcp", host)
@@ -335,6 +356,10 @@ func addIndexer(c *gin.Context) {
 	indexersVersion++
 	mutex.Unlock()
 	c.String(http.StatusOK, c.Query("host")+" added")
+
+	for _, host := range apps {
+		informAppIndexer(host)
+	}
 
 	// tell maintainer its indexer
 	i := len(indexers) - 1

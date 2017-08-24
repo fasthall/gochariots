@@ -9,6 +9,7 @@ import (
 )
 
 type TOIDRecord struct {
+	ID        uint64
 	Timestamp int64
 	Host      int
 	TOId      int

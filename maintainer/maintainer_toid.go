@@ -1,9 +1,7 @@
 package maintainer
 
 import (
-	"bytes"
 	"encoding/binary"
-	"encoding/gob"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -54,27 +52,14 @@ func TOIDAppend(r record.TOIDRecord) error {
 }
 
 func TOIDInsertIndexer(r record.TOIDRecord) {
-	lidBytes := make([]byte, 4)
-	binary.BigEndian.PutUint32(lidBytes, uint32(r.LId))
-	toidBytes := make([]byte, 4)
-	if r.Host == info.ID {
-		binary.BigEndian.PutUint32(toidBytes, uint32(r.TOId))
-	} else {
-		binary.BigEndian.PutUint32(toidBytes, uint32(0))
-	}
-	var buf bytes.Buffer
-	enc := gob.NewEncoder(&buf)
-	err := enc.Encode(r.Tags)
-	if err != nil {
-		logrus.WithField("tags", r.Tags).Error("couldn't encode tags")
-		return
-	}
+	tmp := make([]byte, 20)
+	binary.BigEndian.PutUint64(tmp, r.ID)
+	binary.BigEndian.PutUint32(tmp[8:], uint32(r.LId))
+	binary.BigEndian.PutUint32(tmp[12:], uint32(r.TOId))
+	binary.BigEndian.PutUint32(tmp[16:], uint32(r.Host))
 	b := make([]byte, 5)
 	b[4] = byte('t')
-	binary.BigEndian.PutUint32(b, uint32(9+buf.Len()))
-	// notify indexer, format
-	// LId[0~3] TOId[4~7] Tags[8...]
-	// If the record is from other DC, TOId is set to 0
+	binary.BigEndian.PutUint32(b, uint32(21))
 
 	indexerConnMutex.Lock()
 	if indexerConn == nil {
@@ -92,7 +77,7 @@ func TOIDInsertIndexer(r record.TOIDRecord) {
 		var err error
 		indexerConnMutex.Lock()
 		if indexerConn != nil {
-			_, err = indexerConn.Write(append(append(append(b, lidBytes...), toidBytes...), buf.Bytes()...))
+			_, err = indexerConn.Write(append(b, tmp...))
 		} else {
 			err = errors.New("indexerConn == nil")
 		}

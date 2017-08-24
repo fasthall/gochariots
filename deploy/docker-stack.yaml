@@ -38,16 +38,6 @@ services:
       replicas: 3
     networks:
       - cluster
-  filter:
-    image: fasthall/gochariots
-    entrypoint: gochariots filter -i -f config/config.yaml
-    volumes:
-      - /home/ubuntu/deploy/config:/go/config
-      - /home/ubuntu/deploy/logs:/go/logs
-    depends_on:
-      - controller
-    networks:
-      - cluster
   queue-leader:
     image: fasthall/gochariots
     entrypoint: gochariots queue --hold -i -f config/config.yaml

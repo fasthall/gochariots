@@ -37,16 +37,6 @@ services:
       - TCP_PORTS=9000
     networks:
       - cluster
-  filter:
-    image: fasthall/gochariots
-    entrypoint: gochariots filter -i -f config/config.yaml
-    depends_on:
-      - controller
-    volumes:
-      - ./config:/go/config
-      - ./logs:/go/logs
-    networks:
-      - cluster
   queue-leader:
     image: fasthall/gochariots
     entrypoint: gochariots queue --hold -i -f config/config.yaml

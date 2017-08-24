@@ -14,7 +14,6 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	"github.com/fasthall/gochariots/info"
-	"github.com/fasthall/gochariots/maintainer"
 	"github.com/fasthall/gochariots/record"
 	"github.com/gin-gonic/gin"
 )
@@ -22,7 +21,11 @@ import (
 var batcherConn []net.Conn
 var batcherPool []string
 var batchersVer int
+var indexerConn []net.Conn
+var indexerPool []string
+var indexersVer int
 var connMutex sync.Mutex
+var indexerConnMutex sync.Mutex
 
 type JsonRecord struct {
 	Tags    map[string]string `json:"tags"`
@@ -35,9 +38,11 @@ type JsonRecord struct {
 func Run(port string) {
 	router := gin.Default()
 	router.POST("/record", postRecord)
-	router.GET("/record/:lid", getRecord)
+	// router.GET("/record/", getRecord)
 	router.POST("/batcher", addBatchers)
 	router.GET("/batcher", getBatchers)
+	router.POST("/indexer", addIndexer)
+	router.GET("/indexer", getindexers)
 	router.Run(":" + port)
 }
 
@@ -65,9 +70,39 @@ func getBatchers(c *gin.Context) {
 	})
 }
 
+func addIndexer(c *gin.Context) {
+	ver, err := strconv.Atoi(c.Query("ver"))
+	if err != nil {
+		c.String(http.StatusBadRequest, "invalid version $ver")
+		return
+	}
+	if ver > indexersVer {
+		indexersVer = ver
+		json.Unmarshal([]byte(c.Query("host")), &indexerPool)
+		indexerConn = make([]net.Conn, len(indexerPool))
+		c.String(http.StatusOK, c.Query("host")+" added")
+		logrus.WithFields(logrus.Fields{"ver": indexersVer, "indexers": indexerPool}).Info("indexer list updated")
+	} else {
+		c.String(http.StatusOK, "received older version of indexer list")
+		logrus.WithFields(logrus.Fields{"current": indexersVer, "received": ver}).Info("received older version of indexer list")
+	}
+}
+
+func getindexers(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"indexer": indexerPool,
+	})
+}
+
 func dialConn(hostID int) error {
 	var err error
 	batcherConn[hostID], err = net.Dial("tcp", batcherPool[hostID])
+	return err
+}
+
+func dialIndexer(indexerID int) error {
+	var err error
+	indexerConn[indexerID], err = net.Dial("tcp", indexerPool[indexerID])
 	return err
 }
 
@@ -152,31 +187,4 @@ func postRecord(c *gin.Context) {
 		}
 	}
 	c.String(http.StatusOK, "Record posted")
-}
-
-func getRecord(c *gin.Context) {
-	lid, err := strconv.Atoi(c.Param("lid"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"message": "Invalid LId",
-			"error":   err,
-		})
-		return
-	}
-	// shouldn't be called like this, app should directly ask remote maintainer
-	r, err := maintainer.ReadByLId(lid)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"message": "Record not found",
-			"error":   err,
-		})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{
-		"LId":  r.LId,
-		"Host": r.Host,
-		"Hash": r.Hash,
-		"Tags": r.Tags,
-		"Seed": r.Seed,
-	})
 }

@@ -1,5 +1,9 @@
 # August
 
+## August 24, 2017
+### Add get() function to TOId version
+When posting a record to TOId version of GoChariots, a unique ID needs to be assigned. After that, user can send a GET request to app to query the record.
+
 ## August 23, 2017
 ### Remove filter
 In the current design there is no need of filter.
