@@ -92,9 +92,9 @@ func TOIDHandleRequest(conn net.Conn) {
 			} else {
 				tmp[0] = byte(0)
 			}
-			binary.BigEndian.PutUint32(tmp[1:], uint32(entry.LId))
-			binary.BigEndian.PutUint32(tmp[5:], uint32(entry.TOId))
-			binary.BigEndian.PutUint32(tmp[9:], uint32(entry.Host))
+			binary.BigEndian.PutUint32(tmp[1:5], uint32(entry.LId))
+			binary.BigEndian.PutUint32(tmp[5:9], uint32(entry.TOId))
+			binary.BigEndian.PutUint32(tmp[9:13], uint32(entry.Host))
 			b := make([]byte, 4)
 			binary.BigEndian.PutUint32(b, 13)
 			conn.Write(append(b, tmp...))

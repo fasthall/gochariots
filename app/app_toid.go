@@ -19,6 +19,7 @@ import (
 
 type TOIDJsonRecord struct {
 	ID      uint64            `json:"id"`
+	StrID   string            `json:"strid"`
 	Tags    map[string]string `json:"tags"`
 	PreHost int               `json:"prehost"`
 	PreTOId int               `json:"pretoid"`
@@ -42,7 +43,13 @@ func TOIDpostRecord(c *gin.Context) {
 	if err != nil {
 		panic(err)
 	}
-
+	if jsonRecord.StrID != "" {
+		id, err := strconv.ParseUint(jsonRecord.StrID, 10, 64)
+		if err != nil {
+			panic(err)
+		}
+		jsonRecord.ID = id
+	}
 	// send to batcher
 	r := record.TOIDRecord{
 		ID:   jsonRecord.ID,
@@ -199,7 +206,9 @@ func queryIndexer(id uint64, indexerID int) (indexer.TOIDIndexTableEntry, bool, 
 	}
 
 	buf := make([]byte, 13)
+	indexerConnMutex.Lock()
 	totalLength, err := connection.Read(indexerConn[indexerID], &buf)
+	indexerConnMutex.Unlock()
 	if err != nil || totalLength != 13 {
 		return indexer.TOIDIndexTableEntry{}, false, err
 	}
