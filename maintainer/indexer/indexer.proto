@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+service Indexer {
+    rpc Query (RPCQueries) returns (RPCQueryReply) {}
+    rpc InsertTags (RPCTags) returns (RPCReply) {}
+    rpc GetLIds (RPCTags) returns (RPCLIds) {}
+}
+
+message RPCRecord {
+    int64 timestamp = 1;
+    int32 host = 2;
+    int32 lid = 3;
+    map<string, string> tags = 4;
+    repeated uint64 hash = 5;
+    uint64 seed = 6;
+}
+
+message RPCRecords {
+    repeated RPCRecord records = 1;
+}
+
+message RPCReply {
+    string message = 1;
+}
+
+message RPCQueries {
+    repeated RPCQuery queries = 1;
+}
+
+message RPCQuery {
+    repeated uint64 hash = 1;
+    uint64 seed = 2;
+}
+
+message RPCQueryReply {
+    repeated bool reply = 1;
+}
+
+message RPCTags {
+    int32 lid = 1;
+    uint64 seed = 2;
+    map<string, string> tags = 3;
+}
+
+message RPCLIds {
+    repeated int32 lid = 1;
+}

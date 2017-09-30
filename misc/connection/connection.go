@@ -25,8 +25,8 @@ func Read(conn net.Conn, buf *[]byte) (int, error) {
 	}
 	totalLength := int(binary.BigEndian.Uint32(lenbuf))
 	if totalLength > cap(*buf) {
-		*buf = make([]byte, totalLength)
 		logrus.WithFields(logrus.Fields{"old": cap(*buf), "new": totalLength}).Warning("buffer is not large enough, allocate more")
+		*buf = make([]byte, totalLength)
 	}
 	remain = totalLength
 	head = 0

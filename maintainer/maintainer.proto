@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+service Maintainer {
+    rpc ReceiveRecords (RPCRecords) returns (RPCReply) {}
+    rpc UpdateBatchers (RPCBatchers) returns (RPCReply) {}
+    rpc UpdateIndexer (RPCIndexer) returns (RPCReply) {}
+    rpc ReadByLId (RPCLId) returns (RPCReply) {}
+}
+
+message RPCRecord {
+    int64 timestamp = 1;
+    int32 host = 2;
+    int32 lid = 3;
+    map<string, string> tags = 4;
+    repeated uint64 hash = 5;
+    uint64 seed = 6;
+}
+
+message RPCRecords {
+    repeated RPCRecord records = 1;
+}
+
+message RPCReply {
+    string message = 1;
+}
+
+message RPCBatchers {
+    int32 version = 1;
+    repeated string batcher = 2;
+}
+
+message RPCIndexer {
+    int32 version = 1;
+    string indexer = 2;
+}
+
+message RPCLId {
+    int32 lid = 1;
+}

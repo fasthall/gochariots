@@ -17,6 +17,7 @@ import (
 	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/misc/connection"
 	cache "github.com/patrickmn/go-cache"
+	"golang.org/x/net/context"
 )
 
 var Subscriber net.Conn
@@ -40,6 +41,54 @@ type IndexTableEntry struct {
 type IndexTable struct {
 	table map[uint64][]IndexTableEntry
 	mutex sync.Mutex
+}
+
+type Server struct{}
+
+func (s *Server) Query(ctx context.Context, in *RPCQueries) (*RPCQueryReply, error) {
+	ans := make([]bool, len(in.GetQueries()))
+	for i, q := range in.GetQueries() {
+		result := true
+		for _, hash := range q.GetHash() {
+			seeds, err := getIndexEntry(hash)
+			if err != nil {
+				logrus.WithError(err).Error("couldn't read from indexer")
+				panic(err)
+			}
+			in := false
+			for _, s := range seeds {
+				if s.Seed == q.GetSeed() {
+					in = true
+					break
+				}
+			}
+			if in == false {
+				result = false
+				break
+			}
+		}
+		if result {
+			ans[i] = true
+		}
+
+	}
+	return &RPCQueryReply{Reply: ans}, nil
+}
+
+func (s *Server) InsertTags(ctx context.Context, in *RPCTags) (*RPCReply, error) {
+	for key, value := range in.GetTags() {
+		insertIndexEntry(key, value, int(in.GetLid()), in.GetSeed())
+	}
+	return &RPCReply{Message: "ok"}, nil
+}
+
+func (s *Server) GetLIds(ctx context.Context, in *RPCTags) (*RPCLIds, error) {
+	lids := getLIdByTags(in.GetTags())
+	lids32 := make([]int32, len(lids))
+	for i := range lids {
+		lids32[i] = int32(lids[i])
+	}
+	return &RPCLIds{Lid: lids32}, nil
 }
 
 func NewIndexTable() IndexTable {

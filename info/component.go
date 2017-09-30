@@ -90,6 +90,7 @@ func Config(file, component string) {
 		logrus.WithError(err).Error("couldn't find local IP address")
 		return
 	}
+	// addr := "localhost"
 	p := misc.NewParams()
 	p.AddParam("host", addr+":"+GetPort())
 	fmt.Println("Config file read")

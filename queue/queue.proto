@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+service Queue {
+    rpc ReceiveRecords (RPCRecords) returns (RPCReply) {}
+    rpc ReceiveToken (RPCToken) returns (RPCReply) {}
+    rpc UpdateNextQueue (RPCQueue) returns (RPCReply) {}
+    rpc UpdateMaintainers (RPCMaintainers) returns (RPCReply) {}
+    rpc UpdateIndexers (RPCIndexers) returns (RPCReply) {}
+}
+
+message RPCRecord {
+    int64 timestamp = 1;
+    int32 host = 2;
+    int32 lid = 3;
+    map<string, string> tags = 4;
+    repeated uint64 hash = 5;
+    uint64 seed = 6;
+}
+
+message RPCRecords {
+    repeated RPCRecord records = 1;
+}
+
+message RPCReply {
+    string message = 1;
+}
+
+message RPCQueue {
+    int32 version = 1;
+    string queue = 2;
+}
+
+message RPCToken {
+    int32 lastlid = 1;
+}
+
+message RPCMaintainers {
+    int32 version = 1;
+    repeated string maintainer = 2;
+}
+
+message RPCIndexers {
+    int32 version = 1;
+    repeated string indexer = 2;
+}

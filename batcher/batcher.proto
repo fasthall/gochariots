@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+service Batcher {
+    rpc ReceiveRecord (RPCRecord) returns (RPCReply) {}
+    rpc ReceiveRecords (RPCRecords) returns (RPCReply) {}
+    rpc UpdateQueue (RPCQueues) returns (RPCReply) {}
+}
+
+message RPCRecord {
+    int64 timestamp = 1;
+    int32 host = 2;
+    int32 lid = 3;
+    map<string, string> tags = 4;
+    repeated uint64 hash = 5;
+    uint64 seed = 6;
+}
+
+message RPCRecords {
+    repeated RPCRecord records = 1;
+}
+
+message RPCReply {
+    string message = 1;
+}
+
+message RPCQueues {
+    int32 version = 1;
+    repeated string queues = 2;
+}

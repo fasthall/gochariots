@@ -5,8 +5,12 @@ import (
 	"net"
 	"os"
 
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
+
 	"github.com/fasthall/gochariots/app"
 	"github.com/fasthall/gochariots/batcher"
+	"github.com/fasthall/gochariots/controller"
 	"github.com/fasthall/gochariots/filter"
 	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/maintainer"
@@ -137,7 +141,7 @@ func main() {
 			level = logrus.InfoLevel
 		}
 		info.RedirectLog(info.GetName()+".log", level)
-		info.StartController(*controllerPort)
+		controller.StartController(*controllerPort)
 	case batcherCommand.FullCommand():
 		if *batcherPort == "" {
 			*batcherPort = "9000"
@@ -184,15 +188,11 @@ func main() {
 			}
 		} else {
 			go batcher.Sweeper()
-			for {
-				// Listen for an incoming connection.
-				conn, err := ln.Accept()
-				if err != nil {
-					fmt.Println(info.GetName(), "Couldn't handle more connection", err)
-					continue
-				}
-				// Handle connections in a new goroutine.
-				go batcher.HandleRequest(conn)
+			s := grpc.NewServer()
+			batcher.RegisterBatcherServer(s, &batcher.Server{})
+			reflection.Register(s)
+			if err := s.Serve(ln); err != nil {
+				logrus.Fatalf("failed to serve: %v", err)
 			}
 		}
 	case filterCommand.FullCommand():
@@ -291,14 +291,11 @@ func main() {
 				go queue.TOIDHandleRequest(conn)
 			}
 		} else {
-			for {
-				// Listen for an incoming connection.
-				conn, err := ln.Accept()
-				if err != nil {
-					panic(err)
-				}
-				// Handle connections in a new goroutine.
-				go queue.HandleRequest(conn)
+			s := grpc.NewServer()
+			queue.RegisterQueueServer(s, &queue.Server{})
+			reflection.Register(s)
+			if err := s.Serve(ln); err != nil {
+				logrus.Fatalf("failed to serve: %v", err)
 			}
 		}
 	case maintainerCommand.FullCommand():
@@ -349,14 +346,11 @@ func main() {
 				go maintainer.TOIDHandleRequest(conn)
 			}
 		} else {
-			for {
-				// Listen for an incoming connection.
-				conn, err := ln.Accept()
-				if err != nil {
-					panic(err)
-				}
-				// Handle connections in a new goroutine.
-				go maintainer.HandleRequest(conn)
+			s := grpc.NewServer()
+			maintainer.RegisterMaintainerServer(s, &maintainer.Server{})
+			reflection.Register(s)
+			if err := s.Serve(ln); err != nil {
+				logrus.Fatalf("failed to serve: %v", err)
 			}
 		}
 	case indexerCommand.FullCommand():
@@ -403,14 +397,11 @@ func main() {
 				go indexer.TOIDHandleRequest(conn)
 			}
 		} else {
-			for {
-				// Listen for an incoming connection.
-				conn, err := ln.Accept()
-				if err != nil {
-					panic(err)
-				}
-				// Handle connections in a new goroutine.
-				go indexer.HandleRequest(conn)
+			s := grpc.NewServer()
+			indexer.RegisterIndexerServer(s, &indexer.Server{})
+			reflection.Register(s)
+			if err := s.Serve(ln); err != nil {
+				logrus.Fatalf("failed to serve: %v", err)
 			}
 		}
 	}
