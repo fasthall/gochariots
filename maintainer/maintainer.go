@@ -3,7 +3,6 @@ package maintainer
 import (
 	"encoding/binary"
 	"encoding/json"
-	"net"
 	"os"
 	"path/filepath"
 	"time"
@@ -11,8 +10,6 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/fasthall/gochariots/maintainer/indexer"
-
-	"sync"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/fasthall/gochariots/info"
@@ -31,8 +28,6 @@ var LastLId int
 var path = "flstore"
 var f *os.File
 var indexerClient indexer.IndexerClient
-var indexerConnMutex sync.Mutex
-var indexerConn net.Conn
 var indexerHost string
 var indexerVer int
 var maintainerInterface int
@@ -63,7 +58,6 @@ func (s *Server) UpdateBatchers(ctx context.Context, in *RPCBatchers) (*RPCReply
 	if ver > remoteBatcherVer {
 		remoteBatcherVer = ver
 		remoteBatchers = in.GetBatcher()
-		remoteBatchersConn = make([]net.Conn, len(remoteBatchers))
 		logrus.WithField("host", in.GetBatcher()).Info("received remote batcher hosts update")
 	} else {
 		logrus.WithFields(logrus.Fields{"current": remoteBatcherVer, "received": ver}).Debug("receiver older version of remote batcher hosts")
@@ -115,12 +109,6 @@ func InitLogMaintainer(p string, n int, itf int) {
 		panic(err)
 	}
 	maintainerInterface = itf
-}
-
-func dialConn() error {
-	var err error
-	indexerConn, err = net.Dial("tcp", indexerHost)
-	return err
 }
 
 // Append appends a new record to the maintainer.

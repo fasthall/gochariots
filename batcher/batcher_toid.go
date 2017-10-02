@@ -3,25 +3,59 @@
 package batcher
 
 import (
-	"encoding/binary"
-	"encoding/json"
-	"errors"
-	"io"
 	"math/rand"
-	"net"
 	"time"
 
 	"github.com/Sirupsen/logrus"
-	"github.com/fasthall/gochariots/info"
-	"github.com/fasthall/gochariots/misc/connection"
+	"github.com/fasthall/gochariots/queue"
 	"github.com/fasthall/gochariots/record"
+	"golang.org/x/net/context"
 )
 
 var TOIDbuffer []record.TOIDRecord
 
+func (s *Server) TOIDReceiveRecord(ctx context.Context, in *RPCRecord) (*RPCReply, error) {
+	r := record.TOIDRecord{
+		ID:        in.GetId(),
+		Timestamp: in.GetTimestamp(),
+		Host:      int(in.GetHost()),
+		TOId:      int(in.GetToid()),
+		LId:       int(in.GetLid()),
+		Tags:      in.GetTags(),
+		Pre: record.TOIDCausality{
+			Host: int(in.GetCausality().GetHost()),
+			TOId: int(in.GetCausality().GetToid()),
+		},
+	}
+	TOIDarrival(r)
+	return &RPCReply{Message: "ok"}, nil
+}
+
+func (s *Server) TOIDReceiveRecords(ctx context.Context, in *RPCRecords) (*RPCReply, error) {
+	for _, i := range in.GetRecords() {
+		r := record.TOIDRecord{
+			ID:        i.GetId(),
+			Timestamp: i.GetTimestamp(),
+			Host:      int(i.GetHost()),
+			TOId:      int(i.GetToid()),
+			LId:       int(i.GetLid()),
+			Tags:      i.GetTags(),
+			Pre: record.TOIDCausality{
+				Host: int(i.GetCausality().GetHost()),
+				TOId: int(i.GetCausality().GetToid()),
+			},
+		}
+		TOIDarrival(r)
+	}
+	return &RPCReply{Message: "ok"}, nil
+}
+
+func (s *Server) TOIDUpdateQueue(ctx context.Context, in *RPCQueues) (*RPCReply, error) {
+	return s.UpdateQueue(ctx, in)
+}
+
 // InitBatcher allocates n buffers, where n is the number of filters
 func TOIDInitBatcher() {
-	numFilters = info.NumDC
 	TOIDbuffer = make([]record.TOIDRecord, 0, bufferSize)
 }
 
@@ -46,55 +80,29 @@ func TOIDsendToQueue() {
 		return
 	}
 	// logrus.WithField("timestamp", time.Now()).Debug("sendToQueue")
-	bytes, err := record.TOIDToGobArray(TOIDbuffer)
-	if err != nil {
-		panic(err)
+	rpcRecords := queue.RPCRecords{}
+	for _, r := range TOIDbuffer {
+		rpcRecords.Records = append(rpcRecords.Records, &queue.RPCRecord{
+			Id:        r.ID,
+			Timestamp: r.Timestamp,
+			Host:      int32(r.Host),
+			Toid:      int32(r.TOId),
+			Lid:       int32(r.LId),
+			Tags:      r.Tags,
+			Causality: &queue.RPCCausality{
+				Host: int32(r.Pre.Host),
+				Toid: int32(r.Pre.TOId),
+			},
+		})
 	}
-	b := make([]byte, 5)
-	b[4] = byte('r')
-	binary.BigEndian.PutUint32(b, uint32(len(bytes)+1))
-	queueID := rand.Intn(len(queuePool))
-
 	TOIDbuffer = TOIDbuffer[:0]
-	connMutex.Lock()
-	if queueConn[queueID] == nil {
-		err = dialConn(queueID)
-		if err != nil {
-			logrus.WithField("id", queueID).Error("couldn't connect to queue")
-		} else {
-			logrus.WithField("id", queueID).Info("connected to queue")
-		}
-	}
-	connMutex.Unlock()
 
-	cnt := 5
-	sent := false
-	for sent == false {
-		var err error
-		connMutex.Lock()
-		if queueConn[queueID] != nil {
-			_, err = queueConn[queueID].Write(append(b, bytes...))
-		} else {
-			err = errors.New("batcherConn[hostID] == nil")
-		}
-		connMutex.Unlock()
-		if err != nil {
-			if cnt >= 0 {
-				cnt--
-				err = dialConn(queueID)
-				if err != nil {
-					logrus.WithField("attempt", cnt).Warning("couldn't connect to queue, retrying...")
-				} else {
-					logrus.WithField("id", queueID).Info("connected to queue")
-				}
-			} else {
-				logrus.WithField("id", queueID).Error("failed to connect to the queue after retrying 5 times")
-				break
-			}
-		} else {
-			sent = true
-			logrus.WithField("id", queueID).Debug("sent to queue")
-		}
+	queueID := rand.Intn(len(queuePool))
+	_, err := queueClient[queueID].TOIDReceiveRecords(context.Background(), &rpcRecords)
+	if err != nil {
+		logrus.WithField("id", queueID).Error("couldn't connect to queue")
+	} else {
+		logrus.WithField("id", queueID).Debug("sent to queue")
 	}
 }
 
@@ -105,64 +113,5 @@ func TOIDSweeper() {
 		bufMutex.Lock()
 		TOIDsendToQueue()
 		bufMutex.Unlock()
-	}
-}
-
-// HandleRequest handles incoming connection
-func TOIDHandleRequest(conn net.Conn) {
-	buf := make([]byte, 1024*1024*32)
-	for {
-		totalLength, err := connection.Read(conn, &buf)
-		if err == io.EOF {
-			return
-		} else if err != nil {
-			logrus.WithError(err).Error("couldn't read incoming request")
-			break
-		}
-		if buf[0] == 'r' { // received records
-			// logrus.WithField("timestamp", time.Now()).Info("HandleRequest")
-			// start := time.Now()
-			var r record.TOIDRecord
-			err := record.TOIDJSONToRecord(buf[1:totalLength], &r)
-			if err != nil {
-				logrus.WithField("buffer", string(buf[1:totalLength])).Error("couldn't convert read buffer to record")
-				continue
-			}
-			logrus.WithField("record", r).Info("received incoming record")
-			TOIDarrival(r)
-			// elapsed := time.Since(start)
-			// log.Printf("TIMESTAMP %s:HandleRequest took %s\n", info.GetName(), elapsed)
-		} else if buf[0] == 's' { // received records
-			// logrus.WithField("timestamp", time.Now()).Info("HandleRequest")
-			// start := time.Now()
-			var records []record.TOIDRecord
-			err := record.TOIDJSONToRecordArray(buf[1:totalLength], &records)
-			if err != nil {
-				logrus.WithField("buffer", string(buf[1:totalLength])).Error("couldn't convert read buffer to record")
-				continue
-			}
-			// log.Println(info.GetName(), "received incoming record:", string(buf[1:totalLength]))
-			for _, r := range records {
-				TOIDarrival(r)
-			}
-			// elapsed := time.Since(start)
-			// log.Printf("TIMESTAMP %s:HandleRequest took %s\n", info.GetName(), elapsed)
-		} else if buf[0] == 'q' { // received queue hosts
-			ver := int(binary.BigEndian.Uint32(buf[1:5]))
-			if ver > queuePoolVer {
-				queuePoolVer = ver
-				err := json.Unmarshal(buf[5:totalLength], &queuePool)
-				if err != nil {
-					logrus.WithField("buffer", string(buf[5:totalLength])).Error("couldn't convert read buffer to queue list")
-					continue
-				}
-				queueConn = make([]net.Conn, len(queuePool))
-				logrus.WithField("queues", queuePool).Info("received new queue update")
-			} else {
-				logrus.WithFields(logrus.Fields{"current": queuePoolVer, "received": ver}).Debug("receiver older version of queue list")
-			}
-		} else {
-			logrus.WithField("header", buf[0]).Warning("couldn't understand request")
-		}
 	}
 }

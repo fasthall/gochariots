@@ -1,26 +1,20 @@
 package indexer
 
 import (
-	"bytes"
 	"encoding/binary"
-	"encoding/gob"
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
-	"io"
-	"net"
 	"sync"
 	"time"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/boltdb/bolt"
 	"github.com/fasthall/gochariots/info"
-	"github.com/fasthall/gochariots/misc/connection"
 	cache "github.com/patrickmn/go-cache"
 	"golang.org/x/net/context"
 )
 
-var Subscriber net.Conn
 var boltDB bool
 var db *bolt.DB
 var gocache *cache.Cache
@@ -278,95 +272,4 @@ func getLIdByHash(hash uint64) []int {
 		ans = append(ans, r.LId)
 	}
 	return ans
-}
-
-// HandleRequest handles incoming connection
-func HandleRequest(conn net.Conn) {
-	buf := make([]byte, 1024*1024*32)
-	for {
-		totalLength, err := connection.Read(conn, &buf)
-		if err == io.EOF {
-			return
-		} else if err != nil {
-			logrus.Error("couldn't read incoming request")
-			break
-		}
-		if buf[0] == 'q' { // query from queue
-			var query []Query
-			dec := gob.NewDecoder(bytes.NewBuffer(buf[1:totalLength]))
-			err = dec.Decode(&query)
-			if err != nil {
-				logrus.WithField("buffer", buf[1:totalLength]).Error("couldn't decode query")
-				break
-			}
-			ans := make([]bool, len(query))
-			for i, q := range query {
-				result := true
-				for _, hash := range q.Hash {
-					seeds, err := getIndexEntry(hash)
-					if err != nil {
-						logrus.WithError(err).Error("couldn't read from indexer")
-						panic(err)
-					}
-					in := false
-					for _, s := range seeds {
-						if s.Seed == q.Seed {
-							in = true
-							break
-						}
-					}
-					if in == false {
-						result = false
-						break
-					}
-				}
-				if result {
-					ans[i] = true
-				}
-
-			}
-			var tmp bytes.Buffer
-			enc := gob.NewEncoder(&tmp)
-			err := enc.Encode(ans)
-			if err != nil {
-				logrus.WithError(err).Error("couldn't encode answer boolean slice")
-				break
-			}
-			b := make([]byte, 4)
-			binary.BigEndian.PutUint32(b, uint32(len(tmp.Bytes())))
-			conn.Write(append(b, tmp.Bytes()...))
-		} else if buf[0] == 't' { // insert tags into hash table
-			lid := int(binary.BigEndian.Uint32(buf[1:5]))
-			seed := binary.BigEndian.Uint64(buf[5:13])
-			var tags map[string]string
-			dec := gob.NewDecoder(bytes.NewBuffer(buf[13:totalLength]))
-			err := dec.Decode(&tags)
-			if err != nil {
-				logrus.WithField("buffer", buf[1:totalLength]).Error("couldn't decode tags")
-				panic(err)
-			}
-			for key, value := range tags {
-				insertIndexEntry(key, value, lid, seed)
-			}
-		} else if buf[0] == 'g' { // get LIds by tags
-			var tags map[string]string
-			err := json.Unmarshal(buf[1:totalLength], &tags)
-			if err != nil {
-				logrus.WithField("buffer", buf[1:totalLength]).Error("couldn't unmarshal tags")
-				panic(err)
-			}
-			lids := getLIdByTags(tags)
-			b, err := json.Marshal(lids)
-			if err != nil {
-				conn.Write([]byte(fmt.Sprintln(err)))
-			} else {
-				conn.Write(b)
-			}
-		} else if buf[0] == 's' {
-			logrus.Info("got subscription")
-			Subscriber = conn
-		} else {
-			logrus.WithField("header", buf[0]).Warning("couldn't understand request")
-		}
-	}
 }

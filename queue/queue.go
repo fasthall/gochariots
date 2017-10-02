@@ -1,7 +1,6 @@
 package queue
 
 import (
-	"net"
 	"sync"
 	"time"
 
@@ -17,19 +16,13 @@ import (
 var lastTime time.Time
 var bufMutex sync.Mutex
 var buffered []record.Record
-var maintainerConnMutex sync.Mutex
 var maintainersClient []maintainer.MaintainerClient
-var maintainersConn []net.Conn
 var maintainersHost []string
 var maintainersVer int
-var indexerConnMutex sync.Mutex
 var indexerClient []indexer.IndexerClient
-var indexerConn []net.Conn
 var indexerHost []string
 var indexersVer int
-var queueConnMutex sync.Mutex
 var nextQueueClient QueueClient
-var nextQueueConn net.Conn
 var nextQueueHost string
 var nextQueueVer int
 
@@ -91,7 +84,6 @@ func (s *Server) UpdateMaintainers(ctx context.Context, in *RPCMaintainers) (*RP
 	if ver > maintainersVer {
 		maintainersVer = ver
 		maintainersHost = in.GetMaintainer()
-		maintainersConn = make([]net.Conn, len(maintainersHost))
 		maintainersClient = make([]maintainer.MaintainerClient, len(maintainersHost))
 		for i := range maintainersHost {
 			conn, err := grpc.Dial(maintainersHost[i], grpc.WithInsecure())
@@ -115,7 +107,6 @@ func (s *Server) UpdateIndexers(ctx context.Context, in *RPCIndexers) (*RPCReply
 	if ver > indexersVer {
 		indexersVer = ver
 		indexerHost = in.GetIndexer()
-		indexerConn = make([]net.Conn, len(indexerHost))
 		indexerClient = make([]indexer.IndexerClient, len(indexerHost))
 		for i := range indexerHost {
 			conn, err := grpc.Dial(indexerHost[i], grpc.WithInsecure())
@@ -189,7 +180,7 @@ func tokenArrival(token Token) {
 	// Ask indexer if the prerequisite records have been indexed already
 	if len(query) > 0 {
 		existed := make([]bool, len(query))
-		for i := range indexerConn {
+		for i := range indexerClient {
 			logrus.WithField("query", query).Debug("queryIndexer")
 			result, err := queryIndexer(query, i)
 			if err != nil {
@@ -215,9 +206,9 @@ func tokenArrival(token Token) {
 	// assign LId and send to log maintainers
 	lastID := assignLId(dispatch, token.LastLId)
 	token.LastLId = lastID
-	toDispatch := make([][]record.Record, len(maintainersConn))
+	toDispatch := make([][]record.Record, len(maintainersClient))
 	for _, r := range dispatch {
-		id := maintainer.AssignToMaintainer(r.LId, len(maintainersConn))
+		id := maintainer.AssignToMaintainer(r.LId, len(maintainersClient))
 		toDispatch[id] = append(toDispatch[id], r)
 	}
 	for id, t := range toDispatch {
@@ -238,14 +229,6 @@ func assignLId(records []record.Record, lastLId int) int {
 	return lastLId
 }
 
-func dialNextQueue() error {
-	queueConnMutex.Lock()
-	var err error
-	nextQueueConn, err = net.Dial("tcp", nextQueueHost)
-	queueConnMutex.Unlock()
-	return err
-}
-
 // passToken sends the token to the next queue in the ring
 func passToken(token *Token) {
 	time.Sleep(100 * time.Millisecond)
@@ -257,18 +240,6 @@ func passToken(token *Token) {
 		}
 		nextQueueClient.ReceiveToken(context.Background(), &rpcToken)
 	}
-}
-
-func dialLogMaintainer(maintainerID int) error {
-	var err error
-	maintainersConn[maintainerID], err = net.Dial("tcp", maintainersHost[maintainerID])
-	return err
-}
-
-func dialIndexer(indexerID int) error {
-	var err error
-	indexerConn[indexerID], err = net.Dial("tcp", indexerHost[indexerID])
-	return err
 }
 
 // dispatchRecords sends the ready records to log maintainers

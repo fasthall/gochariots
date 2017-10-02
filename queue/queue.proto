@@ -6,15 +6,29 @@ service Queue {
     rpc UpdateNextQueue (RPCQueue) returns (RPCReply) {}
     rpc UpdateMaintainers (RPCMaintainers) returns (RPCReply) {}
     rpc UpdateIndexers (RPCIndexers) returns (RPCReply) {}
+    rpc TOIDReceiveRecords (RPCRecords) returns (RPCReply) {}
+    rpc TOIDReceiveToken (RPCTOIDToken) returns (RPCReply) {}
+    rpc TOIDUpdateNextQueue (RPCQueue) returns (RPCReply) {}
+    rpc TOIDUpdateMaintainers (RPCMaintainers) returns (RPCReply) {}
+    rpc TOIDUpdateIndexers (RPCIndexers) returns (RPCReply) {}
 }
 
 message RPCRecord {
-    int64 timestamp = 1;
-    int32 host = 2;
-    int32 lid = 3;
-    map<string, string> tags = 4;
-    repeated uint64 hash = 5;
-    uint64 seed = 6;
+    uint64 id = 1;
+    int64 timestamp = 2;
+    int32 host = 3;
+    int32 lid = 4;
+    map<string, string> tags = 5;
+    repeated uint64 hash = 6;
+    uint64 seed = 7;
+    // for TOID record
+    int32 toid = 8;
+    RPCCausality causality = 9;
+}
+
+message RPCCausality {
+	int32 host = 1;
+	int32 toid = 2;
 }
 
 message RPCRecords {
@@ -42,4 +56,10 @@ message RPCMaintainers {
 message RPCIndexers {
     int32 version = 1;
     repeated string indexer = 2;
+}
+
+message RPCTOIDToken {
+    repeated int32 maxTOId = 1;
+    int32 lastLId = 2;
+    repeated RPCRecord deferredRecords = 3;
 }

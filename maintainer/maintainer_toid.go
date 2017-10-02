@@ -3,17 +3,52 @@ package maintainer
 import (
 	"encoding/binary"
 	"encoding/json"
-	"errors"
-	"fmt"
-	"io"
-	"net"
 	"time"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/fasthall/gochariots/info"
-	"github.com/fasthall/gochariots/misc/connection"
+	"github.com/fasthall/gochariots/maintainer/indexer"
 	"github.com/fasthall/gochariots/record"
+	"golang.org/x/net/context"
 )
+
+func (s *Server) TOIDReceiveRecords(ctx context.Context, in *RPCRecords) (*RPCReply, error) {
+	records := make([]record.TOIDRecord, len(in.GetRecords()))
+	for i, ri := range in.GetRecords() {
+		records[i] = record.TOIDRecord{
+			ID:        ri.GetId(),
+			Timestamp: ri.GetTimestamp(),
+			Host:      int(ri.GetHost()),
+			TOId:      int(ri.GetToid()),
+			LId:       int(ri.GetLid()),
+			Tags:      ri.GetTags(),
+			Pre: record.TOIDCausality{
+				Host: int(ri.GetCausality().GetHost()),
+				TOId: int(ri.GetCausality().GetToid()),
+			},
+		}
+	}
+	TOIDrecordsArrival(records)
+	return &RPCReply{Message: "ok"}, nil
+}
+
+func (s *Server) TOIDUpdateBatchers(ctx context.Context, in *RPCBatchers) (*RPCReply, error) {
+	return s.UpdateBatchers(ctx, in)
+}
+
+func (s *Server) TOIDUpdateIndexer(ctx context.Context, in *RPCIndexer) (*RPCReply, error) {
+	return s.UpdateIndexer(ctx, in)
+}
+
+func (s *Server) TOIDReadByLId(ctx context.Context, in *RPCLId) (*RPCReply, error) {
+	lid := int(in.GetLid())
+	r, err := TOIDReadByLId(lid)
+	if err != nil {
+		return nil, err
+	}
+	j, err := json.Marshal(r)
+	return &RPCReply{Message: string(j)}, nil
+}
 
 // Append appends a new record to the maintainer.
 func TOIDAppend(r record.TOIDRecord) error {
@@ -52,52 +87,15 @@ func TOIDAppend(r record.TOIDRecord) error {
 }
 
 func TOIDInsertIndexer(r record.TOIDRecord) {
-	tmp := make([]byte, 20)
-	binary.BigEndian.PutUint64(tmp, r.ID)
-	binary.BigEndian.PutUint32(tmp[8:], uint32(r.LId))
-	binary.BigEndian.PutUint32(tmp[12:], uint32(r.TOId))
-	binary.BigEndian.PutUint32(tmp[16:], uint32(r.Host))
-	b := make([]byte, 5)
-	b[4] = byte('t')
-	binary.BigEndian.PutUint32(b, uint32(21))
-
-	indexerConnMutex.Lock()
-	if indexerConn == nil {
-		err := dialConn()
-		if err != nil {
-			logrus.WithField("host", indexerHost).Error("couldn't connect to indexer")
-		} else {
-			logrus.WithField("host", indexerHost).Info("connected to indexer")
-		}
+	rpcTags := indexer.RPCTOIdTags{
+		Id:   r.ID,
+		Lid:  int32(r.LId),
+		Toid: int32(r.TOId),
+		Host: int32(r.Host),
 	}
-	indexerConnMutex.Unlock()
-	cnt := 5
-	sent := false
-	for sent == false {
-		var err error
-		indexerConnMutex.Lock()
-		if indexerConn != nil {
-			_, err = indexerConn.Write(append(b, tmp...))
-		} else {
-			err = errors.New("indexerConn == nil")
-		}
-		indexerConnMutex.Unlock()
-		if err != nil {
-			if cnt >= 0 {
-				cnt--
-				err = dialConn()
-				if err != nil {
-					logrus.WithField("attempt", cnt).Warning("couldn't connect to indexer, retrying...")
-				} else {
-					logrus.WithField("host", indexerHost).Info("connected to indexer")
-				}
-			} else {
-				logrus.WithField("host", indexerHost).Error("failed to connect to indexer after retrying 5 times")
-				break
-			}
-		} else {
-			sent = true
-		}
+	_, err := indexerClient.TOIDInsertTags(context.Background(), &rpcTags)
+	if err != nil {
+		logrus.WithField("host", indexerHost).Error("failed to connect to indexer")
 	}
 }
 
@@ -138,74 +136,6 @@ func TOIDrecordsArrival(records []record.TOIDRecord) {
 		err := TOIDAppend(record)
 		if err != nil {
 			logrus.WithError(err).Error("couldn't append the record to the store")
-		}
-	}
-}
-
-// HandleRequest handles incoming connection
-func TOIDHandleRequest(conn net.Conn) {
-	buf := make([]byte, 1024*1024*32)
-	for {
-		totalLength, err := connection.Read(conn, &buf)
-		if err == io.EOF {
-			return
-		} else if err != nil {
-			logrus.WithError(err).Error("couldn't read incoming request")
-			break
-		}
-		if buf[0] == 'b' { // received remote batchers update
-			ver := int(binary.BigEndian.Uint32(buf[1:5]))
-			if ver > remoteBatcherVer {
-				remoteBatcherVer = ver
-				err := json.Unmarshal(buf[5:totalLength], &remoteBatchers)
-				if err != nil {
-					logrus.WithField("buffer", string(buf[1:totalLength])).Error("couldn't convert read buffer to batcher list")
-					panic(err)
-				} else {
-					remoteBatchersConn = make([]net.Conn, len(remoteBatchers))
-					logrus.WithField("batchers", remoteBatchers).Info("received remote batchers update")
-				}
-			} else {
-				logrus.WithFields(logrus.Fields{"current": remoteBatcherVer, "received": ver}).Debug("receiver older version of remote batcher")
-			}
-		} else if buf[0] == 'r' { // received records from queue
-			// info.LogTimestamp("HandleRequest")
-			records := []record.TOIDRecord{}
-			err := record.TOIDGobToRecordArray(buf[1:totalLength], &records)
-			if err != nil {
-				logrus.WithField("buffer", string(buf[1:totalLength])).Error("couldn't convert read buffer to records")
-			}
-			// log.Println(info.GetName(), "received records:", records)
-			TOIDrecordsArrival(records)
-		} else if buf[0] == 'l' { // read records by LIds
-			lid := int(binary.BigEndian.Uint32(buf[1:totalLength]))
-			r, err := TOIDReadByLId(lid)
-			if err != nil {
-				conn.Write([]byte(fmt.Sprint(err)))
-			} else {
-				b, err := json.Marshal(r)
-				if err != nil {
-					logrus.WithField("record", r).Error("couldn't convert record to bytes")
-					conn.Write([]byte(fmt.Sprint(err)))
-				} else {
-					conn.Write(b)
-				}
-			}
-		} else if buf[0] == 'i' { // received indexer update
-			ver := int(binary.BigEndian.Uint32(buf[1:5]))
-			if ver > indexerVer {
-				indexerVer = ver
-				indexerHost = string(buf[5:totalLength])
-				if indexerConn != nil {
-					indexerConn.Close()
-					indexerConn = nil
-				}
-				logrus.WithField("host", indexerHost).Info("updates indexer host")
-			} else {
-				logrus.WithFields(logrus.Fields{"current": indexerVer, "received": ver}).Debug("receiver older version of indexer host")
-			}
-		} else {
-			logrus.WithField("header", buf[0]).Warning("couldn't understand request")
 		}
 	}
 }

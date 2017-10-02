@@ -3,10 +3,8 @@ package app
 import (
 	"context"
 	"math/rand"
-	"net"
 	"net/http"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/fasthall/gochariots/batcher"
@@ -21,14 +19,10 @@ import (
 )
 
 var batcherClient []batcher.BatcherClient
-var batcherConn []net.Conn
 var batcherPool []string
 var batchersVer int
-var indexerConn []net.Conn
 var indexerPool []string
 var indexersVer int
-var connMutex sync.Mutex
-var indexerConnMutex sync.Mutex
 
 type JsonRecord struct {
 	Tags    map[string]string `json:"tags"`
@@ -89,7 +83,6 @@ func addIndexer(c *gin.Context) {
 	if ver > indexersVer {
 		indexersVer = ver
 		json.Unmarshal([]byte(c.Query("host")), &indexerPool)
-		indexerConn = make([]net.Conn, len(indexerPool))
 		c.String(http.StatusOK, c.Query("host")+" added")
 		logrus.WithFields(logrus.Fields{"ver": indexersVer, "indexers": indexerPool}).Info("indexer list updated")
 	} else {
@@ -102,18 +95,6 @@ func getindexers(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"indexer": indexerPool,
 	})
-}
-
-func dialConn(hostID int) error {
-	var err error
-	batcherConn[hostID], err = net.Dial("tcp", batcherPool[hostID])
-	return err
-}
-
-func dialIndexer(indexerID int) error {
-	var err error
-	indexerConn[indexerID], err = net.Dial("tcp", indexerPool[indexerID])
-	return err
 }
 
 func postRecord(c *gin.Context) {

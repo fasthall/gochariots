@@ -4,7 +4,6 @@ package batcher
 
 import (
 	"math/rand"
-	"net"
 	"sync"
 	"time"
 
@@ -22,7 +21,6 @@ var bufMutex sync.Mutex
 var buffer []record.Record
 var connMutex sync.Mutex
 var queueClient []queue.QueueClient
-var queueConn []net.Conn
 var queuePool []string
 var queuePoolVer int
 var numFilters int
@@ -98,13 +96,6 @@ func arrival(r record.Record) {
 		sendToQueue()
 	}
 	bufMutex.Unlock()
-}
-
-func dialConn(queueID int) error {
-	host := queuePool[queueID]
-	var err error
-	queueConn[queueID], err = net.Dial("tcp", host)
-	return err
 }
 
 func sendToQueue() {
