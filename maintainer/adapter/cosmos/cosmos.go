@@ -67,3 +67,22 @@ func PutRecords(records []record.Record) error {
 	}
 	return nil
 }
+
+func PutTOIDRecord(r record.TOIDRecord) error {
+	collection := session.DB(DATABASE).C("record")
+	err := collection.Insert(r)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func PutTOIDRecords(records []record.TOIDRecord) error {
+	for _, r := range records {
+		err := PutTOIDRecord(r)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}

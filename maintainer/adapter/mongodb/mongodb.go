@@ -35,3 +35,17 @@ func PutRecords(records []record.Record) error {
 	}
 	return nil
 }
+
+func PutTOIDRecord(r record.TOIDRecord) error {
+	return c.Insert(&r)
+}
+
+func PutTOIDRecords(records []record.TOIDRecord) error {
+	for _, r := range records {
+		err := c.Insert(&r)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}

@@ -12,19 +12,19 @@ service Batcher {
 message RPCRecord {
     uint64 id = 1;
     int64 timestamp = 2;
-    int32 host = 3;
-    int32 lid = 4;
+    uint32 host = 3;
+    uint32 lid = 4;
     map<string, string> tags = 5;
     repeated uint64 hash = 6;
     uint64 seed = 7;
     // for TOID record
-    int32 toid = 8;
+    uint32 toid = 8;
     RPCCausality causality = 9;
 }
 
 message RPCCausality {
-	int32 host = 1;
-	int32 toid = 2;
+	uint32 host = 1;
+	uint32 toid = 2;
 }
 
 message RPCRecords {
@@ -36,6 +36,6 @@ message RPCReply {
 }
 
 message RPCQueues {
-    int32 version = 1;
+    uint32 version = 1;
     repeated string queues = 2;
 }

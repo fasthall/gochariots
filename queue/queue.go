@@ -30,7 +30,7 @@ var indexerBuf []byte
 
 // Token is used by queues to ensure causality of LId assignment
 type Token struct {
-	LastLId int
+	LastLId uint32
 }
 
 type Server struct{}
@@ -40,8 +40,8 @@ func (s *Server) ReceiveRecords(ctx context.Context, in *RPCRecords) (*RPCReply,
 	for i, ri := range in.GetRecords() {
 		records[i] = record.Record{
 			Timestamp: ri.GetTimestamp(),
-			Host:      int(ri.GetHost()),
-			LId:       int(ri.GetLid()),
+			Host:      ri.GetHost(),
+			LId:       ri.GetLid(),
 			Tags:      ri.GetTags(),
 			Hash:      ri.GetHash(),
 			Seed:      ri.GetSeed(),
@@ -53,7 +53,7 @@ func (s *Server) ReceiveRecords(ctx context.Context, in *RPCRecords) (*RPCReply,
 
 func (s *Server) ReceiveToken(ctx context.Context, in *RPCToken) (*RPCReply, error) {
 	token := Token{
-		LastLId: int(in.Lastlid),
+		LastLId: in.Lastlid,
 	}
 	tokenArrival(token)
 	return &RPCReply{Message: "ok"}, nil
@@ -142,7 +142,7 @@ func InitQueue(hasToken bool) {
 }
 
 // InitToken intializes a token. The IDs info should be accuired from log maintainers
-func (token *Token) InitToken(lastLId int) {
+func (token *Token) InitToken(lastLId uint32) {
 	token.LastLId = lastLId
 }
 
@@ -221,7 +221,7 @@ func tokenArrival(token Token) {
 
 // assignLId assigns LId to all the records to be sent to log maintainers
 // return the last LId assigned
-func assignLId(records []record.Record, lastLId int) int {
+func assignLId(records []record.Record, lastLId uint32) uint32 {
 	for i := range records {
 		lastLId++
 		records[i].LId = lastLId
@@ -236,7 +236,7 @@ func passToken(token *Token) {
 		tokenArrival(*token)
 	} else {
 		rpcToken := RPCToken{
-			Lastlid: int32(token.LastLId),
+			Lastlid: token.LastLId,
 		}
 		nextQueueClient.ReceiveToken(context.Background(), &rpcToken)
 	}
@@ -251,8 +251,8 @@ func dispatchRecords(records []record.Record, maintainerID int) {
 	for i, r := range records {
 		tmp := maintainer.RPCRecord{
 			Timestamp: r.Timestamp,
-			Host:      int32(r.Host),
-			Lid:       int32(r.LId),
+			Host:      r.Host,
+			Lid:       r.LId,
 			Tags:      r.Tags,
 			Hash:      r.Hash,
 			Seed:      r.Seed,

@@ -14,15 +14,15 @@ func TOIDPropagate(r record.TOIDRecord) {
 		if dc != info.ID && host != "" {
 			// log.Printf("%s is propagating record to remoteBatchers[%d] %s", info.GetName(), dc, host)
 			rpcRecord := remotebatcher.RPCRecord{
-				Id:        r.ID,
+				Id:        r.Id,
 				Timestamp: r.Timestamp,
-				Host:      int32(r.Host),
-				Toid:      int32(r.TOId),
-				Lid:       int32(r.LId),
+				Host:      r.Host,
+				Toid:      r.TOId,
+				Lid:       r.LId,
 				Tags:      r.Tags,
 				Causality: &remotebatcher.RPCCausality{
-					Host: int32(r.Pre.Host),
-					Toid: int32(r.Pre.TOId),
+					Host: r.Pre.Host,
+					Toid: r.Pre.TOId,
 				},
 			}
 			remoteBatchersClient[dc].TOIDReceiveRecord(context.Background(), &rpcRecord)

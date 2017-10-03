@@ -25,7 +25,7 @@ import (
 const batchSize int = 1000
 
 // LastLId records the last LID maintained by this maintainer
-var LastLId int
+var LastLId uint32
 var path = "flstore"
 var f *os.File
 var indexerClient indexer.IndexerClient
@@ -34,7 +34,7 @@ var indexerVer int
 var maintainerInterface int
 
 var logFirstTime time.Time
-var logRecordNth int
+var logRecordNth uint32
 
 type Server struct{}
 
@@ -43,8 +43,8 @@ func (s *Server) ReceiveRecords(ctx context.Context, in *RPCRecords) (*RPCReply,
 	for i, ri := range in.GetRecords() {
 		records[i] = record.Record{
 			Timestamp: ri.GetTimestamp(),
-			Host:      int(ri.GetHost()),
-			LId:       int(ri.GetLid()),
+			Host:      ri.GetHost(),
+			LId:       ri.GetLid(),
 			Tags:      ri.GetTags(),
 			Hash:      ri.GetHash(),
 			Seed:      ri.GetSeed(),
@@ -97,7 +97,7 @@ func (s *Server) ReadByLId(ctx context.Context, in *RPCLId) (*RPCReply, error) {
 }
 
 // InitLogMaintainer initializes the maintainer and assign the path name to store the records
-func InitLogMaintainer(p string, n int, itf int) {
+func InitLogMaintainer(p string, n uint32, itf int) {
 	logRecordNth = n
 	LastLId = 0
 	err := os.MkdirAll(path, os.ModePerm)
@@ -161,7 +161,7 @@ func Append(r record.Record) error {
 
 	InsertIndexer(r)
 	LastLId = r.LId
-	if r.Host == info.ID {
+	if r.Host == uint32(info.ID) {
 		Propagate(r)
 	}
 	return nil
@@ -169,7 +169,7 @@ func Append(r record.Record) error {
 
 func InsertIndexer(r record.Record) {
 	rpcTags := indexer.RPCTags{
-		Lid:  int32(r.LId),
+		Lid:  r.LId,
 		Seed: r.Seed,
 		Tags: r.Tags,
 	}
@@ -220,6 +220,6 @@ func recordsArrival(records []record.Record) {
 	}
 }
 
-func AssignToMaintainer(LId, numMaintainers int) int {
-	return ((LId - 1) / batchSize) % numMaintainers
+func AssignToMaintainer(LId uint32, numMaintainers int) int {
+	return int((LId - 1) / uint32(batchSize) % uint32(numMaintainers))
 }

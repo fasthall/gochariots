@@ -20,20 +20,20 @@ import (
 )
 
 var apps []string
-var appsVersion int
+var appsVersion uint32
 var batchers []string
 var batcherClient []batcher.BatcherClient
-var batchersVersion int
+var batchersVersion uint32
 var queues []string
 var queueClient []queue.QueueClient
-var queuesVersion int
+var queuesVersion uint32
 var maintainers []string
 var maintainerClient []maintainer.MaintainerClient
-var maintainersVersion int
+var maintainersVersion uint32
 var indexers []string
-var indexersVersion int
+var indexersVersion uint32
 var remoteBatcher []string
-var remoteBatcherVer int
+var remoteBatcherVer uint32
 var mutex sync.Mutex
 
 // StartController starts controller's REST API server on sepcified port
@@ -92,7 +92,7 @@ func informAppBatcher(host string) {
 	}
 	p := misc.NewParams()
 	p.AddParam("host", string(jsonBatchers))
-	p.AddParam("ver", strconv.Itoa(batchersVersion))
+	p.AddParam("ver", strconv.Itoa(int(batchersVersion)))
 	code := http.StatusBadRequest
 	for code != http.StatusOK {
 		time.Sleep(1 * time.Second)
@@ -112,7 +112,7 @@ func informAppIndexer(host string) {
 	}
 	p := misc.NewParams()
 	p.AddParam("host", string(jsonIndexers))
-	p.AddParam("ver", strconv.Itoa(indexersVersion))
+	p.AddParam("ver", strconv.Itoa(int(indexersVersion)))
 	code := http.StatusBadRequest
 	for code != http.StatusOK {
 		time.Sleep(1 * time.Second)
@@ -151,7 +151,7 @@ func addBatchers(c *gin.Context) {
 	}
 	for i, cli := range batcherClient {
 		rpcQueues := batcher.RPCQueues{
-			Version: int32(queuesVersion),
+			Version: queuesVersion,
 			Queues:  queues,
 		}
 		_, err := cli.UpdateQueue(context.Background(), &rpcQueues)
@@ -188,7 +188,7 @@ func addQueue(c *gin.Context) {
 	for i := range queueClient {
 		host := queues[(i+1)%len(queues)]
 		rpcQueue := queue.RPCQueue{
-			Version: int32(queuesVersion),
+			Version: queuesVersion,
 			Queue:   host,
 		}
 		_, err := queueClient[i].UpdateNextQueue(context.Background(), &rpcQueue)
@@ -211,7 +211,7 @@ func addQueue(c *gin.Context) {
 
 	// update queues' maintainer list
 	rpcMaintainers := queue.RPCMaintainers{
-		Version:    int32(maintainersVersion),
+		Version:    maintainersVersion,
 		Maintainer: maintainers,
 	}
 	_, err = cli.UpdateMaintainers(context.Background(), &rpcMaintainers)
@@ -223,7 +223,7 @@ func addQueue(c *gin.Context) {
 
 	// tell queue about indexer
 	rpcIndexers := queue.RPCIndexers{
-		Version: int32(indexersVersion),
+		Version: indexersVersion,
 		Indexer: indexers,
 	}
 	_, err = cli.UpdateIndexers(context.Background(), &rpcIndexers)
@@ -258,7 +258,7 @@ func addMaintainer(c *gin.Context) {
 	i := len(maintainers) - 1
 	if i < len(indexers) {
 		rpcIndexer := maintainer.RPCIndexer{
-			Version: int32(indexersVersion),
+			Version: indexersVersion,
 			Indexer: indexers[i],
 		}
 		_, err := cli.UpdateIndexer(context.Background(), &rpcIndexer)
@@ -272,7 +272,7 @@ func addMaintainer(c *gin.Context) {
 	// update queues' maintainer list
 	for _, cli := range queueClient {
 		rpcMaintainers := queue.RPCMaintainers{
-			Version:    int32(maintainersVersion),
+			Version:    maintainersVersion,
 			Maintainer: maintainers,
 		}
 		_, err := cli.UpdateMaintainers(context.Background(), &rpcMaintainers)
@@ -285,7 +285,7 @@ func addMaintainer(c *gin.Context) {
 
 	// update remote batchers
 	rpcBatchers := maintainer.RPCBatchers{
-		Version: int32(remoteBatcherVer),
+		Version: remoteBatcherVer,
 		Batcher: remoteBatcher,
 	}
 	_, err = cli.UpdateBatchers(context.Background(), &rpcBatchers)
@@ -321,7 +321,7 @@ func addIndexer(c *gin.Context) {
 	i := len(indexers) - 1
 	if i < len(maintainers) {
 		rpcIndexer := maintainer.RPCIndexer{
-			Version: int32(indexersVersion),
+			Version: indexersVersion,
 			Indexer: indexers[i],
 		}
 		_, err := maintainerClient[i].UpdateIndexer(context.Background(), &rpcIndexer)
@@ -335,7 +335,7 @@ func addIndexer(c *gin.Context) {
 	// update queues' indexer list
 	for i, cli := range queueClient {
 		rpcIndexers := queue.RPCIndexers{
-			Version: int32(indexersVersion),
+			Version: indexersVersion,
 			Indexer: indexers,
 		}
 		_, err := cli.UpdateIndexers(context.Background(), &rpcIndexers)
@@ -370,7 +370,7 @@ func addRemoteBatcher(c *gin.Context) {
 
 	for i, cli := range maintainerClient {
 		rpcBatchers := maintainer.RPCBatchers{
-			Version: int32(remoteBatcherVer),
+			Version: remoteBatcherVer,
 			Batcher: remoteBatcher,
 		}
 		_, err := cli.UpdateBatchers(context.Background(), &rpcBatchers)

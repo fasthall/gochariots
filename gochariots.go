@@ -70,7 +70,7 @@ var (
 	queueDebug   = queueCommand.Flag("debug", "Turn on debug level logging.").Short('d').Bool()
 
 	maintainerCommand   = gochariots.Command("maintainer", "Start a maintainer instance.")
-	maintainerInstN     = maintainerCommand.Arg("ntime", "Record the time maintainer takes to append n records").Int()
+	maintainerInstN     = maintainerCommand.Arg("ntime", "Record the time maintainer takes to append n records").Uint32()
 	maintainerNumDC     = maintainerCommand.Flag("num_dc", "The port maintainer listens to.").Int()
 	maintainerID        = maintainerCommand.Flag("id", "The port maintainer listens to.").Int()
 	maintainerPort      = maintainerCommand.Flag("port", "The port app listens to. By default it's 9030").Short('p').String()

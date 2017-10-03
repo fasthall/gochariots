@@ -18,8 +18,8 @@ type TOIDJsonRecord struct {
 	ID      uint64            `json:"id"`
 	StrID   string            `json:"strid"`
 	Tags    map[string]string `json:"tags"`
-	PreHost int               `json:"prehost"`
-	PreTOId int               `json:"pretoid"`
+	PreHost uint32            `json:"prehost"`
+	PreTOId uint32            `json:"pretoid"`
 }
 
 func TOIDRun(port string) {
@@ -49,11 +49,11 @@ func TOIDpostRecord(c *gin.Context) {
 	// send to batcher
 	r := batcher.RPCRecord{
 		Id:   jsonRecord.ID,
-		Host: int32(info.ID),
+		Host: uint32(info.ID),
 		Tags: jsonRecord.Tags,
 		Causality: &batcher.RPCCausality{
-			Host: int32(jsonRecord.PreHost),
-			Toid: int32(jsonRecord.PreTOId),
+			Host: jsonRecord.PreHost,
+			Toid: jsonRecord.PreTOId,
 		},
 	}
 

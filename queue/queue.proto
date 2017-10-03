@@ -16,19 +16,19 @@ service Queue {
 message RPCRecord {
     uint64 id = 1;
     int64 timestamp = 2;
-    int32 host = 3;
-    int32 lid = 4;
+    uint32 host = 3;
+    uint32 lid = 4;
     map<string, string> tags = 5;
     repeated uint64 hash = 6;
     uint64 seed = 7;
     // for TOID record
-    int32 toid = 8;
+    uint32 toid = 8;
     RPCCausality causality = 9;
 }
 
 message RPCCausality {
-	int32 host = 1;
-	int32 toid = 2;
+	uint32 host = 1;
+	uint32 toid = 2;
 }
 
 message RPCRecords {
@@ -40,26 +40,26 @@ message RPCReply {
 }
 
 message RPCQueue {
-    int32 version = 1;
+    uint32 version = 1;
     string queue = 2;
 }
 
 message RPCToken {
-    int32 lastlid = 1;
+    uint32 lastlid = 1;
 }
 
 message RPCMaintainers {
-    int32 version = 1;
+    uint32 version = 1;
     repeated string maintainer = 2;
 }
 
 message RPCIndexers {
-    int32 version = 1;
+    uint32 version = 1;
     repeated string indexer = 2;
 }
 
 message RPCTOIDToken {
-    repeated int32 maxTOId = 1;
-    int32 lastLId = 2;
+    repeated uint32 maxTOId = 1;
+    uint32 lastLId = 2;
     repeated RPCRecord deferredRecords = 3;
 }

@@ -9,18 +9,18 @@ import (
 )
 
 type TOIDRecord struct {
-	ID        uint64
+	Id        uint64 `bson:"_id,omitempty"`
 	Timestamp int64
-	Host      int
-	TOId      int
-	LId       int
+	Host      uint32
+	TOId      uint32
+	LId       uint32
 	Tags      map[string]string
 	Pre       TOIDCausality
 }
 
 type TOIDCausality struct {
-	Host int
-	TOId int
+	Host uint32
+	TOId uint32
 }
 
 // ToJSON encodes a record into bytes

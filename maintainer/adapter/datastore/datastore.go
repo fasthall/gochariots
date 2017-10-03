@@ -17,11 +17,22 @@ var client *datastore.Client
 
 type Record struct {
 	Timestamp int64  `datastore:"Timestamp"`
-	Host      int    `datastore:"Host"`
-	LId       int    `datastore:"LId"`
+	Host      uint32 `datastore:"Host"`
+	LId       uint32 `datastore:"LId"`
 	Tags      string `datastore:"Tags"`
 	Hash      string `datastore:"Hash"`
 	Seed      string `datastore:"Seed"`
+}
+
+type TOIDRecord struct {
+	Id        uint64 `datastore:"Id"`
+	Timestamp int64  `datastore:"Timestamp"`
+	Host      uint32 `datastore:"Host"`
+	TOId      uint32 `datastore:"TOId"`
+	LId       uint32 `datastore:"LId"`
+	Tags      string `datastore:"Tags"`
+	PreHost   uint32 `datastore:"PreHash"`
+	PreTOId   uint32 `datastore:"PreTOId"`
 }
 
 func init() {
@@ -58,6 +69,36 @@ func PutRecord(r record.Record) error {
 func PutRecords(records []record.Record) error {
 	for _, r := range records {
 		err := PutRecord(r)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func PutTOIDRecord(r record.TOIDRecord) error {
+	tags, err := json.Marshal(r.Tags)
+	if err != nil {
+		return err
+	}
+	entity := &TOIDRecord{
+		Id:        r.Id,
+		Timestamp: r.Timestamp,
+		Host:      r.Host,
+		TOId:      r.TOId,
+		LId:       r.LId,
+		Tags:      string(tags),
+		PreHost:   r.Pre.Host,
+		PreTOId:   r.Pre.TOId,
+	}
+	key := datastore.IncompleteKey("Record", nil)
+	key, err = client.Put(ctx, key, entity)
+	return err
+}
+
+func PutTOIDRecords(records []record.TOIDRecord) error {
+	for _, r := range records {
+		err := PutTOIDRecord(r)
 		if err != nil {
 			return err
 		}

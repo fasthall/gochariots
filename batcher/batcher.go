@@ -30,8 +30,8 @@ type Server struct{}
 func (s *Server) ReceiveRecord(ctx context.Context, in *RPCRecord) (*RPCReply, error) {
 	r := record.Record{
 		Timestamp: in.GetTimestamp(),
-		Host:      int(in.GetHost()),
-		LId:       int(in.GetLid()),
+		Host:      in.GetHost(),
+		LId:       in.GetLid(),
 		Tags:      in.GetTags(),
 		Hash:      in.GetHash(),
 		Seed:      in.GetSeed(),
@@ -44,8 +44,8 @@ func (s *Server) ReceiveRecords(ctx context.Context, in *RPCRecords) (*RPCReply,
 	for _, i := range in.GetRecords() {
 		r := record.Record{
 			Timestamp: i.GetTimestamp(),
-			Host:      int(i.GetHost()),
-			LId:       int(i.GetLid()),
+			Host:      i.GetHost(),
+			LId:       i.GetLid(),
 			Tags:      i.GetTags(),
 			Hash:      i.GetHash(),
 			Seed:      i.GetSeed(),
@@ -107,8 +107,8 @@ func sendToQueue() {
 	for _, r := range buffer {
 		rpcRecords.Records = append(rpcRecords.Records, &queue.RPCRecord{
 			Timestamp: r.Timestamp,
-			Host:      int32(r.Host),
-			Lid:       int32(r.LId),
+			Host:      r.Host,
+			Lid:       r.LId,
 			Tags:      r.Tags,
 			Hash:      r.Hash,
 			Seed:      r.Seed,

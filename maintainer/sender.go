@@ -24,8 +24,8 @@ func Propagate(r record.Record) {
 			// log.Printf("%s is propagating record to remoteBatchers[%d] %s", info.GetName(), dc, host)
 			rpcRecord := remotebatcher.RPCRecord{
 				Timestamp: r.Timestamp,
-				Host:      int32(r.Host),
-				Lid:       int32(r.LId),
+				Host:      r.Host,
+				Lid:       r.LId,
 				Tags:      r.Tags,
 				Hash:      r.Hash,
 				Seed:      r.Seed,

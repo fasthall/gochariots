@@ -121,7 +121,7 @@ func postRecord(c *gin.Context) {
 	}
 	// send to batcher
 	r := batcher.RPCRecord{
-		Host: int32(info.ID),
+		Host: uint32(info.ID),
 		Tags: jsonRecord.Tags,
 		Hash: jsonRecord.Hash,
 		Seed: jsonRecord.Seed,

@@ -16,31 +16,27 @@ func (s *Server) TOIDQuery(ctx context.Context, in *RPCTOIdQuery) (*RPCTOIDQuery
 	indexMutex.Unlock()
 	return &RPCTOIDQueryReply{
 		Existed: ok,
-		Lid:     int32(entry.LId),
-		Toid:    int32(entry.TOId),
-		Host:    int32(entry.Host)}, nil
+		Lid:     entry.LId,
+		Toid:    entry.TOId,
+		Host:    entry.Host}, nil
 }
 
 func (s *Server) TOIDInsertTags(ctx context.Context, in *RPCTOIdTags) (*RPCReply, error) {
-	id := in.GetId()
-	lid := int(in.GetLid())
-	toid := int(in.GetToid())
-	host := int(in.GetHost())
 	entry := TOIDIndexTableEntry{
-		LId:  lid,
-		TOId: toid,
-		Host: host,
+		LId:  in.GetLid(),
+		TOId: in.GetToid(),
+		Host: in.GetHost(),
 	}
 	indexMutex.Lock()
-	TOIDindexes[id] = entry
+	TOIDindexes[in.GetId()] = entry
 	indexMutex.Unlock()
 	return &RPCReply{Message: "ok"}, nil
 }
 
 type TOIDIndexTableEntry struct {
-	LId  int
-	Host int
-	TOId int
+	LId  uint32
+	Host uint32
+	TOId uint32
 }
 
 func TOIDInitIndexer(p string) {

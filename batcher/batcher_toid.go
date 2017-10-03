@@ -16,15 +16,15 @@ var TOIDbuffer []record.TOIDRecord
 
 func (s *Server) TOIDReceiveRecord(ctx context.Context, in *RPCRecord) (*RPCReply, error) {
 	r := record.TOIDRecord{
-		ID:        in.GetId(),
+		Id:        in.GetId(),
 		Timestamp: in.GetTimestamp(),
-		Host:      int(in.GetHost()),
-		TOId:      int(in.GetToid()),
-		LId:       int(in.GetLid()),
+		Host:      in.GetHost(),
+		TOId:      in.GetToid(),
+		LId:       in.GetLid(),
 		Tags:      in.GetTags(),
 		Pre: record.TOIDCausality{
-			Host: int(in.GetCausality().GetHost()),
-			TOId: int(in.GetCausality().GetToid()),
+			Host: in.GetCausality().GetHost(),
+			TOId: in.GetCausality().GetToid(),
 		},
 	}
 	TOIDarrival(r)
@@ -34,15 +34,15 @@ func (s *Server) TOIDReceiveRecord(ctx context.Context, in *RPCRecord) (*RPCRepl
 func (s *Server) TOIDReceiveRecords(ctx context.Context, in *RPCRecords) (*RPCReply, error) {
 	for _, i := range in.GetRecords() {
 		r := record.TOIDRecord{
-			ID:        i.GetId(),
+			Id:        i.GetId(),
 			Timestamp: i.GetTimestamp(),
-			Host:      int(i.GetHost()),
-			TOId:      int(i.GetToid()),
-			LId:       int(i.GetLid()),
+			Host:      i.GetHost(),
+			TOId:      i.GetToid(),
+			LId:       i.GetLid(),
 			Tags:      i.GetTags(),
 			Pre: record.TOIDCausality{
-				Host: int(i.GetCausality().GetHost()),
-				TOId: int(i.GetCausality().GetToid()),
+				Host: i.GetCausality().GetHost(),
+				TOId: i.GetCausality().GetToid(),
 			},
 		}
 		TOIDarrival(r)
@@ -83,15 +83,15 @@ func TOIDsendToQueue() {
 	rpcRecords := queue.RPCRecords{}
 	for _, r := range TOIDbuffer {
 		rpcRecords.Records = append(rpcRecords.Records, &queue.RPCRecord{
-			Id:        r.ID,
+			Id:        r.Id,
 			Timestamp: r.Timestamp,
-			Host:      int32(r.Host),
-			Toid:      int32(r.TOId),
-			Lid:       int32(r.LId),
+			Host:      r.Host,
+			Toid:      r.TOId,
+			Lid:       r.LId,
 			Tags:      r.Tags,
 			Causality: &queue.RPCCausality{
-				Host: int32(r.Pre.Host),
-				Toid: int32(r.Pre.TOId),
+				Host: r.Pre.Host,
+				Toid: r.Pre.TOId,
 			},
 		})
 	}

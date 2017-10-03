@@ -28,7 +28,7 @@ type Query struct {
 }
 
 type IndexTableEntry struct {
-	LId  int
+	LId  uint32
 	Seed uint64
 }
 
@@ -71,18 +71,14 @@ func (s *Server) Query(ctx context.Context, in *RPCQueries) (*RPCQueryReply, err
 
 func (s *Server) InsertTags(ctx context.Context, in *RPCTags) (*RPCReply, error) {
 	for key, value := range in.GetTags() {
-		insertIndexEntry(key, value, int(in.GetLid()), in.GetSeed())
+		insertIndexEntry(key, value, in.GetLid(), in.GetSeed())
 	}
 	return &RPCReply{Message: "ok"}, nil
 }
 
 func (s *Server) GetLIds(ctx context.Context, in *RPCTags) (*RPCLIds, error) {
 	lids := getLIdByTags(in.GetTags())
-	lids32 := make([]int32, len(lids))
-	for i := range lids {
-		lids32[i] = int32(lids[i])
-	}
-	return &RPCLIds{Lid: lids32}, nil
+	return &RPCLIds{Lid: lids}, nil
 }
 
 func NewIndexTable() IndexTable {
@@ -92,7 +88,7 @@ func NewIndexTable() IndexTable {
 	return index
 }
 
-func (it *IndexTable) Insert(key, value string, lid int, seed uint64) {
+func (it *IndexTable) Insert(key, value string, lid uint32, seed uint64) {
 	hash := tagToHash(key, value)
 	it.mutex.Lock()
 	it.table[hash] = append(it.table[hash], IndexTableEntry{
@@ -150,7 +146,7 @@ func getBytesFromDB(hash uint64) []byte {
 	return buf
 }
 
-func insertIndexEntry(key, value string, lid int, seed uint64) {
+func insertIndexEntry(key, value string, lid uint32, seed uint64) {
 	entry := IndexTableEntry{
 		LId:  lid,
 		Seed: seed,
@@ -248,26 +244,26 @@ func ToHash(b []byte) uint64 {
 	return hash.Sum64()
 }
 
-func getLIdByTag(key, value string) []int {
+func getLIdByTag(key, value string) []uint32 {
 	hash := tagToHash(key, value)
 	return getLIdByHash(hash)
 }
 
-func getLIdByTags(tags map[string]string) []int {
-	ans := []int{}
+func getLIdByTags(tags map[string]string) []uint32 {
+	ans := []uint32{}
 	for k, v := range tags {
 		ans = append(ans, getLIdByTag(k, v)...)
 	}
 	return ans
 }
 
-func getLIdByHash(hash uint64) []int {
+func getLIdByHash(hash uint64) []uint32 {
 	result, err := getIndexEntry(hash)
 	if err != nil {
 		logrus.WithError(err).Error("couldn't read from indexer")
 		panic(err)
 	}
-	ans := []int{}
+	ans := []uint32{}
 	for _, r := range result {
 		ans = append(ans, r.LId)
 	}

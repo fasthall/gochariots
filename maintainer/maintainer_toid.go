@@ -7,6 +7,11 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	"github.com/fasthall/gochariots/info"
+	"github.com/fasthall/gochariots/maintainer/adapter"
+	"github.com/fasthall/gochariots/maintainer/adapter/cosmos"
+	"github.com/fasthall/gochariots/maintainer/adapter/datastore"
+	"github.com/fasthall/gochariots/maintainer/adapter/dynamodb"
+	"github.com/fasthall/gochariots/maintainer/adapter/mongodb"
 	"github.com/fasthall/gochariots/maintainer/indexer"
 	"github.com/fasthall/gochariots/record"
 	"golang.org/x/net/context"
@@ -16,15 +21,15 @@ func (s *Server) TOIDReceiveRecords(ctx context.Context, in *RPCRecords) (*RPCRe
 	records := make([]record.TOIDRecord, len(in.GetRecords()))
 	for i, ri := range in.GetRecords() {
 		records[i] = record.TOIDRecord{
-			ID:        ri.GetId(),
+			Id:        ri.GetId(),
 			Timestamp: ri.GetTimestamp(),
-			Host:      int(ri.GetHost()),
-			TOId:      int(ri.GetToid()),
-			LId:       int(ri.GetLid()),
+			Host:      ri.GetHost(),
+			TOId:      ri.GetToid(),
+			LId:       ri.GetLid(),
 			Tags:      ri.GetTags(),
 			Pre: record.TOIDCausality{
-				Host: int(ri.GetCausality().GetHost()),
-				TOId: int(ri.GetCausality().GetToid()),
+				Host: ri.GetCausality().GetHost(),
+				TOId: ri.GetCausality().GetToid(),
 			},
 		}
 	}
@@ -41,7 +46,7 @@ func (s *Server) TOIDUpdateIndexer(ctx context.Context, in *RPCIndexer) (*RPCRep
 }
 
 func (s *Server) TOIDReadByLId(ctx context.Context, in *RPCLId) (*RPCReply, error) {
-	lid := int(in.GetLid())
+	lid := in.GetLid()
 	r, err := TOIDReadByLId(lid)
 	if err != nil {
 		return nil, err
@@ -61,26 +66,46 @@ func TOIDAppend(r record.TOIDRecord) error {
 			logrus.WithField("duration", time.Since(logFirstTime)).Info("appended", logRecordNth, "records")
 		}
 	}
-	b, err := record.TOIDToJSON(r)
-	if err != nil {
-		return err
-	}
-	lenbuf := make([]byte, 4)
-	binary.BigEndian.PutUint32(lenbuf, uint32(len(b)))
-	lid := r.LId
-	_, err = f.WriteAt(lenbuf, int64(512*lid))
-	if err != nil {
-		return err
-	}
-	_, err = f.WriteAt(b, int64(512*lid+4))
-	if err != nil {
-		return err
+
+	if maintainerInterface == adapter.DYNAMODB {
+		err := dynamodb.PutTOIDRecord(r)
+		if err != nil {
+			return err
+		}
+	} else if maintainerInterface == adapter.DATASTORE {
+		err := datastore.PutTOIDRecord(r)
+		if err != nil {
+			return err
+		}
+	} else if maintainerInterface == adapter.FLSTORE {
+		b, err := record.TOIDToJSON(r)
+		if err != nil {
+			return err
+		}
+		lenbuf := make([]byte, 4)
+		binary.BigEndian.PutUint32(lenbuf, uint32(len(b)))
+		lid := r.LId
+		_, err = f.WriteAt(append(lenbuf, b...), int64(512*lid))
+		if err != nil {
+			return err
+		}
+		// log.Println(info.GetName(), "wrote record ", lid)
+	} else if maintainerInterface == adapter.COSMOSDB {
+		err := cosmos.PutTOIDRecord(r)
+		if err != nil {
+			return err
+		}
+	} else if maintainerInterface == adapter.MONGODB {
+		err := mongodb.PutTOIDRecord(r)
+		if err != nil {
+			return err
+		}
 	}
 	// log.Println(info.GetName(), "wrote record ", lid)
 	TOIDInsertIndexer(r)
 
 	LastLId = r.LId
-	if r.Host == info.ID {
+	if r.Host == uint32(info.ID) {
 		TOIDPropagate(r)
 	}
 	return nil
@@ -88,10 +113,10 @@ func TOIDAppend(r record.TOIDRecord) error {
 
 func TOIDInsertIndexer(r record.TOIDRecord) {
 	rpcTags := indexer.RPCTOIdTags{
-		Id:   r.ID,
-		Lid:  int32(r.LId),
-		Toid: int32(r.TOId),
-		Host: int32(r.Host),
+		Id:   r.Id,
+		Lid:  r.LId,
+		Toid: r.TOId,
+		Host: r.Host,
 	}
 	_, err := indexerClient.TOIDInsertTags(context.Background(), &rpcTags)
 	if err != nil {
@@ -100,7 +125,7 @@ func TOIDInsertIndexer(r record.TOIDRecord) {
 }
 
 // ReadByLId reads from the maintainer according to LId.
-func TOIDReadByLId(lid int) (record.TOIDRecord, error) {
+func TOIDReadByLId(lid uint32) (record.TOIDRecord, error) {
 	lenbuf := make([]byte, 4)
 	_, err := f.ReadAt(lenbuf, int64(512*lid))
 	if err != nil {
@@ -118,7 +143,7 @@ func TOIDReadByLId(lid int) (record.TOIDRecord, error) {
 }
 
 // ReadByLIds reads multiple records
-func TOIDReadByLIds(lids []int) ([]record.TOIDRecord, error) {
+func TOIDReadByLIds(lids []uint32) ([]record.TOIDRecord, error) {
 	result := []record.TOIDRecord{}
 	for _, lid := range lids {
 		r, err := TOIDReadByLId(lid)

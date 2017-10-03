@@ -37,3 +37,28 @@ func PutRecords(records []record.Record) error {
 	}
 	return nil
 }
+
+func PutTOIDRecord(r record.TOIDRecord) error {
+	av, err := dynamodbattribute.MarshalMap(r)
+	if err != nil {
+		return err
+	}
+	_, err = svc.PutItem(&dynamodb.PutItemInput{
+		TableName: aws.String(TABLE_NAME),
+		Item:      av,
+	})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func PutTOIDRecords(records []record.TOIDRecord) error {
+	for _, r := range records {
+		err := PutTOIDRecord(r)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}

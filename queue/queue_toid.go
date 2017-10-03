@@ -20,15 +20,15 @@ func (s *Server) TOIDReceiveRecords(ctx context.Context, in *RPCRecords) (*RPCRe
 	records := make([]record.TOIDRecord, len(in.GetRecords()))
 	for i, ri := range in.GetRecords() {
 		records[i] = record.TOIDRecord{
-			ID:        ri.GetId(),
+			Id:        ri.GetId(),
 			Timestamp: ri.GetTimestamp(),
-			Host:      int(ri.GetHost()),
-			TOId:      int(ri.GetToid()),
-			LId:       int(ri.GetLid()),
+			Host:      ri.GetHost(),
+			TOId:      ri.GetToid(),
+			LId:       ri.GetLid(),
 			Tags:      ri.GetTags(),
 			Pre: record.TOIDCausality{
-				Host: int(ri.GetHost()),
-				TOId: int(ri.GetToid()),
+				Host: ri.GetHost(),
+				TOId: ri.GetToid(),
 			},
 		}
 	}
@@ -37,28 +37,24 @@ func (s *Server) TOIDReceiveRecords(ctx context.Context, in *RPCRecords) (*RPCRe
 }
 
 func (s *Server) TOIDReceiveToken(ctx context.Context, in *RPCTOIDToken) (*RPCReply, error) {
-	maxTOId := make([]int, len(in.GetMaxTOId()))
-	for i := range maxTOId {
-		maxTOId[i] = int(in.GetMaxTOId()[i])
-	}
 	deferredRecords := make([]record.TOIDRecord, len(in.GetDeferredRecords()))
 	for i := range deferredRecords {
 		deferredRecords[i] = record.TOIDRecord{
-			ID:        in.GetDeferredRecords()[i].GetId(),
+			Id:        in.GetDeferredRecords()[i].GetId(),
 			Timestamp: in.GetDeferredRecords()[i].GetTimestamp(),
-			Host:      int(in.GetDeferredRecords()[i].GetHost()),
-			TOId:      int(in.GetDeferredRecords()[i].GetToid()),
-			LId:       int(in.GetDeferredRecords()[i].GetLid()),
+			Host:      in.GetDeferredRecords()[i].GetHost(),
+			TOId:      in.GetDeferredRecords()[i].GetToid(),
+			LId:       in.GetDeferredRecords()[i].GetLid(),
 			Tags:      in.GetDeferredRecords()[i].GetTags(),
 			Pre: record.TOIDCausality{
-				Host: int(in.GetDeferredRecords()[i].GetCausality().GetHost()),
-				TOId: int(in.GetDeferredRecords()[i].GetCausality().GetToid()),
+				Host: in.GetDeferredRecords()[i].GetCausality().GetHost(),
+				TOId: in.GetDeferredRecords()[i].GetCausality().GetToid(),
 			},
 		}
 	}
 	token := TOIDToken{
-		MaxTOId:         maxTOId,
-		LastLId:         int(in.GetLastLId()),
+		MaxTOId:         in.GetMaxTOId(),
+		LastLId:         in.GetLastLId(),
 		DeferredRecords: deferredRecords,
 	}
 	if Carry {
@@ -83,8 +79,8 @@ func (s *Server) TOIDUpdateIndexers(ctx context.Context, in *RPCIndexers) (*RPCR
 
 // Token is used by queues to ensure causality of LId assignment
 type TOIDToken struct {
-	MaxTOId         []int
-	LastLId         int
+	MaxTOId         []uint32
+	LastLId         uint32
 	DeferredRecords []record.TOIDRecord
 }
 
@@ -98,7 +94,7 @@ func TOIDInitQueue(hasToken, carry bool) {
 	}
 	if hasToken {
 		var token TOIDToken
-		token.InitToken(make([]int, info.NumDC), 0)
+		token.InitToken(make([]uint32, info.NumDC), 0)
 		if Carry {
 			TokenArrivalCarryDeferred(token)
 		} else {
@@ -113,7 +109,7 @@ func TOIDInitQueue(hasToken, carry bool) {
 }
 
 // InitToken intializes a token. The IDs info should be accuired from log maintainers
-func (token *TOIDToken) InitToken(maxTOId []int, lastLId int) {
+func (token *TOIDToken) InitToken(maxTOId []uint32, lastLId uint32) {
 	token.MaxTOId = maxTOId
 	token.LastLId = lastLId
 	token.DeferredRecords = []record.TOIDRecord{}
@@ -124,7 +120,7 @@ func TOIDrecordsArrival(records []record.TOIDRecord) {
 	// info.LogTimestamp("recordsArrival")
 	bufMutex.Lock()
 	for _, r := range records {
-		if r.Host == info.ID {
+		if r.Host == uint32(info.ID) {
 			sameDCBuffered = append(sameDCBuffered, r)
 		} else {
 			heap.Push(&TOIDbuffered[r.Host], r)
@@ -153,7 +149,7 @@ func TokenArrivalCarryDeferred(token TOIDToken) {
 	dispatch := []record.TOIDRecord{}
 	head := 0
 	for _, r := range token.DeferredRecords {
-		if r.Host != info.ID {
+		if r.Host != uint32(info.ID) {
 			// default value of TOId is 0 so no need to check if the record has dependency or not
 			if r.TOId == token.MaxTOId[r.Host]+1 && r.Pre.TOId <= token.MaxTOId[r.Pre.Host] {
 				dispatch = append(dispatch, r)
@@ -244,7 +240,7 @@ func TokenArrivalBufferDeferred(token TOIDToken) {
 
 // assignLId assigns LId to all the records to be sent to log maintainers
 // return the last LId assigned
-func TOIDassignLId(records []record.TOIDRecord, lastLId int) int {
+func TOIDassignLId(records []record.TOIDRecord, lastLId uint32) uint32 {
 	for i := range records {
 		lastLId++
 		records[i].LId = lastLId
@@ -262,28 +258,24 @@ func TOIDpassToken(token *TOIDToken) {
 			TokenArrivalBufferDeferred(*token)
 		}
 	} else {
-		maxTOId := make([]int32, len(token.MaxTOId))
-		for i := range maxTOId {
-			maxTOId[i] = int32(token.MaxTOId[i])
-		}
 		rpcDeferredRecords := make([]*RPCRecord, len(token.DeferredRecords))
 		for i := range rpcDeferredRecords {
 			rpcDeferredRecords[i] = &RPCRecord{
-				Id:        token.DeferredRecords[i].ID,
+				Id:        token.DeferredRecords[i].Id,
 				Timestamp: token.DeferredRecords[i].Timestamp,
-				Host:      int32(token.DeferredRecords[i].Host),
-				Toid:      int32(token.DeferredRecords[i].TOId),
-				Lid:       int32(token.DeferredRecords[i].LId),
+				Host:      token.DeferredRecords[i].Host,
+				Toid:      token.DeferredRecords[i].TOId,
+				Lid:       token.DeferredRecords[i].LId,
 				Tags:      token.DeferredRecords[i].Tags,
 				Causality: &RPCCausality{
-					Host: int32(token.DeferredRecords[i].Pre.Host),
-					Toid: int32(token.DeferredRecords[i].Pre.TOId),
+					Host: token.DeferredRecords[i].Pre.Host,
+					Toid: token.DeferredRecords[i].Pre.TOId,
 				},
 			}
 		}
 		rpcTOIdToken := RPCTOIDToken{
-			MaxTOId:         maxTOId,
-			LastLId:         int32(token.LastLId),
+			MaxTOId:         token.MaxTOId,
+			LastLId:         token.LastLId,
 			DeferredRecords: rpcDeferredRecords,
 		}
 		nextQueueClient.TOIDReceiveToken(context.Background(), &rpcTOIdToken)
@@ -298,15 +290,15 @@ func TOIDdispatchRecords(records []record.TOIDRecord, maintainerID int) {
 	}
 	for i, r := range records {
 		tmp := maintainer.RPCRecord{
-			Id:        r.ID,
+			Id:        r.Id,
 			Timestamp: r.Timestamp,
-			Host:      int32(r.Host),
-			Toid:      int32(r.TOId),
-			Lid:       int32(r.LId),
+			Host:      r.Host,
+			Toid:      r.TOId,
+			Lid:       r.LId,
 			Tags:      r.Tags,
 			Causality: &maintainer.RPCCausality{
-				Host: int32(r.Pre.Host),
-				Toid: int32(r.Pre.TOId),
+				Host: r.Pre.Host,
+				Toid: r.Pre.TOId,
 			},
 		}
 		rpcRecords.Records[i] = &tmp
