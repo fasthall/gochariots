@@ -81,6 +81,7 @@ var (
 	maintainerDynamoDB  = maintainerCommand.Flag("dynamodb", "Use DynamoDB as physical storage.").Bool()
 	maintainerDatastore = maintainerCommand.Flag("datastore", "Use Datastore as physical storage.").Bool()
 	maintainerCosmosDB  = maintainerCommand.Flag("cosmosdb", "Use CosmosDB as physical storage.").Bool()
+	maintainerMongoDB   = maintainerCommand.Flag("mongodb", "Use MongoDB as physical storage.").Bool()
 
 	indexerCommand = gochariots.Command("indexer", "Start an indexer instance.")
 	indexerNumDC   = indexerCommand.Flag("num_dc", "The port indexer listens to.").Int()
@@ -250,6 +251,8 @@ func main() {
 			adap = adapter.DATASTORE
 		} else if *maintainerCosmosDB {
 			adap = adapter.COSMOSDB
+		} else if *maintainerMongoDB {
+			adap = adapter.MONGODB
 		}
 		maintainer.InitLogMaintainer(info.GetName(), *maintainerInstN, adap)
 		ln, err := net.Listen("tcp", ":"+*maintainerPort)

@@ -17,6 +17,7 @@ import (
 	"github.com/fasthall/gochariots/maintainer/adapter/cosmos"
 	"github.com/fasthall/gochariots/maintainer/adapter/datastore"
 	"github.com/fasthall/gochariots/maintainer/adapter/dynamodb"
+	"github.com/fasthall/gochariots/maintainer/adapter/mongodb"
 	"github.com/fasthall/gochariots/record"
 	"golang.org/x/net/context"
 )
@@ -148,6 +149,11 @@ func Append(r record.Record) error {
 		// log.Println(info.GetName(), "wrote record ", lid)
 	} else if maintainerInterface == adapter.COSMOSDB {
 		err := cosmos.PutRecord(r)
+		if err != nil {
+			return err
+		}
+	} else if maintainerInterface == adapter.MONGODB {
+		err := mongodb.PutRecord(r)
 		if err != nil {
 			return err
 		}
