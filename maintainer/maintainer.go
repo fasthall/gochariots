@@ -10,6 +10,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/fasthall/gochariots/maintainer/indexer"
+	"github.com/fasthall/gochariots/maintainer/remotebatcher"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/fasthall/gochariots/info"
@@ -55,10 +56,18 @@ func (s *Server) ReceiveRecords(ctx context.Context, in *RPCRecords) (*RPCReply,
 }
 
 func (s *Server) UpdateBatchers(ctx context.Context, in *RPCBatchers) (*RPCReply, error) {
-	ver := int(in.GetVersion())
+	ver := in.GetVersion()
 	if ver > remoteBatcherVer {
 		remoteBatcherVer = ver
 		remoteBatchers = in.GetBatcher()
+		remoteBatchersClient = make([]remotebatcher.BatcherClient, len(remoteBatchers))
+		for i := range remoteBatchersClient {
+			conn, err := grpc.Dial(remoteBatchers[i], grpc.WithInsecure())
+			if err != nil {
+				return nil, err
+			}
+			remoteBatchersClient[i] = remotebatcher.NewBatcherClient(conn)
+		}
 		logrus.WithField("host", in.GetBatcher()).Info("received remote batcher hosts update")
 	} else {
 		logrus.WithFields(logrus.Fields{"current": remoteBatcherVer, "received": ver}).Debug("receiver older version of remote batcher hosts")

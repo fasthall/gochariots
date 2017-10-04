@@ -10,12 +10,12 @@ import (
 	"golang.org/x/net/context"
 )
 
-var lastSendLId int
-var lastSentTOId int
+var lastSendLId uint32
+var lastSentTOId uint32
 var connMutex sync.Mutex
 var remoteBatchersClient []remotebatcher.BatcherClient
 var remoteBatchers []string
-var remoteBatcherVer int
+var remoteBatcherVer uint32
 
 // Propagate sends the local record to remote datacenter's batcher
 func Propagate(r record.Record) {
