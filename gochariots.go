@@ -5,9 +5,12 @@ import (
 	"net"
 	"os"
 
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
+
 	"github.com/fasthall/gochariots/app"
 	"github.com/fasthall/gochariots/batcher"
-	"github.com/fasthall/gochariots/filter"
+	"github.com/fasthall/gochariots/controller"
 	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/maintainer"
 	"github.com/fasthall/gochariots/maintainer/adapter"
@@ -67,7 +70,7 @@ var (
 	queueDebug   = queueCommand.Flag("debug", "Turn on debug level logging.").Short('d').Bool()
 
 	maintainerCommand   = gochariots.Command("maintainer", "Start a maintainer instance.")
-	maintainerInstN     = maintainerCommand.Arg("ntime", "Record the time maintainer takes to append n records").Int()
+	maintainerInstN     = maintainerCommand.Arg("ntime", "Record the time maintainer takes to append n records").Uint32()
 	maintainerNumDC     = maintainerCommand.Flag("num_dc", "The port maintainer listens to.").Int()
 	maintainerID        = maintainerCommand.Flag("id", "The port maintainer listens to.").Int()
 	maintainerPort      = maintainerCommand.Flag("port", "The port app listens to. By default it's 9030").Short('p').String()
@@ -78,6 +81,7 @@ var (
 	maintainerDynamoDB  = maintainerCommand.Flag("dynamodb", "Use DynamoDB as physical storage.").Bool()
 	maintainerDatastore = maintainerCommand.Flag("datastore", "Use Datastore as physical storage.").Bool()
 	maintainerCosmosDB  = maintainerCommand.Flag("cosmosdb", "Use CosmosDB as physical storage.").Bool()
+	maintainerMongoDB   = maintainerCommand.Flag("mongodb", "Use MongoDB as physical storage.").Bool()
 
 	indexerCommand = gochariots.Command("indexer", "Start an indexer instance.")
 	indexerNumDC   = indexerCommand.Flag("num_dc", "The port indexer listens to.").Int()
@@ -137,7 +141,7 @@ func main() {
 			level = logrus.InfoLevel
 		}
 		info.RedirectLog(info.GetName()+".log", level)
-		info.StartController(*controllerPort)
+		controller.StartController(*controllerPort)
 	case batcherCommand.FullCommand():
 		if *batcherPort == "" {
 			*batcherPort = "9000"
@@ -172,81 +176,14 @@ func main() {
 		fmt.Println(info.GetName()+" is listening to port", *batcherPort)
 		if *batcherTOId {
 			go batcher.TOIDSweeper()
-			for {
-				// Listen for an incoming connection.
-				conn, err := ln.Accept()
-				if err != nil {
-					fmt.Println(info.GetName(), "Couldn't handle more connection", err)
-					continue
-				}
-				// Handle connections in a new goroutine.
-				go batcher.TOIDHandleRequest(conn)
-			}
 		} else {
 			go batcher.Sweeper()
-			for {
-				// Listen for an incoming connection.
-				conn, err := ln.Accept()
-				if err != nil {
-					fmt.Println(info.GetName(), "Couldn't handle more connection", err)
-					continue
-				}
-				// Handle connections in a new goroutine.
-				go batcher.HandleRequest(conn)
-			}
 		}
-	case filterCommand.FullCommand():
-		if *filterPort == "" {
-			*filterPort = "9010"
-		}
-		if *filterNumDC == 0 {
-			*filterNumDC = 1
-		}
-		info.NumDC = *filterNumDC
-		info.ID = *filterID
-		info.SetName("filter" + *filterPort)
-		info.SetPort(*filterPort)
-		level := logrus.WarnLevel
-		if *filterDebug {
-			level = logrus.DebugLevel
-		} else if *filterInfo {
-			level = logrus.InfoLevel
-		}
-		info.RedirectLog(info.GetName()+".log", level)
-		if *filterConfig != "" {
-			info.Config(*filterConfig, "filter")
-		}
-		if *filterTOId {
-			filter.TOIDInitFilter()
-		} else {
-			filter.InitFilter()
-		}
-		ln, err := net.Listen("tcp", ":"+*filterPort)
-		if err != nil {
-			panic(err)
-		}
-		defer ln.Close()
-		fmt.Println(info.GetName()+" is listening to port", *filterPort)
-		if *filterTOId {
-			for {
-				// Listen for an incoming connection.
-				conn, err := ln.Accept()
-				if err != nil {
-					panic(err)
-				}
-				// Handle connections in a new goroutine.
-				go filter.TOIDHandleRequest(conn)
-			}
-		} else {
-			for {
-				// Listen for an incoming connection.
-				conn, err := ln.Accept()
-				if err != nil {
-					panic(err)
-				}
-				// Handle connections in a new goroutine.
-				go filter.HandleRequest(conn)
-			}
+		s := grpc.NewServer()
+		batcher.RegisterBatcherServer(s, &batcher.Server{})
+		reflection.Register(s)
+		if err := s.Serve(ln); err != nil {
+			logrus.Fatalf("failed to serve: %v", err)
 		}
 	case queueCommand.FullCommand():
 		if *queuePort == "" {
@@ -280,26 +217,11 @@ func main() {
 		}
 		defer ln.Close()
 		fmt.Println(info.GetName()+" is listening to port", *queuePort)
-		if *queueTOId {
-			for {
-				// Listen for an incoming connection.
-				conn, err := ln.Accept()
-				if err != nil {
-					panic(err)
-				}
-				// Handle connections in a new goroutine.
-				go queue.TOIDHandleRequest(conn)
-			}
-		} else {
-			for {
-				// Listen for an incoming connection.
-				conn, err := ln.Accept()
-				if err != nil {
-					panic(err)
-				}
-				// Handle connections in a new goroutine.
-				go queue.HandleRequest(conn)
-			}
+		s := grpc.NewServer()
+		queue.RegisterQueueServer(s, &queue.Server{})
+		reflection.Register(s)
+		if err := s.Serve(ln); err != nil {
+			logrus.Fatalf("failed to serve: %v", err)
 		}
 	case maintainerCommand.FullCommand():
 		if *maintainerPort == "" {
@@ -329,6 +251,8 @@ func main() {
 			adap = adapter.DATASTORE
 		} else if *maintainerCosmosDB {
 			adap = adapter.COSMOSDB
+		} else if *maintainerMongoDB {
+			adap = adapter.MONGODB
 		}
 		maintainer.InitLogMaintainer(info.GetName(), *maintainerInstN, adap)
 		ln, err := net.Listen("tcp", ":"+*maintainerPort)
@@ -338,26 +262,11 @@ func main() {
 		}
 		defer ln.Close()
 		fmt.Println(info.GetName()+" is listening to port", *maintainerPort)
-		if *maintainerTOId {
-			for {
-				// Listen for an incoming connection.
-				conn, err := ln.Accept()
-				if err != nil {
-					panic(err)
-				}
-				// Handle connections in a new goroutine.
-				go maintainer.TOIDHandleRequest(conn)
-			}
-		} else {
-			for {
-				// Listen for an incoming connection.
-				conn, err := ln.Accept()
-				if err != nil {
-					panic(err)
-				}
-				// Handle connections in a new goroutine.
-				go maintainer.HandleRequest(conn)
-			}
+		s := grpc.NewServer()
+		maintainer.RegisterMaintainerServer(s, &maintainer.Server{})
+		reflection.Register(s)
+		if err := s.Serve(ln); err != nil {
+			logrus.Fatalf("failed to serve: %v", err)
 		}
 	case indexerCommand.FullCommand():
 		if *indexerPort == "" {
@@ -392,26 +301,11 @@ func main() {
 		}
 		defer ln.Close()
 		fmt.Println(info.GetName()+" is listening to port", *indexerPort)
-		if *indexerTOId {
-			for {
-				// Listen for an incoming connection.
-				conn, err := ln.Accept()
-				if err != nil {
-					panic(err)
-				}
-				// Handle connections in a new goroutine.
-				go indexer.TOIDHandleRequest(conn)
-			}
-		} else {
-			for {
-				// Listen for an incoming connection.
-				conn, err := ln.Accept()
-				if err != nil {
-					panic(err)
-				}
-				// Handle connections in a new goroutine.
-				go indexer.HandleRequest(conn)
-			}
+		s := grpc.NewServer()
+		indexer.RegisterIndexerServer(s, &indexer.Server{})
+		reflection.Register(s)
+		if err := s.Serve(ln); err != nil {
+			logrus.Fatalf("failed to serve: %v", err)
 		}
 	}
 }

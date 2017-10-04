@@ -1,0 +1,65 @@
+syntax = "proto3";
+
+service Queue {
+    rpc ReceiveRecords (RPCRecords) returns (RPCReply) {}
+    rpc ReceiveToken (RPCToken) returns (RPCReply) {}
+    rpc UpdateNextQueue (RPCQueue) returns (RPCReply) {}
+    rpc UpdateMaintainers (RPCMaintainers) returns (RPCReply) {}
+    rpc UpdateIndexers (RPCIndexers) returns (RPCReply) {}
+    rpc TOIDReceiveRecords (RPCRecords) returns (RPCReply) {}
+    rpc TOIDReceiveToken (RPCTOIDToken) returns (RPCReply) {}
+    rpc TOIDUpdateNextQueue (RPCQueue) returns (RPCReply) {}
+    rpc TOIDUpdateMaintainers (RPCMaintainers) returns (RPCReply) {}
+    rpc TOIDUpdateIndexers (RPCIndexers) returns (RPCReply) {}
+}
+
+message RPCRecord {
+    uint64 id = 1;
+    int64 timestamp = 2;
+    uint32 host = 3;
+    uint32 lid = 4;
+    map<string, string> tags = 5;
+    repeated uint64 hash = 6;
+    uint64 seed = 7;
+    // for TOID record
+    uint32 toid = 8;
+    RPCCausality causality = 9;
+}
+
+message RPCCausality {
+	uint32 host = 1;
+	uint32 toid = 2;
+}
+
+message RPCRecords {
+    repeated RPCRecord records = 1;
+}
+
+message RPCReply {
+    string message = 1;
+}
+
+message RPCQueue {
+    uint32 version = 1;
+    string queue = 2;
+}
+
+message RPCToken {
+    uint32 lastlid = 1;
+}
+
+message RPCMaintainers {
+    uint32 version = 1;
+    repeated string maintainer = 2;
+}
+
+message RPCIndexers {
+    uint32 version = 1;
+    repeated string indexer = 2;
+}
+
+message RPCTOIDToken {
+    repeated uint32 maxTOId = 1;
+    uint32 lastLId = 2;
+    repeated RPCRecord deferredRecords = 3;
+}

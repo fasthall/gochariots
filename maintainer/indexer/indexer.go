@@ -1,25 +1,20 @@
 package indexer
 
 import (
-	"bytes"
 	"encoding/binary"
-	"encoding/gob"
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
-	"io"
-	"net"
 	"sync"
 	"time"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/boltdb/bolt"
 	"github.com/fasthall/gochariots/info"
-	"github.com/fasthall/gochariots/misc/connection"
 	cache "github.com/patrickmn/go-cache"
+	"golang.org/x/net/context"
 )
 
-var Subscriber net.Conn
 var boltDB bool
 var db *bolt.DB
 var gocache *cache.Cache
@@ -33,13 +28,57 @@ type Query struct {
 }
 
 type IndexTableEntry struct {
-	LId  int
+	LId  uint32
 	Seed uint64
 }
 
 type IndexTable struct {
 	table map[uint64][]IndexTableEntry
 	mutex sync.Mutex
+}
+
+type Server struct{}
+
+func (s *Server) Query(ctx context.Context, in *RPCQueries) (*RPCQueryReply, error) {
+	ans := make([]bool, len(in.GetQueries()))
+	for i, q := range in.GetQueries() {
+		result := true
+		for _, hash := range q.GetHash() {
+			seeds, err := getIndexEntry(hash)
+			if err != nil {
+				logrus.WithError(err).Error("couldn't read from indexer")
+				panic(err)
+			}
+			in := false
+			for _, s := range seeds {
+				if s.Seed == q.GetSeed() {
+					in = true
+					break
+				}
+			}
+			if in == false {
+				result = false
+				break
+			}
+		}
+		if result {
+			ans[i] = true
+		}
+
+	}
+	return &RPCQueryReply{Reply: ans}, nil
+}
+
+func (s *Server) InsertTags(ctx context.Context, in *RPCTags) (*RPCReply, error) {
+	for key, value := range in.GetTags() {
+		insertIndexEntry(key, value, in.GetLid(), in.GetSeed())
+	}
+	return &RPCReply{Message: "ok"}, nil
+}
+
+func (s *Server) GetLIds(ctx context.Context, in *RPCTags) (*RPCLIds, error) {
+	lids := getLIdByTags(in.GetTags())
+	return &RPCLIds{Lid: lids}, nil
 }
 
 func NewIndexTable() IndexTable {
@@ -49,7 +88,7 @@ func NewIndexTable() IndexTable {
 	return index
 }
 
-func (it *IndexTable) Insert(key, value string, lid int, seed uint64) {
+func (it *IndexTable) Insert(key, value string, lid uint32, seed uint64) {
 	hash := tagToHash(key, value)
 	it.mutex.Lock()
 	it.table[hash] = append(it.table[hash], IndexTableEntry{
@@ -107,7 +146,7 @@ func getBytesFromDB(hash uint64) []byte {
 	return buf
 }
 
-func insertIndexEntry(key, value string, lid int, seed uint64) {
+func insertIndexEntry(key, value string, lid uint32, seed uint64) {
 	entry := IndexTableEntry{
 		LId:  lid,
 		Seed: seed,
@@ -205,119 +244,28 @@ func ToHash(b []byte) uint64 {
 	return hash.Sum64()
 }
 
-func getLIdByTag(key, value string) []int {
+func getLIdByTag(key, value string) []uint32 {
 	hash := tagToHash(key, value)
 	return getLIdByHash(hash)
 }
 
-func getLIdByTags(tags map[string]string) []int {
-	ans := []int{}
+func getLIdByTags(tags map[string]string) []uint32 {
+	ans := []uint32{}
 	for k, v := range tags {
 		ans = append(ans, getLIdByTag(k, v)...)
 	}
 	return ans
 }
 
-func getLIdByHash(hash uint64) []int {
+func getLIdByHash(hash uint64) []uint32 {
 	result, err := getIndexEntry(hash)
 	if err != nil {
 		logrus.WithError(err).Error("couldn't read from indexer")
 		panic(err)
 	}
-	ans := []int{}
+	ans := []uint32{}
 	for _, r := range result {
 		ans = append(ans, r.LId)
 	}
 	return ans
-}
-
-// HandleRequest handles incoming connection
-func HandleRequest(conn net.Conn) {
-	buf := make([]byte, 1024*1024*32)
-	for {
-		totalLength, err := connection.Read(conn, &buf)
-		if err == io.EOF {
-			return
-		} else if err != nil {
-			logrus.Error("couldn't read incoming request")
-			break
-		}
-		if buf[0] == 'q' { // query from queue
-			var query []Query
-			dec := gob.NewDecoder(bytes.NewBuffer(buf[1:totalLength]))
-			err = dec.Decode(&query)
-			if err != nil {
-				logrus.WithField("buffer", buf[1:totalLength]).Error("couldn't decode query")
-				break
-			}
-			ans := make([]bool, len(query))
-			for i, q := range query {
-				result := true
-				for _, hash := range q.Hash {
-					seeds, err := getIndexEntry(hash)
-					if err != nil {
-						logrus.WithError(err).Error("couldn't read from indexer")
-						panic(err)
-					}
-					in := false
-					for _, s := range seeds {
-						if s.Seed == q.Seed {
-							in = true
-							break
-						}
-					}
-					if in == false {
-						result = false
-						break
-					}
-				}
-				if result {
-					ans[i] = true
-				}
-
-			}
-			var tmp bytes.Buffer
-			enc := gob.NewEncoder(&tmp)
-			err := enc.Encode(ans)
-			if err != nil {
-				logrus.WithError(err).Error("couldn't encode answer boolean slice")
-				break
-			}
-			b := make([]byte, 4)
-			binary.BigEndian.PutUint32(b, uint32(len(tmp.Bytes())))
-			conn.Write(append(b, tmp.Bytes()...))
-		} else if buf[0] == 't' { // insert tags into hash table
-			lid := int(binary.BigEndian.Uint32(buf[1:5]))
-			seed := binary.BigEndian.Uint64(buf[5:13])
-			var tags map[string]string
-			dec := gob.NewDecoder(bytes.NewBuffer(buf[13:totalLength]))
-			err := dec.Decode(&tags)
-			if err != nil {
-				logrus.WithField("buffer", buf[1:totalLength]).Error("couldn't decode tags")
-				panic(err)
-			}
-			for key, value := range tags {
-				insertIndexEntry(key, value, lid, seed)
-			}
-		} else if buf[0] == 'g' { // get LIds by tags
-			var tags map[string]string
-			err := json.Unmarshal(buf[1:totalLength], &tags)
-			if err != nil {
-				logrus.WithField("buffer", buf[1:totalLength]).Error("couldn't unmarshal tags")
-				panic(err)
-			}
-			lids := getLIdByTags(tags)
-			b, err := json.Marshal(lids)
-			if err != nil {
-				conn.Write([]byte(fmt.Sprintln(err)))
-			} else {
-				conn.Write(b)
-			}
-		} else if buf[0] == 's' {
-			logrus.Info("got subscription")
-			Subscriber = conn
-		} else {
-			logrus.WithField("header", buf[0]).Warning("couldn't understand request")
-		}
-	}
 }

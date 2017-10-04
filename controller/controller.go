@@ -1,32 +1,39 @@
-package info
+package controller
 
 import (
-	"encoding/binary"
+	"context"
 	"encoding/json"
-	"net"
 	"net/http"
 	"strconv"
 	"time"
 
+	"google.golang.org/grpc"
+
 	"sync"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/fasthall/gochariots/batcher"
+	"github.com/fasthall/gochariots/maintainer"
 	"github.com/fasthall/gochariots/misc"
+	"github.com/fasthall/gochariots/queue"
 	"github.com/gin-gonic/gin"
 )
 
 var apps []string
-var appsVersion int
+var appsVersion uint32
 var batchers []string
-var batchersVersion int
+var batcherClient []batcher.BatcherClient
+var batchersVersion uint32
 var queues []string
-var queuesVersion int
+var queueClient []queue.QueueClient
+var queuesVersion uint32
 var maintainers []string
-var maintainersVersion int
+var maintainerClient []maintainer.MaintainerClient
+var maintainersVersion uint32
 var indexers []string
-var indexersVersion int
+var indexersVersion uint32
 var remoteBatcher []string
-var remoteBatcherVer int
+var remoteBatcherVer uint32
 var mutex sync.Mutex
 
 // StartController starts controller's REST API server on sepcified port
@@ -85,7 +92,7 @@ func informAppBatcher(host string) {
 	}
 	p := misc.NewParams()
 	p.AddParam("host", string(jsonBatchers))
-	p.AddParam("ver", strconv.Itoa(batchersVersion))
+	p.AddParam("ver", strconv.Itoa(int(batchersVersion)))
 	code := http.StatusBadRequest
 	for code != http.StatusOK {
 		time.Sleep(1 * time.Second)
@@ -105,7 +112,7 @@ func informAppIndexer(host string) {
 	}
 	p := misc.NewParams()
 	p.AddParam("host", string(jsonIndexers))
-	p.AddParam("ver", strconv.Itoa(indexersVersion))
+	p.AddParam("ver", strconv.Itoa(int(indexersVersion)))
 	code := http.StatusBadRequest
 	for code != http.StatusOK {
 		time.Sleep(1 * time.Second)
@@ -131,27 +138,23 @@ func addBatchers(c *gin.Context) {
 	mutex.Lock()
 	batchers = append(batchers, c.Query("host"))
 	batchersVersion++
+	conn, err := grpc.Dial(c.Query("host"), grpc.WithInsecure())
+	if err != nil {
+		c.String(http.StatusBadRequest, "couldn't connect to batcher")
+		return
+	}
+	cli := batcher.NewBatcherClient(conn)
+	batcherClient = append(batcherClient, cli)
 	mutex.Unlock()
 	for _, host := range apps {
 		informAppBatcher(host)
 	}
-	for i, host := range batchers {
-		conn, err := net.Dial("tcp", host)
-		if err != nil {
-			logrus.WithField("id", i).Error("couldn't connect to batcher")
-			panic("failing to update cluster may cause unexpected error")
+	for i, cli := range batcherClient {
+		rpcQueues := batcher.RPCQueues{
+			Version: queuesVersion,
+			Queues:  queues,
 		}
-		defer conn.Close()
-		jsonBytes, err := json.Marshal(queues)
-		if err != nil {
-			logrus.WithField("queues", queues).Error("couldn't convert queue list to bytes")
-			panic("failing to update cluster may cause unexpected error")
-		}
-		b := make([]byte, 9)
-		b[4] = byte('q')
-		binary.BigEndian.PutUint32(b[5:], uint32(queuesVersion))
-		binary.BigEndian.PutUint32(b, uint32(len(jsonBytes)+5))
-		_, err = conn.Write(append(b, jsonBytes...))
+		_, err := cli.UpdateQueue(context.Background(), &rpcQueues)
 		if err != nil {
 			logrus.WithField("id", i).Error("couldn't send queue list to batcher")
 			panic("failing to update cluster may cause unexpected error")
@@ -174,86 +177,56 @@ func addQueue(c *gin.Context) {
 	}
 	mutex.Lock()
 	queues = append(queues, c.Query("host"))
+	conn, err := grpc.Dial(c.Query("host"), grpc.WithInsecure())
+	cli := queue.NewQueueClient(conn)
+	queueClient = append(queueClient, cli)
 	queuesVersion++
 	mutex.Unlock()
 
 	c.String(http.StatusOK, c.Query("host")+" added")
 	// update "next queue" for each queue
-	for i, host := range queues {
-		conn, err := net.Dial("tcp", host)
-		if err != nil {
-			logrus.WithField("id", i).Error("couldn't connect to queue")
-			panic("failing to update cluster may cause unexpected error")
+	for i := range queueClient {
+		host := queues[(i+1)%len(queues)]
+		rpcQueue := queue.RPCQueue{
+			Version: queuesVersion,
+			Queue:   host,
 		}
-		defer conn.Close()
-		b := make([]byte, 9)
-		b[4] = byte('q')
-		binary.BigEndian.PutUint32(b[5:], uint32(queuesVersion))
-		binary.BigEndian.PutUint32(b, uint32(len(queues[(i+1)%len(queues)])+5))
-		_, err = conn.Write(append(b, []byte(queues[(i+1)%len(queues)])...))
+		_, err := queueClient[i].UpdateNextQueue(context.Background(), &rpcQueue)
 		if err != nil {
 			logrus.WithField("id", i).Error("couldn't send next queue host")
 			panic("failing to update cluster may cause unexpected error")
 		}
 		logrus.WithFields(logrus.Fields{"id": i, "queue": queues[(i+1)%len(queues)]}).Info("successfully informed queue about next queue host")
 	}
-	// update filter about queues
-	for i, host := range batchers {
-		conn, err := net.Dial("tcp", host)
+	// update batchers about queues
+	for i, cli := range batcherClient {
+		rpcQueues := batcher.RPCQueues{}
+		_, err := cli.UpdateQueue(context.Background(), &rpcQueues)
 		if err != nil {
-			logrus.WithField("id", i).Error("couldn't connect to batcher")
+			logrus.WithField("id", i).WithError(err).Error("couldn't send new queue host")
 			panic("failing to update cluster may cause unexpected error")
 		}
-		defer conn.Close()
-		b := make([]byte, 9)
-		b[4] = byte('q')
-		jsonBytes, err := json.Marshal(queues)
-		binary.BigEndian.PutUint32(b[5:], uint32(queuesVersion))
-		binary.BigEndian.PutUint32(b, uint32(len(jsonBytes)+5))
-		_, err = conn.Write(append(b, []byte(jsonBytes)...))
-		if err != nil {
-			logrus.WithField("id", i).Error("couldn't send new queue host")
-			panic("failing to update cluster may cause unexpected error")
-		}
-		logrus.WithFields(logrus.Fields{"batcher": host, "queues": queues}).Info("successfully informed batcher about new queue host")
+		logrus.WithFields(logrus.Fields{"batcher": i, "queues": queues}).Info("successfully informed batcher about new queue host")
 	}
 
 	// update queues' maintainer list
-	conn, err := net.Dial("tcp", c.Query("host"))
-	if err != nil {
-		logrus.WithField("host", c.Query("host")).Error("couldn't connect to queue")
-		panic("failing to update cluster may cause unexpected error")
+	rpcMaintainers := queue.RPCMaintainers{
+		Version:    maintainersVersion,
+		Maintainer: maintainers,
 	}
-	jsonBytes, err := json.Marshal(maintainers)
-	b := make([]byte, 9)
-	b[4] = byte('m')
-	binary.BigEndian.PutUint32(b[5:], uint32(maintainersVersion))
-	binary.BigEndian.PutUint32(b, uint32(len(jsonBytes)+5))
-	_, err = conn.Write(append(b, jsonBytes...))
+	_, err = cli.UpdateMaintainers(context.Background(), &rpcMaintainers)
 	if err != nil {
 		logrus.WithField("host", c.Query("host")).Error("couldn't send maintainer list to new queue")
 		panic("failing to update cluster may cause unexpected error")
 	}
-	conn.Close()
 	logrus.WithField("maintainers", maintainers).Info("successfully informed new queue about maintainer list")
 
 	// tell queue about indexer
-	conn, err = net.Dial("tcp", c.Query("host"))
-	if err != nil {
-		logrus.WithField("host", c.Query("host")).Error("couldn't connect to queue")
-		panic("failing to update cluster may cause unexpected error")
+	rpcIndexers := queue.RPCIndexers{
+		Version: indexersVersion,
+		Indexer: indexers,
 	}
-	defer conn.Close()
-	jsonBytes, err = json.Marshal(indexers)
-	if err != nil {
-		logrus.WithError(err).Error("couldn't convert indexer list to json bytes")
-		panic(err)
-	}
-	b = make([]byte, 9)
-	b[4] = byte('i')
-	binary.BigEndian.PutUint32(b[5:], uint32(indexersVersion))
-	binary.BigEndian.PutUint32(b, uint32(len(jsonBytes)+5))
-	_, err = conn.Write(append(b, jsonBytes...))
+	_, err = cli.UpdateIndexers(context.Background(), &rpcIndexers)
 	if err != nil {
 		logrus.WithField("host", c.Query("host")).Error("couldn't send indexer list to queue")
 		panic("failing to update cluster may cause unexpected error")
@@ -274,6 +247,9 @@ func addMaintainer(c *gin.Context) {
 	}
 	mutex.Lock()
 	maintainers = append(maintainers, c.Query("host"))
+	conn, err := grpc.Dial(c.Query("host"), grpc.WithInsecure())
+	cli := maintainer.NewMaintainerClient(conn)
+	maintainerClient = append(maintainerClient, cli)
 	maintainersVersion++
 	mutex.Unlock()
 	c.String(http.StatusOK, c.Query("host")+" added")
@@ -281,17 +257,11 @@ func addMaintainer(c *gin.Context) {
 	// tell maintainer its indexer
 	i := len(maintainers) - 1
 	if i < len(indexers) {
-		conn, err := net.Dial("tcp", c.Query("host"))
-		defer conn.Close()
-		if err != nil {
-			logrus.WithField("host", c.Query("host")).Error("couldn't connect to maintainer")
-			panic("failing to update cluster may cause unexpected error")
+		rpcIndexer := maintainer.RPCIndexer{
+			Version: indexersVersion,
+			Indexer: indexers[i],
 		}
-		b := make([]byte, 9)
-		b[4] = byte('i')
-		binary.BigEndian.PutUint32(b[5:], uint32(indexersVersion))
-		binary.BigEndian.PutUint32(b, uint32(len(indexers[i])+5))
-		_, err = conn.Write(append(b, []byte(indexers[i])...))
+		_, err := cli.UpdateIndexer(context.Background(), &rpcIndexer)
 		if err != nil {
 			logrus.WithFields(logrus.Fields{"maintainer": c.Query("host"), "indexer": indexers[i]}).Error("couldn't notify maintainer its indexer")
 			panic("failing to update cluster may cause unexpected error")
@@ -300,19 +270,12 @@ func addMaintainer(c *gin.Context) {
 	}
 
 	// update queues' maintainer list
-	for i, host := range queues {
-		conn, err := net.Dial("tcp", host)
-		if err != nil {
-			logrus.WithField("id", i).Error("couldn't connect to queue")
-			panic("failing to update cluster may cause unexpected error")
+	for _, cli := range queueClient {
+		rpcMaintainers := queue.RPCMaintainers{
+			Version:    maintainersVersion,
+			Maintainer: maintainers,
 		}
-		defer conn.Close()
-		jsonBytes, err := json.Marshal(maintainers)
-		b := make([]byte, 9)
-		b[4] = byte('m')
-		binary.BigEndian.PutUint32(b[5:], uint32(maintainersVersion))
-		binary.BigEndian.PutUint32(b, uint32(len(jsonBytes)+5))
-		_, err = conn.Write(append(b, jsonBytes...))
+		_, err := cli.UpdateMaintainers(context.Background(), &rpcMaintainers)
 		if err != nil {
 			logrus.WithField("id", i).Error("couldn't send maintainer list to queue")
 			panic("failing to update cluster may cause unexpected error")
@@ -321,18 +284,11 @@ func addMaintainer(c *gin.Context) {
 	}
 
 	// update remote batchers
-	conn, err := net.Dial("tcp", c.Query("host"))
-	if err != nil {
-		logrus.WithField("host", c.Query("host")).Error("couldn't connect to maintainer")
-		panic("failing to update cluster may cause unexpected error")
+	rpcBatchers := maintainer.RPCBatchers{
+		Version: remoteBatcherVer,
+		Batcher: remoteBatcher,
 	}
-	defer conn.Close()
-	jsonBytes, err := json.Marshal(remoteBatcher)
-	b := make([]byte, 9)
-	b[4] = byte('b')
-	binary.BigEndian.PutUint32(b[5:], uint32(remoteBatcherVer))
-	binary.BigEndian.PutUint32(b, uint32(len(jsonBytes)+5))
-	_, err = conn.Write(append(b, jsonBytes...))
+	_, err = cli.UpdateBatchers(context.Background(), &rpcBatchers)
 	if err != nil {
 		logrus.WithField("id", i).Error("couldn't send remoteBatcher to maintainer")
 		panic("failing to update cluster may cause unexpected error")
@@ -364,45 +320,27 @@ func addIndexer(c *gin.Context) {
 	// tell maintainer its indexer
 	i := len(indexers) - 1
 	if i < len(maintainers) {
-		maintainer := maintainers[i]
-		conn, err := net.Dial("tcp", maintainer)
-		defer conn.Close()
-		if err != nil {
-			logrus.WithField("host", maintainer).Error("couldn't connect to maintainer")
-			panic("failing to update cluster may cause unexpected error")
+		rpcIndexer := maintainer.RPCIndexer{
+			Version: indexersVersion,
+			Indexer: indexers[i],
 		}
-		b := make([]byte, 9)
-		b[4] = byte('i')
-		binary.BigEndian.PutUint32(b[5:], uint32(indexersVersion))
-		binary.BigEndian.PutUint32(b, uint32(len(indexers[i])+5))
-		_, err = conn.Write(append(b, []byte(indexers[i])...))
+		_, err := maintainerClient[i].UpdateIndexer(context.Background(), &rpcIndexer)
 		if err != nil {
 			logrus.WithFields(logrus.Fields{"maintainer": c.Query("host"), "indexer": indexers[i]}).Error("couldn't notify maintainer its indexer")
 			panic("failing to update cluster may cause unexpected error")
 		}
-		logrus.WithFields(logrus.Fields{"maintainer": maintainer, "indexer": indexers[i]}).Info("successfully informed maintainer its indexer")
+		logrus.WithFields(logrus.Fields{"maintainer": maintainers[i], "indexer": indexers[i]}).Info("successfully informed maintainer its indexer")
 	}
 
 	// update queues' indexer list
-	for _, host := range queues {
-		conn, err := net.Dial("tcp", host)
-		if err != nil {
-			logrus.WithField("host", host).Error("couldn't connect to queue")
-			panic("failing to update cluster may cause unexpected error")
+	for i, cli := range queueClient {
+		rpcIndexers := queue.RPCIndexers{
+			Version: indexersVersion,
+			Indexer: indexers,
 		}
-		defer conn.Close()
-		jsonBytes, err := json.Marshal(indexers)
+		_, err := cli.UpdateIndexers(context.Background(), &rpcIndexers)
 		if err != nil {
-			logrus.WithError(err).Error("couldn't convert indexer list to json bytes")
-			panic(err)
-		}
-		b := make([]byte, 9)
-		b[4] = byte('i')
-		binary.BigEndian.PutUint32(b[5:], uint32(indexersVersion))
-		binary.BigEndian.PutUint32(b, uint32(len(jsonBytes)+5))
-		_, err = conn.Write(append(b, jsonBytes...))
-		if err != nil {
-			logrus.WithField("host", host).Error("couldn't send indexer list to queue")
+			logrus.WithField("host", queues[i]).Error("couldn't send indexer list to queue")
 			panic("failing to update cluster may cause unexpected error")
 		}
 		logrus.WithField("indexers", indexers).Info("successfully informed queues about indexer list")
@@ -430,19 +368,12 @@ func addRemoteBatcher(c *gin.Context) {
 	remoteBatcherVer++
 	mutex.Unlock()
 
-	for i, host := range maintainers {
-		conn, err := net.Dial("tcp", host)
-		if err != nil {
-			logrus.WithFields(logrus.Fields{"id": i, "host": host}).Error("couldn't connect to maintainer")
-			panic("failing to update cluster may cause unexpected error")
+	for i, cli := range maintainerClient {
+		rpcBatchers := maintainer.RPCBatchers{
+			Version: remoteBatcherVer,
+			Batcher: remoteBatcher,
 		}
-		defer conn.Close()
-		jsonBytes, err := json.Marshal(remoteBatcher)
-		b := make([]byte, 9)
-		b[4] = byte('b')
-		binary.BigEndian.PutUint32(b[5:], uint32(remoteBatcherVer))
-		binary.BigEndian.PutUint32(b, uint32(len(jsonBytes)+5))
-		_, err = conn.Write(append(b, jsonBytes...))
+		_, err := cli.UpdateBatchers(context.Background(), &rpcBatchers)
 		if err != nil {
 			logrus.WithField("id", i).Error("couldn't send remoteBatcher to maintainer")
 			panic("failing to update cluster may cause unexpected error")

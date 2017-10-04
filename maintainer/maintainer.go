@@ -1,19 +1,15 @@
 package maintainer
 
 import (
-	"bytes"
 	"encoding/binary"
-	"encoding/gob"
 	"encoding/json"
-	"errors"
-	"fmt"
-	"io"
-	"net"
 	"os"
 	"path/filepath"
 	"time"
 
-	"sync"
+	"google.golang.org/grpc"
+
+	"github.com/fasthall/gochariots/maintainer/indexer"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/fasthall/gochariots/info"
@@ -21,27 +17,87 @@ import (
 	"github.com/fasthall/gochariots/maintainer/adapter/cosmos"
 	"github.com/fasthall/gochariots/maintainer/adapter/datastore"
 	"github.com/fasthall/gochariots/maintainer/adapter/dynamodb"
-	"github.com/fasthall/gochariots/misc/connection"
+	"github.com/fasthall/gochariots/maintainer/adapter/mongodb"
 	"github.com/fasthall/gochariots/record"
+	"golang.org/x/net/context"
 )
 
 const batchSize int = 1000
 
 // LastLId records the last LID maintained by this maintainer
-var LastLId int
+var LastLId uint32
 var path = "flstore"
 var f *os.File
-var indexerConnMutex sync.Mutex
-var indexerConn net.Conn
+var indexerClient indexer.IndexerClient
 var indexerHost string
 var indexerVer int
 var maintainerInterface int
 
 var logFirstTime time.Time
-var logRecordNth int
+var logRecordNth uint32
+
+type Server struct{}
+
+func (s *Server) ReceiveRecords(ctx context.Context, in *RPCRecords) (*RPCReply, error) {
+	records := make([]record.Record, len(in.GetRecords()))
+	for i, ri := range in.GetRecords() {
+		records[i] = record.Record{
+			Timestamp: ri.GetTimestamp(),
+			Host:      ri.GetHost(),
+			LId:       ri.GetLid(),
+			Tags:      ri.GetTags(),
+			Hash:      ri.GetHash(),
+			Seed:      ri.GetSeed(),
+		}
+	}
+	recordsArrival(records)
+	return &RPCReply{Message: "ok"}, nil
+}
+
+func (s *Server) UpdateBatchers(ctx context.Context, in *RPCBatchers) (*RPCReply, error) {
+	ver := int(in.GetVersion())
+	if ver > remoteBatcherVer {
+		remoteBatcherVer = ver
+		remoteBatchers = in.GetBatcher()
+		logrus.WithField("host", in.GetBatcher()).Info("received remote batcher hosts update")
+	} else {
+		logrus.WithFields(logrus.Fields{"current": remoteBatcherVer, "received": ver}).Debug("receiver older version of remote batcher hosts")
+	}
+	return &RPCReply{Message: "ok"}, nil
+}
+
+func (s *Server) UpdateIndexer(ctx context.Context, in *RPCIndexer) (*RPCReply, error) {
+	ver := int(in.GetVersion())
+	if ver > indexerVer {
+		indexerVer = ver
+		indexerHost = in.GetIndexer()
+		conn, err := grpc.Dial(indexerHost, grpc.WithInsecure())
+		if err != nil {
+			reply := RPCReply{
+				Message: "couldn't connect to indexer",
+			}
+			return &reply, err
+		}
+		indexerClient = indexer.NewIndexerClient(conn)
+		logrus.WithField("host", in.GetIndexer()).Info("received indexer hosts update")
+	} else {
+		logrus.WithFields(logrus.Fields{"current": indexerVer, "received": ver}).Debug("receiver older version of indexer hosts")
+	}
+	return &RPCReply{Message: "ok"}, nil
+}
+
+func (s *Server) ReadByLId(ctx context.Context, in *RPCLId) (*RPCReply, error) {
+	lid := int(in.GetLid())
+	r, err := ReadByLId(lid)
+	if err != nil {
+		return nil, err
+	}
+	j, err := json.Marshal(r)
+	return &RPCReply{Message: string(j)}, nil
+}
 
 // InitLogMaintainer initializes the maintainer and assign the path name to store the records
-func InitLogMaintainer(p string, n int, itf int) {
+func InitLogMaintainer(p string, n uint32, itf int) {
 	logRecordNth = n
 	LastLId = 0
 	err := os.MkdirAll(path, os.ModePerm)
@@ -54,12 +110,6 @@ func InitLogMaintainer(p string, n int, itf int) {
 		panic(err)
 	}
 	maintainerInterface = itf
-}
-
-func dialConn() error {
-	var err error
-	indexerConn, err = net.Dial("tcp", indexerHost)
-	return err
 }
 
 // Append appends a new record to the maintainer.
@@ -102,69 +152,30 @@ func Append(r record.Record) error {
 		if err != nil {
 			return err
 		}
+	} else if maintainerInterface == adapter.MONGODB {
+		err := mongodb.PutRecord(r)
+		if err != nil {
+			return err
+		}
 	}
 
 	InsertIndexer(r)
 	LastLId = r.LId
-	if r.Host == info.ID {
+	if r.Host == uint32(info.ID) {
 		Propagate(r)
 	}
 	return nil
 }
 
 func InsertIndexer(r record.Record) {
-	lidBytes := make([]byte, 4)
-	binary.BigEndian.PutUint32(lidBytes, uint32(r.LId))
-	seedBytes := make([]byte, 8)
-	binary.BigEndian.PutUint64(seedBytes, r.Seed)
-	var buf bytes.Buffer
-	enc := gob.NewEncoder(&buf)
-	err := enc.Encode(r.Tags)
+	rpcTags := indexer.RPCTags{
+		Lid:  r.LId,
+		Seed: r.Seed,
+		Tags: r.Tags,
+	}
+	_, err := indexerClient.InsertTags(context.Background(), &rpcTags)
 	if err != nil {
-		logrus.WithField("tags", r.Tags).Error("couldn't encode tags")
-		return
-	}
-	b := make([]byte, 5)
-	b[4] = byte('t')
-	binary.BigEndian.PutUint32(b, uint32(13+buf.Len()))
-
-	indexerConnMutex.Lock()
-	if indexerConn == nil {
-		err := dialConn()
-		if err != nil {
-			logrus.WithField("host", indexerHost).Error("couldn't connect to indexer")
-		} else {
-			logrus.WithField("host", indexerHost).Info("connected to indexer")
-		}
-	}
-	indexerConnMutex.Unlock()
-	cnt := 5
-	sent := false
-	for sent == false {
-		var err error
-		indexerConnMutex.Lock()
-		if indexerConn != nil {
-			_, err = indexerConn.Write(append(append(append(b, lidBytes...), seedBytes...), buf.Bytes()...))
-		} else {
-			err = errors.New("indexerConn == nil")
-		}
-		indexerConnMutex.Unlock()
-		if err != nil {
-			if cnt >= 0 {
-				cnt--
-				err = dialConn()
-				if err != nil {
-					logrus.WithField("attempt", cnt).Warning("couldn't connect to indexer, retrying...")
-				} else {
-					logrus.WithField("host", indexerHost).Info("connected to indexer")
-				}
-			} else {
-				logrus.WithField("host", indexerHost).Error("failed to connect to indexer after retrying 5 times")
-				break
-			}
-		} else {
-			sent = true
-		}
+		logrus.WithField("host", indexerHost).Error("failed to connect to indexer")
 	}
 }
 
@@ -209,74 +220,6 @@ func recordsArrival(records []record.Record) {
 	}
 }
 
-// HandleRequest handles incoming connection
-func HandleRequest(conn net.Conn) {
-	buf := make([]byte, 1024*1024*32)
-	for {
-		totalLength, err := connection.Read(conn, &buf)
-		if err == io.EOF {
-			return
-		} else if err != nil {
-			logrus.WithError(err).Error("couldn't read incoming request")
-			break
-		}
-		if buf[0] == 'b' { // received remote batchers update
-			ver := int(binary.BigEndian.Uint32(buf[1:5]))
-			if ver > remoteBatcherVer {
-				remoteBatcherVer = ver
-				err := json.Unmarshal(buf[5:totalLength], &remoteBatchers)
-				if err != nil {
-					logrus.WithField("buffer", string(buf[1:totalLength])).Error("couldn't convert read buffer to batcher list")
-					panic(err)
-				} else {
-					remoteBatchersConn = make([]net.Conn, len(remoteBatchers))
-					logrus.WithField("batchers", remoteBatchers).Info("received remote batchers update")
-				}
-			} else {
-				logrus.WithFields(logrus.Fields{"current": remoteBatcherVer, "received": ver}).Debug("receiver older version of remote batcher")
-			}
-		} else if buf[0] == 'r' { // received records from queue
-			// info.LogTimestamp("HandleRequest")
-			records := []record.Record{}
-			err := record.GobToRecordArray(buf[1:totalLength], &records)
-			if err != nil {
-				logrus.WithField("buffer", string(buf[1:totalLength])).Error("couldn't convert read buffer to records")
-			}
-			logrus.WithField("records", records).Debug("received incoming record")
-			recordsArrival(records)
-		} else if buf[0] == 'l' { // read records by LIds
-			lid := int(binary.BigEndian.Uint32(buf[1:totalLength]))
-			r, err := ReadByLId(lid)
-			if err != nil {
-				conn.Write([]byte(fmt.Sprint(err)))
-			} else {
-				b, err := json.Marshal(r)
-				if err != nil {
-					logrus.WithField("record", r).Error("couldn't convert record to bytes")
-					conn.Write([]byte(fmt.Sprint(err)))
-				} else {
-					conn.Write(b)
-				}
-			}
-		} else if buf[0] == 'i' { // received indexer update
-			ver := int(binary.BigEndian.Uint32(buf[1:5]))
-			if ver > indexerVer {
-				indexerVer = ver
-				indexerHost = string(buf[5:totalLength])
-				if indexerConn != nil {
-					indexerConn.Close()
-					indexerConn = nil
-				}
-				logrus.WithField("host", indexerHost).Info("updates indexer host")
-			} else {
-				logrus.WithFields(logrus.Fields{"current": indexerVer, "received": ver}).Debug("receiver older version of indexer host")
-			}
-		} else {
-			logrus.WithField("header", buf[0]).Warning("couldn't understand request")
-		}
-	}
-}
-
-func AssignToMaintainer(LId, numMaintainers int) int {
-	return ((LId - 1) / batchSize) % numMaintainers
+func AssignToMaintainer(LId uint32, numMaintainers int) int {
+	return int((LId - 1) / uint32(batchSize) % uint32(numMaintainers))
 }

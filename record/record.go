@@ -14,9 +14,10 @@ import (
 //	TOId: The total order of the record in the origining datacenter
 //	Tags: Consist of keys and values
 type Record struct {
+	Id        uint64 `bson:"_id,omitempty"`
 	Timestamp int64
-	Host      int
-	LId       int
+	Host      uint32
+	LId       uint32
 	Tags      map[string]string
 	Hash      []uint64
 	Seed      uint64

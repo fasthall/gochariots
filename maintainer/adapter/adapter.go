@@ -5,4 +5,5 @@ const (
 	DYNAMODB  = iota
 	DATASTORE = iota
 	COSMOSDB  = iota
+	MONGODB   = iota
 )

@@ -1,46 +1,128 @@
 package queue
 
 import (
-	"bytes"
-	"encoding/binary"
-	"encoding/gob"
-	"encoding/json"
-	"errors"
-	"io"
-	"net"
 	"sync"
 	"time"
+
+	"google.golang.org/grpc"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/fasthall/gochariots/maintainer"
 	"github.com/fasthall/gochariots/maintainer/indexer"
-	"github.com/fasthall/gochariots/misc/connection"
 	"github.com/fasthall/gochariots/record"
+	"golang.org/x/net/context"
 )
 
 var lastTime time.Time
 var bufMutex sync.Mutex
 var buffered []record.Record
-var maintainerConnMutex sync.Mutex
-var maintainersConn []net.Conn
+var maintainersClient []maintainer.MaintainerClient
 var maintainersHost []string
 var maintainersVer int
-var indexerConnMutex sync.Mutex
-var indexerConn []net.Conn
+var indexerClient []indexer.IndexerClient
 var indexerHost []string
 var indexersVer int
-var queueConnMutex sync.Mutex
-var nextQueueConn net.Conn
+var nextQueueClient QueueClient
 var nextQueueHost string
 var nextQueueVer int
 
 var indexerBuf []byte
 
-type queueHost int
-
 // Token is used by queues to ensure causality of LId assignment
 type Token struct {
-	LastLId int
+	LastLId uint32
+}
+
+type Server struct{}
+
+func (s *Server) ReceiveRecords(ctx context.Context, in *RPCRecords) (*RPCReply, error) {
+	records := make([]record.Record, len(in.GetRecords()))
+	for i, ri := range in.GetRecords() {
+		records[i] = record.Record{
+			Timestamp: ri.GetTimestamp(),
+			Host:      ri.GetHost(),
+			LId:       ri.GetLid(),
+			Tags:      ri.GetTags(),
+			Hash:      ri.GetHash(),
+			Seed:      ri.GetSeed(),
+		}
+	}
+	recordsArrival(records)
+	return &RPCReply{Message: "ok"}, nil
+}
+
+func (s *Server) ReceiveToken(ctx context.Context, in *RPCToken) (*RPCReply, error) {
+	token := Token{
+		LastLId: in.Lastlid,
+	}
+	tokenArrival(token)
+	return &RPCReply{Message: "ok"}, nil
+}
+
+func (s *Server) UpdateNextQueue(ctx context.Context, in *RPCQueue) (*RPCReply, error) {
+	ver := int(in.GetVersion())
+	if ver > nextQueueVer {
+		nextQueueVer = ver
+		nextQueueHost = in.GetQueue()
+		conn, err := grpc.Dial(nextQueueHost, grpc.WithInsecure())
+		if err != nil {
+			reply := RPCReply{
+				Message: "couldn't connect to next queue",
+			}
+			return &reply, err
+		}
+		nextQueueClient = NewQueueClient(conn)
+		logrus.WithField("host", nextQueueHost).Info("received next host update")
+	} else {
+		logrus.WithFields(logrus.Fields{"current": nextQueueVer, "received": ver}).Debug("receiver older version of next queue host")
+	}
+	return &RPCReply{Message: "ok"}, nil
+}
+
+func (s *Server) UpdateMaintainers(ctx context.Context, in *RPCMaintainers) (*RPCReply, error) {
+	ver := int(in.GetVersion())
+	if ver > maintainersVer {
+		maintainersVer = ver
+		maintainersHost = in.GetMaintainer()
+		maintainersClient = make([]maintainer.MaintainerClient, len(maintainersHost))
+		for i := range maintainersHost {
+			conn, err := grpc.Dial(maintainersHost[i], grpc.WithInsecure())
+			if err != nil {
+				reply := RPCReply{
+					Message: "couldn't connect to maintainer",
+				}
+				return &reply, err
+			}
+			maintainersClient[i] = maintainer.NewMaintainerClient(conn)
+		}
+		logrus.WithField("host", in.GetMaintainer()).Info("received maintainer hosts update")
+	} else {
+		logrus.WithFields(logrus.Fields{"current": maintainersVer, "received": ver}).Debug("receiver older version of maintainer hosts")
+	}
+	return &RPCReply{Message: "ok"}, nil
+}
+
+func (s *Server) UpdateIndexers(ctx context.Context, in *RPCIndexers) (*RPCReply, error) {
+	ver := int(in.GetVersion())
+	if ver > indexersVer {
+		indexersVer = ver
+		indexerHost = in.GetIndexer()
+		indexerClient = make([]indexer.IndexerClient, len(indexerHost))
+		for i := range indexerHost {
+			conn, err := grpc.Dial(indexerHost[i], grpc.WithInsecure())
+			if err != nil {
+				reply := RPCReply{
+					Message: "couldn't connect to indexer",
+				}
+				return &reply, err
+			}
+			indexerClient[i] = indexer.NewIndexerClient(conn)
+		}
+		logrus.WithField("host", in.GetIndexer()).Info("received indexer hosts update")
+	} else {
+		logrus.WithFields(logrus.Fields{"current": indexersVer, "received": ver}).Debug("receiver older version of indexer hosts")
+	}
+	return &RPCReply{Message: "ok"}, nil
 }
 
 // InitQueue initializes the buffer and hashmap for queued records
@@ -60,7 +142,7 @@ func InitQueue(hasToken bool) {
 }
 
 // InitToken intializes a token. The IDs info should be accuired from log maintainers
-func (token *Token) InitToken(lastLId int) {
+func (token *Token) InitToken(lastLId uint32) {
 	token.LastLId = lastLId
 }
 
@@ -98,7 +180,7 @@ func tokenArrival(token Token) {
 	// Ask indexer if the prerequisite records have been indexed already
 	if len(query) > 0 {
 		existed := make([]bool, len(query))
-		for i := range indexerConn {
+		for i := range indexerClient {
 			logrus.WithField("query", query).Debug("queryIndexer")
 			result, err := queryIndexer(query, i)
 			if err != nil {
@@ -124,9 +206,9 @@ func tokenArrival(token Token) {
 	// assign LId and send to log maintainers
 	lastID := assignLId(dispatch, token.LastLId)
 	token.LastLId = lastID
-	toDispatch := make([][]record.Record, len(maintainersConn))
+	toDispatch := make([][]record.Record, len(maintainersClient))
 	for _, r := range dispatch {
-		id := maintainer.AssignToMaintainer(r.LId, len(maintainersConn))
+		id := maintainer.AssignToMaintainer(r.LId, len(maintainersClient))
 		toDispatch[id] = append(toDispatch[id], r)
 	}
 	for id, t := range toDispatch {
@@ -139,20 +221,12 @@ func tokenArrival(token Token) {
 
 // assignLId assigns LId to all the records to be sent to log maintainers
 // return the last LId assigned
-func assignLId(records []record.Record, lastLId int) int {
+func assignLId(records []record.Record, lastLId uint32) uint32 {
 	for i := range records {
 		lastLId++
 		records[i].LId = lastLId
 	}
 	return lastLId
-}
-
-func dialNextQueue() error {
-	queueConnMutex.Lock()
-	var err error
-	nextQueueConn, err = net.Dial("tcp", nextQueueHost)
-	queueConnMutex.Unlock()
-	return err
 }
 
 // passToken sends the token to the next queue in the ring
@@ -161,252 +235,54 @@ func passToken(token *Token) {
 	if nextQueueHost == "" {
 		tokenArrival(*token)
 	} else {
-		bytes, err := json.Marshal(token)
-		if err != nil {
-			logrus.WithError(err).Warning("couldn't convert token to bytes")
+		rpcToken := RPCToken{
+			Lastlid: token.LastLId,
 		}
-		b := make([]byte, 5)
-		b[4] = byte('t')
-		binary.BigEndian.PutUint32(b, uint32(len(bytes)+1))
-		if nextQueueConn == nil {
-			err = dialNextQueue()
-			if err != nil {
-				logrus.WithField("host", nextQueueHost).Error("couldn't connect to the next queue")
-			} else {
-				logrus.WithField("host", nextQueueHost).Info("connected to the next queue")
-			}
-		}
-
-		cnt := 5
-		sent := false
-		for sent == false {
-			var err error
-			if nextQueueConn != nil {
-				_, err = nextQueueConn.Write(append(b, bytes...))
-			} else {
-				err = errors.New("batcherConn[hostID] == nil")
-			}
-			if err != nil {
-				if cnt >= 0 {
-					cnt--
-					err = dialNextQueue()
-					if err != nil {
-						logrus.WithField("attempt", cnt).Warning("connected to the next queue, retrying")
-					} else {
-						logrus.WithField("host", nextQueueHost).Info("connected to the next queue")
-					}
-				} else {
-					logrus.WithField("host", nextQueueHost).Error("failed to connect to the next queue after retrying 5 times")
-					break
-				}
-			} else {
-				sent = true
-				// logrus.WithField("host", nextQueueHost).Debug("sent the token to the next queue")
-			}
-		}
+		nextQueueClient.ReceiveToken(context.Background(), &rpcToken)
 	}
-}
-
-func dialLogMaintainer(maintainerID int) error {
-	var err error
-	maintainersConn[maintainerID], err = net.Dial("tcp", maintainersHost[maintainerID])
-	return err
-}
-
-func dialIndexer(indexerID int) error {
-	var err error
-	indexerConn[indexerID], err = net.Dial("tcp", indexerHost[indexerID])
-	return err
 }
 
 // dispatchRecords sends the ready records to log maintainers
 func dispatchRecords(records []record.Record, maintainerID int) {
 	// info.LogTimestamp("dispatchRecords")
-	bytes, err := record.ToGobArray(records)
+	rpcRecords := maintainer.RPCRecords{
+		Records: make([]*maintainer.RPCRecord, len(records)),
+	}
+	for i, r := range records {
+		tmp := maintainer.RPCRecord{
+			Timestamp: r.Timestamp,
+			Host:      r.Host,
+			Lid:       r.LId,
+			Tags:      r.Tags,
+			Hash:      r.Hash,
+			Seed:      r.Seed,
+		}
+		rpcRecords.Records[i] = &tmp
+	}
+	_, err := maintainersClient[maintainerID].ReceiveRecords(context.Background(), &rpcRecords)
 	if err != nil {
-		logrus.WithField("records", records).Error("couldn't convert records to bytes")
-		return
-	}
-	b := make([]byte, 5)
-	b[4] = byte('r')
-	binary.BigEndian.PutUint32(b, uint32(len(bytes)+1))
-	maintainerConnMutex.Lock()
-	if maintainersConn[maintainerID] == nil {
-		err = dialLogMaintainer(maintainerID)
-		if err != nil {
-			logrus.WithField("id", maintainerID).Error("couldn't connect to log maintainer")
-		} else {
-			logrus.WithField("id", maintainerID).Info("connected to log maintainer")
-		}
-	}
-	maintainerConnMutex.Unlock()
-
-	cnt := 5
-	sent := false
-	for sent == false {
-		maintainerConnMutex.Lock()
-		if maintainersConn[maintainerID] != nil {
-			_, err = maintainersConn[maintainerID].Write(append(b, bytes...))
-		} else {
-			err = errors.New("logMaintainerConn[hostID] == nil")
-		}
-		maintainerConnMutex.Unlock()
-		if err != nil {
-			if cnt >= 0 {
-				cnt--
-				err = dialLogMaintainer(maintainerID)
-				if err != nil {
-					logrus.WithField("attempt", cnt).Warning("couldn't connect to log maintainer, retrying...")
-				} else {
-					logrus.WithField("id", maintainerID).Info("connected to log maintainer")
-				}
-			} else {
-				logrus.WithField("id", maintainerID).Error("failed to connect to log maintainer after retrying 5 times")
-				break
-			}
-		} else {
-			sent = true
-			logrus.WithFields(logrus.Fields{"records": records, "id": maintainerID}).Debug("sent the records to maintainer")
-		}
+		logrus.WithField("id", maintainerID).Error("failed to connect to maintainer")
+	} else {
+		logrus.WithFields(logrus.Fields{"records": records, "id": maintainerID}).Debug("sent the records to maintainer")
 	}
 	// log.Printf("TIMESTAMP %s:record in queue %s\n", info.GetName(), time.Since(lastTime))
 }
 
 func queryIndexer(query []indexer.Query, indexerID int) ([]bool, error) {
-	var tmp bytes.Buffer
-	enc := gob.NewEncoder(&tmp)
-	err := enc.Encode(query)
+	rpcQueries := indexer.RPCQueries{
+		Queries: make([]*indexer.RPCQuery, len(query)),
+	}
+	for i, q := range query {
+		tmp := indexer.RPCQuery{
+			Hash: q.Hash,
+			Seed: q.Seed,
+		}
+		rpcQueries.Queries[i] = &tmp
+	}
+	reply, err := indexerClient[indexerID].Query(context.Background(), &rpcQueries)
 	if err != nil {
+		logrus.WithField("id", indexerID).Error("failed to connect to indexer after retrying 5 times")
 		return nil, err
 	}
-	b := make([]byte, 5)
-	b[4] = byte('q')
-	binary.BigEndian.PutUint32(b, uint32(len(tmp.Bytes())+1))
-
-	indexerConnMutex.Lock()
-	if indexerConn[indexerID] == nil {
-		err := dialIndexer(indexerID)
-		if err != nil {
-			logrus.WithFields(logrus.Fields{"id": indexerID, "host": indexerHost[indexerID]}).Error("couldn't connect to indexer")
-		} else {
-			logrus.WithFields(logrus.Fields{"id": indexerID, "host": indexerHost[indexerID]}).Info("connected to indexer")
-		}
-	}
-	indexerConnMutex.Unlock()
-
-	cnt := 5
-	sent := false
-	for sent == false {
-		indexerConnMutex.Lock()
-		if indexerConn[indexerID] != nil {
-			_, err = indexerConn[indexerID].Write(append(b, tmp.Bytes()...))
-		} else {
-			err = errors.New("indexerConn[indexerID] == nil")
-		}
-		indexerConnMutex.Unlock()
-		if err != nil {
-			if cnt >= 0 {
-				cnt--
-				err = dialIndexer(indexerID)
-				if err != nil {
-					logrus.WithField("attempt", cnt).Warning("couldn't connect to indexer, retrying...")
-				} else {
-					logrus.WithField("id", indexerID).Info("connected to indexer")
-				}
-			} else {
-				logrus.WithField("id", indexerID).Error("failed to connect to indexer after retrying 5 times")
-				break
-			}
-		} else {
-			sent = true
-		}
-	}
-
-	buf := make([]byte, len(query)+64)
-	totalLength, err := connection.Read(indexerConn[indexerID], &buf)
-	result := []bool{}
-	dec := gob.NewDecoder(bytes.NewBuffer(buf[:totalLength]))
-	err = dec.Decode(&result)
-	if err != nil {
-		return nil, err
-	}
-	return result, nil
-}
-
-// HandleRequest handles incoming connection
-func HandleRequest(conn net.Conn) {
-	buf := make([]byte, 1024*1024*32)
-	for {
-		totalLength, err := connection.Read(conn, &buf)
-		if err == io.EOF {
-			return
-		} else if err != nil {
-			logrus.WithError(err).Error("couldn't read incoming request")
-			break
-		}
-		if buf[0] == 'r' { // received records
-			// info.LogTimestamp("HandleRequest")
-			lastTime = time.Now()
-			records := []record.Record{}
-			err := record.GobToRecordArray(buf[1:totalLength], &records)
-			if err != nil {
-				logrus.WithField("buffer", string(buf[1:totalLength])).Error("couldn't convert read buffer to record")
-				continue
-			}
-			logrus.WithField("records", records).Debug("received incoming record")
-
-			recordsArrival(records)
-		} else if buf[0] == 'q' { // received next host update
-			ver := int(binary.BigEndian.Uint32(buf[1:5]))
-			nextQueueHost = string(buf[5:totalLength])
-			if ver > nextQueueVer {
-				nextQueueVer = ver
-				if nextQueueConn != nil {
-					nextQueueConn.Close()
-					nextQueueConn = nil
-				}
-				logrus.WithField("host", nextQueueHost).Info("received next host update")
-			} else {
-				logrus.WithFields(logrus.Fields{"current": nextQueueVer, "received": ver}).Debug("receiver older version of next queue host")
-			}
-		} else if buf[0] == 't' { // received token
-			var token Token
-			err := json.Unmarshal(buf[1:totalLength], &token)
-			if err != nil {
-				logrus.WithField("buffer", string(buf[1:totalLength])).Error("couldn't convert read buffer to token")
-			}
-			tokenArrival(token)
-			// logrus.Debug("received token")
-		} else if buf[0] == 'm' { // received maintainer update
-			ver := int(binary.BigEndian.Uint32(buf[1:5]))
-			if ver > maintainersVer {
-				maintainersVer = ver
-				err := json.Unmarshal(buf[5:totalLength], &maintainersHost)
-				if err != nil {
-					logrus.WithField("buffer", string(buf[1:totalLength])).Error("couldn't convert read buffer to maintainer hosts")
-				} else {
-					maintainersConn = make([]net.Conn, len(maintainersHost))
-					logrus.WithField("host", maintainersHost).Info("received maintainer hosts update")
-				}
-			} else {
-				logrus.WithFields(logrus.Fields{"current": maintainersVer, "received": ver}).Debug("receiver older version of maintainer list")
-			}
-		} else if buf[0] == 'i' { // received indexer update
-			ver := int(binary.BigEndian.Uint32(buf[1:5]))
-			if ver > indexersVer {
-				indexersVer = ver
-				err := json.Unmarshal(buf[5:totalLength], &indexerHost)
-				if err != nil {
-					logrus.WithField("buffer", string(buf[5:totalLength])).Error("couldn't convert read buffer to indexer hosts")
-				} else {
-					indexerConn = make([]net.Conn, len(indexerHost))
-					logrus.WithField("host", indexerHost).Info("received indexer hosts update")
-				}
-			} else {
-				logrus.WithFields(logrus.Fields{"current": indexersVer, "received": ver}).Debug("receiver older version of indexer list")
-			}
-		} else {
-			logrus.WithField("header", buf[0]).Warning("couldn't understand request")
-		}
-	}
+	return reply.GetReply(), nil
 }
