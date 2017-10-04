@@ -30,8 +30,12 @@ func Propagate(r record.Record) {
 				Hash:      r.Hash,
 				Seed:      r.Seed,
 			}
-			remoteBatchersClient[dc].ReceiveRecord(context.Background(), &rpcRecord)
-			logrus.WithFields(logrus.Fields{"batcher": host, "record": r}).Debug("sent to remote batcher")
+			_, err := remoteBatchersClient[dc].ReceiveRecord(context.Background(), &rpcRecord)
+			if err != nil {
+				logrus.WithError(err).Error("couldn't send to remote batcher")
+			} else {
+				logrus.WithFields(logrus.Fields{"batcher": host, "record": r}).Debug("sent to remote batcher")
+			}
 		}
 	}
 }

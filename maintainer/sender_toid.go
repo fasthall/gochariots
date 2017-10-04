@@ -25,8 +25,12 @@ func TOIDPropagate(r record.TOIDRecord) {
 					Toid: r.Pre.TOId,
 				},
 			}
-			remoteBatchersClient[dc].TOIDReceiveRecord(context.Background(), &rpcRecord)
-			logrus.WithFields(logrus.Fields{"batcher": host, "record": r}).Debug("sent to remote batcher")
+			_, err := remoteBatchersClient[dc].TOIDReceiveRecord(context.Background(), &rpcRecord)
+			if err != nil {
+				logrus.WithError(err).Error("couldn't send to remote batcher")
+			} else {
+				logrus.WithFields(logrus.Fields{"batcher": host, "record": r}).Debug("sent to remote batcher")
+			}
 		}
 	}
 }
