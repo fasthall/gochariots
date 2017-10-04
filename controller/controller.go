@@ -12,7 +12,7 @@ import (
 	"sync"
 
 	"github.com/Sirupsen/logrus"
-	"github.com/fasthall/gochariots/batcher"
+	"github.com/fasthall/gochariots/batcher/batcherrpc"
 	"github.com/fasthall/gochariots/maintainer"
 	"github.com/fasthall/gochariots/misc"
 	"github.com/fasthall/gochariots/queue"
@@ -22,7 +22,7 @@ import (
 var apps []string
 var appsVersion uint32
 var batchers []string
-var batcherClient []batcher.BatcherClient
+var batcherClient []batcherrpc.BatcherRPCClient
 var batchersVersion uint32
 var queues []string
 var queueClient []queue.QueueClient
@@ -143,14 +143,14 @@ func addBatchers(c *gin.Context) {
 		c.String(http.StatusBadRequest, "couldn't connect to batcher")
 		return
 	}
-	cli := batcher.NewBatcherClient(conn)
+	cli := batcherrpc.NewBatcherRPCClient(conn)
 	batcherClient = append(batcherClient, cli)
 	mutex.Unlock()
 	for _, host := range apps {
 		informAppBatcher(host)
 	}
 	for i, cli := range batcherClient {
-		rpcQueues := batcher.RPCQueues{
+		rpcQueues := batcherrpc.RPCQueues{
 			Version: queuesVersion,
 			Queues:  queues,
 		}
@@ -200,7 +200,7 @@ func addQueue(c *gin.Context) {
 	}
 	// update batchers about queues
 	for i, cli := range batcherClient {
-		rpcQueues := batcher.RPCQueues{}
+		rpcQueues := batcherrpc.RPCQueues{}
 		_, err := cli.UpdateQueue(context.Background(), &rpcQueues)
 		if err != nil {
 			logrus.WithField("id", i).WithError(err).Error("couldn't send new queue host")

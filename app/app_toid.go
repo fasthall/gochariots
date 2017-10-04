@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/fasthall/gochariots/batcher"
+	"github.com/fasthall/gochariots/batcher/batcherrpc"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/fasthall/gochariots/info"
@@ -47,11 +47,11 @@ func TOIDpostRecord(c *gin.Context) {
 		jsonRecord.ID = id
 	}
 	// send to batcher
-	r := batcher.RPCRecord{
+	r := batcherrpc.RPCRecord{
 		Id:   jsonRecord.ID,
 		Host: uint32(info.ID),
 		Tags: jsonRecord.Tags,
-		Causality: &batcher.RPCCausality{
+		Causality: &batcherrpc.RPCCausality{
 			Host: jsonRecord.PreHost,
 			Toid: jsonRecord.PreTOId,
 		},

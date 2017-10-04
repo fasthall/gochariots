@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/fasthall/gochariots/batcher/batcherrpc"
 	"github.com/fasthall/gochariots/queue"
 	"google.golang.org/grpc"
 
@@ -27,7 +28,7 @@ var numFilters int
 
 type Server struct{}
 
-func (s *Server) ReceiveRecord(ctx context.Context, in *RPCRecord) (*RPCReply, error) {
+func (s *Server) ReceiveRecord(ctx context.Context, in *batcherrpc.RPCRecord) (*batcherrpc.RPCReply, error) {
 	r := record.Record{
 		Timestamp: in.GetTimestamp(),
 		Host:      in.GetHost(),
@@ -37,10 +38,10 @@ func (s *Server) ReceiveRecord(ctx context.Context, in *RPCRecord) (*RPCReply, e
 		Seed:      in.GetSeed(),
 	}
 	arrival(r)
-	return &RPCReply{Message: "ok"}, nil
+	return &batcherrpc.RPCReply{Message: "ok"}, nil
 }
 
-func (s *Server) ReceiveRecords(ctx context.Context, in *RPCRecords) (*RPCReply, error) {
+func (s *Server) ReceiveRecords(ctx context.Context, in *batcherrpc.RPCRecords) (*batcherrpc.RPCReply, error) {
 	for _, i := range in.GetRecords() {
 		r := record.Record{
 			Timestamp: i.GetTimestamp(),
@@ -52,10 +53,10 @@ func (s *Server) ReceiveRecords(ctx context.Context, in *RPCRecords) (*RPCReply,
 		}
 		arrival(r)
 	}
-	return &RPCReply{Message: "ok"}, nil
+	return &batcherrpc.RPCReply{Message: "ok"}, nil
 }
 
-func (s *Server) UpdateQueue(ctx context.Context, in *RPCQueues) (*RPCReply, error) {
+func (s *Server) UpdateQueue(ctx context.Context, in *batcherrpc.RPCQueues) (*batcherrpc.RPCReply, error) {
 	ver := int(in.GetVersion())
 	if ver > queuePoolVer {
 		queuePoolVer = ver
@@ -64,7 +65,7 @@ func (s *Server) UpdateQueue(ctx context.Context, in *RPCQueues) (*RPCReply, err
 		for i := range queuePool {
 			conn, err := grpc.Dial(queuePool[i], grpc.WithInsecure())
 			if err != nil {
-				reply := RPCReply{
+				reply := batcherrpc.RPCReply{
 					Message: "couldn't connect to queue",
 				}
 				return &reply, err
@@ -75,7 +76,7 @@ func (s *Server) UpdateQueue(ctx context.Context, in *RPCQueues) (*RPCReply, err
 	} else {
 		logrus.WithFields(logrus.Fields{"current": queuePoolVer, "received": ver}).Debug("receiver older version of queue list")
 	}
-	return &RPCReply{Message: "ok"}, nil
+	return &batcherrpc.RPCReply{Message: "ok"}, nil
 }
 
 // InitBatcher allocates n buffers, where n is the number of filters

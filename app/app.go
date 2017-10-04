@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/fasthall/gochariots/batcher"
+	"github.com/fasthall/gochariots/batcher/batcherrpc"
 
 	"google.golang.org/grpc"
 
@@ -18,7 +18,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-var batcherClient []batcher.BatcherClient
+var batcherClient []batcherrpc.BatcherRPCClient
 var batcherPool []string
 var batchersVer int
 var indexerPool []string
@@ -51,14 +51,14 @@ func addBatchers(c *gin.Context) {
 	if ver > batchersVer {
 		batchersVer = ver
 		json.Unmarshal([]byte(c.Query("host")), &batcherPool)
-		batcherClient = make([]batcher.BatcherClient, len(batcherPool))
+		batcherClient = make([]batcherrpc.BatcherRPCClient, len(batcherPool))
 		for i := range batcherPool {
 			conn, err := grpc.Dial(batcherPool[i], grpc.WithInsecure())
 			if err != nil {
 				c.String(http.StatusBadRequest, "couldn't connect to batcher")
 				return
 			}
-			batcherClient[i] = batcher.NewBatcherClient(conn)
+			batcherClient[i] = batcherrpc.NewBatcherRPCClient(conn)
 		}
 		c.String(http.StatusOK, c.Query("host")+" added")
 		logrus.WithFields(logrus.Fields{"ver": batchersVer, "batchers": batcherPool}).Info("batcher list updated")
@@ -120,7 +120,7 @@ func postRecord(c *gin.Context) {
 		jsonRecord.Seed = seed
 	}
 	// send to batcher
-	r := batcher.RPCRecord{
+	r := batcherrpc.RPCRecord{
 		Host: uint32(info.ID),
 		Tags: jsonRecord.Tags,
 		Hash: jsonRecord.Hash,

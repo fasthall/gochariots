@@ -4,8 +4,8 @@ import (
 	"sync"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/fasthall/gochariots/batcher/batcherrpc"
 	"github.com/fasthall/gochariots/info"
-	"github.com/fasthall/gochariots/maintainer/remotebatcher"
 	"github.com/fasthall/gochariots/record"
 	"golang.org/x/net/context"
 )
@@ -13,7 +13,7 @@ import (
 var lastSendLId uint32
 var lastSentTOId uint32
 var connMutex sync.Mutex
-var remoteBatchersClient []remotebatcher.BatcherClient
+var remoteBatchersClient []batcherrpc.BatcherRPCClient
 var remoteBatchers []string
 var remoteBatcherVer uint32
 
@@ -22,7 +22,7 @@ func Propagate(r record.Record) {
 	for dc, host := range remoteBatchers {
 		if dc != info.ID && host != "" {
 			// log.Printf("%s is propagating record to remoteBatchers[%d] %s", info.GetName(), dc, host)
-			rpcRecord := remotebatcher.RPCRecord{
+			rpcRecord := batcherrpc.RPCRecord{
 				Timestamp: r.Timestamp,
 				Host:      r.Host,
 				Lid:       r.LId,

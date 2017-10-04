@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-service Batcher {
+service BatcherRPC {
     rpc ReceiveRecord (RPCRecord) returns (RPCReply) {}
     rpc ReceiveRecords (RPCRecords) returns (RPCReply) {}
     rpc UpdateQueue (RPCQueues) returns (RPCReply) {}

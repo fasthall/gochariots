@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/fasthall/gochariots/batcher/batcherrpc"
 	"github.com/fasthall/gochariots/queue"
 	"github.com/fasthall/gochariots/record"
 	"golang.org/x/net/context"
@@ -14,7 +15,7 @@ import (
 
 var TOIDbuffer []record.TOIDRecord
 
-func (s *Server) TOIDReceiveRecord(ctx context.Context, in *RPCRecord) (*RPCReply, error) {
+func (s *Server) TOIDReceiveRecord(ctx context.Context, in *batcherrpc.RPCRecord) (*batcherrpc.RPCReply, error) {
 	r := record.TOIDRecord{
 		Id:        in.GetId(),
 		Timestamp: in.GetTimestamp(),
@@ -28,10 +29,10 @@ func (s *Server) TOIDReceiveRecord(ctx context.Context, in *RPCRecord) (*RPCRepl
 		},
 	}
 	TOIDarrival(r)
-	return &RPCReply{Message: "ok"}, nil
+	return &batcherrpc.RPCReply{Message: "ok"}, nil
 }
 
-func (s *Server) TOIDReceiveRecords(ctx context.Context, in *RPCRecords) (*RPCReply, error) {
+func (s *Server) TOIDReceiveRecords(ctx context.Context, in *batcherrpc.RPCRecords) (*batcherrpc.RPCReply, error) {
 	for _, i := range in.GetRecords() {
 		r := record.TOIDRecord{
 			Id:        i.GetId(),
@@ -47,10 +48,10 @@ func (s *Server) TOIDReceiveRecords(ctx context.Context, in *RPCRecords) (*RPCRe
 		}
 		TOIDarrival(r)
 	}
-	return &RPCReply{Message: "ok"}, nil
+	return &batcherrpc.RPCReply{Message: "ok"}, nil
 }
 
-func (s *Server) TOIDUpdateQueue(ctx context.Context, in *RPCQueues) (*RPCReply, error) {
+func (s *Server) TOIDUpdateQueue(ctx context.Context, in *batcherrpc.RPCQueues) (*batcherrpc.RPCReply, error) {
 	return s.UpdateQueue(ctx, in)
 }
 

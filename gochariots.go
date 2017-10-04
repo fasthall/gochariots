@@ -10,6 +10,7 @@ import (
 
 	"github.com/fasthall/gochariots/app"
 	"github.com/fasthall/gochariots/batcher"
+	"github.com/fasthall/gochariots/batcher/batcherrpc"
 	"github.com/fasthall/gochariots/controller"
 	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/maintainer"
@@ -180,7 +181,7 @@ func main() {
 			go batcher.Sweeper()
 		}
 		s := grpc.NewServer()
-		batcher.RegisterBatcherServer(s, &batcher.Server{})
+		batcherrpc.RegisterBatcherRPCServer(s, &batcher.Server{})
 		reflection.Register(s)
 		if err := s.Serve(ln); err != nil {
 			logrus.Fatalf("failed to serve: %v", err)
