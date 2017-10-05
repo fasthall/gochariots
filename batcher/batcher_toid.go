@@ -8,6 +8,7 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	"github.com/fasthall/gochariots/batcher/batcherrpc"
+	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/queue"
 	"github.com/fasthall/gochariots/record"
 	"golang.org/x/net/context"
@@ -28,6 +29,9 @@ func (s *Server) TOIDReceiveRecord(ctx context.Context, in *batcherrpc.RPCRecord
 			TOId: in.GetCausality().GetToid(),
 		},
 	}
+	if r.Host == 0 {
+		r.Host = uint32(info.ID)
+	}
 	TOIDarrival(r)
 	return &batcherrpc.RPCReply{Message: "ok"}, nil
 }
@@ -45,6 +49,9 @@ func (s *Server) TOIDReceiveRecords(ctx context.Context, in *batcherrpc.RPCRecor
 				Host: i.GetCausality().GetHost(),
 				TOId: i.GetCausality().GetToid(),
 			},
+		}
+		if r.Host == 0 {
+			r.Host = uint32(info.ID)
 		}
 		TOIDarrival(r)
 	}

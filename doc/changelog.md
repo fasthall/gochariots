@@ -1,3 +1,13 @@
+# October
+
+## October 5, 2017
+### Change datacenter ID numbering
+Now dc ID in config.yaml starts from 1. When create a new record using library, host id will be 0. If a batcher receive a record with host id 0, it will fill in host id as dc id automatically.
+
+## October 3, 2017
+### Replace comunication code with grpc
+To improve reliability and performance
+
 # August
 
 ## August 24, 2017

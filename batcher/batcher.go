@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/fasthall/gochariots/info"
+
 	"github.com/fasthall/gochariots/batcher/batcherrpc"
 	"github.com/fasthall/gochariots/queue"
 	"google.golang.org/grpc"
@@ -37,6 +39,9 @@ func (s *Server) ReceiveRecord(ctx context.Context, in *batcherrpc.RPCRecord) (*
 		Hash:      in.GetHash(),
 		Seed:      in.GetSeed(),
 	}
+	if r.Host == 0 {
+		r.Host = uint32(info.ID)
+	}
 	arrival(r)
 	return &batcherrpc.RPCReply{Message: "ok"}, nil
 }
@@ -50,6 +55,9 @@ func (s *Server) ReceiveRecords(ctx context.Context, in *batcherrpc.RPCRecords) 
 			Tags:      i.GetTags(),
 			Hash:      i.GetHash(),
 			Seed:      i.GetSeed(),
+		}
+		if r.Host == 0 {
+			r.Host = uint32(info.ID)
 		}
 		arrival(r)
 	}
