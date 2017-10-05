@@ -66,6 +66,7 @@ func (s *Server) UpdateBatchers(ctx context.Context, in *RPCBatchers) (*RPCReply
 			if err != nil {
 				return nil, err
 			}
+			logrus.WithFields(logrus.Fields{"id": i, "host": remoteBatchers[i]}).Debug("remote batcher client connected")
 			remoteBatchersClient[i] = batcherrpc.NewBatcherRPCClient(conn)
 		}
 		logrus.WithField("host", in.GetBatcher()).Info("received remote batcher hosts update")
