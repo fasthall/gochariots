@@ -3,22 +3,20 @@ syntax = "proto3";
 service Maintainer {
     rpc ReceiveRecords (RPCRecords) returns (RPCReply) {}
     rpc UpdateBatchers (RPCBatchers) returns (RPCReply) {}
-    rpc UpdateIndexer (RPCIndexer) returns (RPCReply) {}
     rpc ReadByLId (RPCLId) returns (RPCReply) {}
     rpc TOIDReceiveRecords (RPCRecords) returns (RPCReply) {}
     rpc TOIDUpdateBatchers (RPCBatchers) returns (RPCReply) {}
-    rpc TOIDUpdateIndexer (RPCIndexer) returns (RPCReply) {}
     rpc TOIDReadByLId (RPCLId) returns (RPCReply) {}
 }
 
 message RPCRecord {
-    uint64 id = 1;
+    string id = 1;
     int64 timestamp = 2;
     uint32 host = 3;
     uint32 lid = 4;
     map<string, string> tags = 5;
-    repeated uint64 hash = 6;
-    uint64 seed = 7;
+    repeated string parent = 6;
+    string seed = 7;
     // for TOID record
     uint32 toid = 8;
     RPCCausality causality = 9;
@@ -40,11 +38,6 @@ message RPCReply {
 message RPCBatchers {
     uint32 version = 1;
     repeated string batcher = 2;
-}
-
-message RPCIndexer {
-    uint32 version = 1;
-    string indexer = 2;
 }
 
 message RPCLId {

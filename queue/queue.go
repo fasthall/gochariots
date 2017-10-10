@@ -8,7 +8,6 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	"github.com/fasthall/gochariots/maintainer"
-	"github.com/fasthall/gochariots/maintainer/indexer"
 	"github.com/fasthall/gochariots/record"
 	"golang.org/x/net/context"
 )
@@ -19,18 +18,18 @@ var buffered []record.Record
 var maintainersClient []maintainer.MaintainerClient
 var maintainersHost []string
 var maintainersVer int
-var indexerClient []indexer.IndexerClient
-var indexerHost []string
-var indexersVer int
 var nextQueueClient QueueClient
 var nextQueueHost string
 var nextQueueVer int
 
-var indexerBuf []byte
-
 // Token is used by queues to ensure causality of LId assignment
 type Token struct {
 	LastLId uint32
+}
+
+type Query struct {
+	Id   []string
+	Seed string
 }
 
 type Server struct{}
@@ -43,7 +42,7 @@ func (s *Server) ReceiveRecords(ctx context.Context, in *RPCRecords) (*RPCReply,
 			Host:      ri.GetHost(),
 			LId:       ri.GetLid(),
 			Tags:      ri.GetTags(),
-			Parent:    ri.GetHash(),
+			Parent:    ri.GetParent(),
 			Seed:      ri.GetSeed(),
 		}
 	}
@@ -102,29 +101,6 @@ func (s *Server) UpdateMaintainers(ctx context.Context, in *RPCMaintainers) (*RP
 	return &RPCReply{Message: "ok"}, nil
 }
 
-func (s *Server) UpdateIndexers(ctx context.Context, in *RPCIndexers) (*RPCReply, error) {
-	ver := int(in.GetVersion())
-	if ver > indexersVer {
-		indexersVer = ver
-		indexerHost = in.GetIndexer()
-		indexerClient = make([]indexer.IndexerClient, len(indexerHost))
-		for i := range indexerHost {
-			conn, err := grpc.Dial(indexerHost[i], grpc.WithInsecure())
-			if err != nil {
-				reply := RPCReply{
-					Message: "couldn't connect to indexer",
-				}
-				return &reply, err
-			}
-			indexerClient[i] = indexer.NewIndexerClient(conn)
-		}
-		logrus.WithField("host", in.GetIndexer()).Info("received indexer hosts update")
-	} else {
-		logrus.WithFields(logrus.Fields{"current": indexersVer, "received": ver}).Debug("receiver older version of indexer hosts")
-	}
-	return &RPCReply{Message: "ok"}, nil
-}
-
 // InitQueue initializes the buffer and hashmap for queued records
 func InitQueue(hasToken bool) {
 	buffered = []record.Record{}
@@ -138,7 +114,6 @@ func InitQueue(hasToken bool) {
 	} else {
 		logrus.WithField("token", false).Info("initialized")
 	}
-	indexerBuf = make([]byte, 1024*1024*32)
 }
 
 // InitToken intializes a token. The IDs info should be accuired from log maintainers
@@ -159,16 +134,16 @@ func recordsArrival(records []record.Record) {
 // If so, the deferred records are sent to the log maintainers.
 func tokenArrival(token Token) {
 	dispatch := []record.Record{}
-	query := []indexer.Query{}
 	// append buffered records to the token in order
 	bufMutex.Lock()
 	head := 0
+	query := []Query{}
 	for _, r := range buffered {
 		if len(r.Parent) == 0 {
 			dispatch = append(dispatch, r)
 		} else {
-			query = append(query, indexer.Query{
-				Hash: r.Parent,
+			query = append(query, Query{
+				Id:   r.Parent,
 				Seed: r.Seed,
 			})
 			buffered[head] = r
@@ -177,19 +152,14 @@ func tokenArrival(token Token) {
 	}
 	buffered = buffered[:head]
 
-	// Ask indexer if the prerequisite records have been indexed already
+	// Ask MongoDB if the prerequisite records exist
 	if len(query) > 0 {
 		existed := make([]bool, len(query))
-		for i := range indexerClient {
-			logrus.WithField("query", query).Debug("queryIndexer")
-			result, err := queryIndexer(query, i)
-			if err != nil {
-				logrus.WithField("id", i).Warning("indexer stops responding")
-			} else {
-				for j := range existed {
-					existed[j] = existed[j] || result[j]
-				}
-			}
+		var err error
+		// TODO
+		existed, err = queryDB(query)
+		if err != nil {
+			logrus.WithError(err).Error("couldn't connect to DB")
 		}
 		head = 0
 		for i, r := range buffered {
@@ -254,7 +224,7 @@ func dispatchRecords(records []record.Record, maintainerID int) {
 			Host:      r.Host,
 			Lid:       r.LId,
 			Tags:      r.Tags,
-			Hash:      r.Parent,
+			Parent:    r.Parent,
 			Seed:      r.Seed,
 		}
 		rpcRecords.Records[i] = &tmp
@@ -268,21 +238,7 @@ func dispatchRecords(records []record.Record, maintainerID int) {
 	// log.Printf("TIMESTAMP %s:record in queue %s\n", info.GetName(), time.Since(lastTime))
 }
 
-func queryIndexer(query []indexer.Query, indexerID int) ([]bool, error) {
-	rpcQueries := indexer.RPCQueries{
-		Queries: make([]*indexer.RPCQuery, len(query)),
-	}
-	for i, q := range query {
-		tmp := indexer.RPCQuery{
-			Hash: q.Hash,
-			Seed: q.Seed,
-		}
-		rpcQueries.Queries[i] = &tmp
-	}
-	reply, err := indexerClient[indexerID].Query(context.Background(), &rpcQueries)
-	if err != nil {
-		logrus.WithField("id", indexerID).Error("failed to connect to indexer after retrying 5 times")
-		return nil, err
-	}
-	return reply.GetReply(), nil
+func queryDB(query []Query) ([]bool, error) {
+	// TODO
+	return nil, nil
 }

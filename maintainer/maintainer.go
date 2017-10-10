@@ -10,7 +10,6 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/fasthall/gochariots/batcher/batcherrpc"
-	"github.com/fasthall/gochariots/maintainer/indexer"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/fasthall/gochariots/info"
@@ -29,9 +28,6 @@ const batchSize int = 1000
 var LastLId uint32
 var path = "flstore"
 var f *os.File
-var indexerClient indexer.IndexerClient
-var indexerHost string
-var indexerVer int
 var maintainerInterface int
 
 var logFirstTime time.Time
@@ -47,7 +43,7 @@ func (s *Server) ReceiveRecords(ctx context.Context, in *RPCRecords) (*RPCReply,
 			Host:      ri.GetHost(),
 			LId:       ri.GetLid(),
 			Tags:      ri.GetTags(),
-			Parent:    ri.GetHash(),
+			Parent:    ri.GetParent(),
 			Seed:      ri.GetSeed(),
 		}
 	}
@@ -72,26 +68,6 @@ func (s *Server) UpdateBatchers(ctx context.Context, in *RPCBatchers) (*RPCReply
 		logrus.WithField("host", in.GetBatcher()).Info("received remote batcher hosts update")
 	} else {
 		logrus.WithFields(logrus.Fields{"current": remoteBatcherVer, "received": ver}).Debug("receiver older version of remote batcher hosts")
-	}
-	return &RPCReply{Message: "ok"}, nil
-}
-
-func (s *Server) UpdateIndexer(ctx context.Context, in *RPCIndexer) (*RPCReply, error) {
-	ver := int(in.GetVersion())
-	if ver > indexerVer {
-		indexerVer = ver
-		indexerHost = in.GetIndexer()
-		conn, err := grpc.Dial(indexerHost, grpc.WithInsecure())
-		if err != nil {
-			reply := RPCReply{
-				Message: "couldn't connect to indexer",
-			}
-			return &reply, err
-		}
-		indexerClient = indexer.NewIndexerClient(conn)
-		logrus.WithField("host", in.GetIndexer()).Info("received indexer hosts update")
-	} else {
-		logrus.WithFields(logrus.Fields{"current": indexerVer, "received": ver}).Debug("receiver older version of indexer hosts")
 	}
 	return &RPCReply{Message: "ok"}, nil
 }
@@ -169,24 +145,11 @@ func Append(r record.Record) error {
 		}
 	}
 
-	InsertIndexer(r)
 	LastLId = r.LId
 	if r.Host == uint32(info.ID) {
 		Propagate(r)
 	}
 	return nil
-}
-
-func InsertIndexer(r record.Record) {
-	rpcTags := indexer.RPCTags{
-		Lid:  r.LId,
-		Seed: r.Seed,
-		Tags: r.Tags,
-	}
-	_, err := indexerClient.InsertTags(context.Background(), &rpcTags)
-	if err != nil {
-		logrus.WithField("host", indexerHost).Error("failed to connect to indexer")
-	}
 }
 
 // ReadByLId reads from the maintainer according to LId.

@@ -73,10 +73,6 @@ func (s *Server) TOIDUpdateMaintainers(ctx context.Context, in *RPCMaintainers) 
 	return s.UpdateMaintainers(ctx, in)
 }
 
-func (s *Server) TOIDUpdateIndexers(ctx context.Context, in *RPCIndexers) (*RPCReply, error) {
-	return s.UpdateIndexers(ctx, in)
-}
-
 // Token is used by queues to ensure causality of LId assignment
 type TOIDToken struct {
 	MaxTOId         []uint32

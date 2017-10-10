@@ -12,7 +12,6 @@ import (
 	"github.com/fasthall/gochariots/maintainer/adapter/datastore"
 	"github.com/fasthall/gochariots/maintainer/adapter/dynamodb"
 	"github.com/fasthall/gochariots/maintainer/adapter/mongodb"
-	"github.com/fasthall/gochariots/maintainer/indexer"
 	"github.com/fasthall/gochariots/record"
 	"golang.org/x/net/context"
 )
@@ -39,10 +38,6 @@ func (s *Server) TOIDReceiveRecords(ctx context.Context, in *RPCRecords) (*RPCRe
 
 func (s *Server) TOIDUpdateBatchers(ctx context.Context, in *RPCBatchers) (*RPCReply, error) {
 	return s.UpdateBatchers(ctx, in)
-}
-
-func (s *Server) TOIDUpdateIndexer(ctx context.Context, in *RPCIndexer) (*RPCReply, error) {
-	return s.UpdateIndexer(ctx, in)
 }
 
 func (s *Server) TOIDReadByLId(ctx context.Context, in *RPCLId) (*RPCReply, error) {
@@ -102,26 +97,12 @@ func TOIDAppend(r record.TOIDRecord) error {
 		}
 	}
 	// log.Println(info.GetName(), "wrote record ", lid)
-	TOIDInsertIndexer(r)
 
 	LastLId = r.LId
 	if r.Host == uint32(info.ID) {
 		TOIDPropagate(r)
 	}
 	return nil
-}
-
-func TOIDInsertIndexer(r record.TOIDRecord) {
-	rpcTags := indexer.RPCTOIdTags{
-		Id:   r.Id,
-		Lid:  r.LId,
-		Toid: r.TOId,
-		Host: r.Host,
-	}
-	_, err := indexerClient.TOIDInsertTags(context.Background(), &rpcTags)
-	if err != nil {
-		logrus.WithField("host", indexerHost).Error("failed to connect to indexer")
-	}
 }
 
 // ReadByLId reads from the maintainer according to LId.

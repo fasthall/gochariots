@@ -4,7 +4,6 @@ import (
 	"context"
 	"math/rand"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/fasthall/gochariots/batcher/batcherrpc"
@@ -15,8 +14,7 @@ import (
 )
 
 type TOIDJsonRecord struct {
-	ID      uint64            `json:"id"`
-	StrID   string            `json:"strid"`
+	ID      string            `json:"id"`
 	Tags    map[string]string `json:"tags"`
 	PreHost uint32            `json:"prehost"`
 	PreTOId uint32            `json:"pretoid"`
@@ -38,13 +36,6 @@ func TOIDpostRecord(c *gin.Context) {
 	err := c.Bind(&jsonRecord)
 	if err != nil {
 		panic(err)
-	}
-	if jsonRecord.StrID != "" {
-		id, err := strconv.ParseUint(jsonRecord.StrID, 10, 64)
-		if err != nil {
-			panic(err)
-		}
-		jsonRecord.ID = id
 	}
 	// send to batcher
 	r := batcherrpc.RPCRecord{

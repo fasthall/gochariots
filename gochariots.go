@@ -15,7 +15,6 @@ import (
 	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/maintainer"
 	"github.com/fasthall/gochariots/maintainer/adapter"
-	"github.com/fasthall/gochariots/maintainer/indexer"
 	"github.com/fasthall/gochariots/queue"
 
 	"github.com/Sirupsen/logrus"
@@ -83,16 +82,6 @@ var (
 	maintainerDatastore = maintainerCommand.Flag("datastore", "Use Datastore as physical storage.").Bool()
 	maintainerCosmosDB  = maintainerCommand.Flag("cosmosdb", "Use CosmosDB as physical storage.").Bool()
 	maintainerMongoDB   = maintainerCommand.Flag("mongodb", "Use MongoDB as physical storage.").Bool()
-
-	indexerCommand = gochariots.Command("indexer", "Start an indexer instance.")
-	indexerNumDC   = indexerCommand.Flag("num_dc", "The port indexer listens to.").Int()
-	indexerID      = indexerCommand.Flag("id", "The port indexer listens to.").Int()
-	indexerPort    = indexerCommand.Flag("port", "The port app listens to. By default it's 9040").Short('p').String()
-	indexerTOId    = indexerCommand.Flag("toid", "Use TOId version.").Short('t').Bool()
-	indexerBoltDB  = indexerCommand.Flag("boltdb", "Use BoltDB. Only work when not using TOId version.").Short('b').Bool()
-	indexerConfig  = indexerCommand.Flag("config_file", "Configuration file to read.").Short('f').String()
-	indexerInfo    = indexerCommand.Flag("info", "Turn on info level logging.").Short('i').Bool()
-	indexerDebug   = indexerCommand.Flag("debug", "Turn on debug level logging.").Short('d').Bool()
 )
 
 func main() {
@@ -106,7 +95,6 @@ func main() {
 		}
 		info.NumDC = *appNumDC
 		info.ID = *appID
-		indexerCommand.GetArg("info")
 		info.SetName("app" + *appPort)
 		info.SetPort(*appPort)
 		level := logrus.WarnLevel
@@ -265,45 +253,6 @@ func main() {
 		fmt.Println(info.GetName()+" is listening to port", *maintainerPort)
 		s := grpc.NewServer()
 		maintainer.RegisterMaintainerServer(s, &maintainer.Server{})
-		reflection.Register(s)
-		if err := s.Serve(ln); err != nil {
-			logrus.Fatalf("failed to serve: %v", err)
-		}
-	case indexerCommand.FullCommand():
-		if *indexerPort == "" {
-			*indexerPort = "9040"
-		}
-		if *indexerNumDC == 0 {
-			*indexerNumDC = 1
-		}
-		info.NumDC = *indexerNumDC
-		info.ID = *indexerID
-		info.SetName("indexer" + *indexerPort)
-		info.SetPort(*indexerPort)
-		level := logrus.WarnLevel
-		if *indexerDebug {
-			level = logrus.DebugLevel
-		} else if *indexerInfo {
-			level = logrus.InfoLevel
-		}
-		info.RedirectLog(info.GetName()+".log", level)
-		if *indexerConfig != "" {
-			info.Config(*indexerConfig, "indexer")
-		}
-		if *indexerTOId {
-			indexer.TOIDInitIndexer(info.GetName())
-		} else {
-			indexer.InitIndexer(info.GetName(), *indexerBoltDB)
-		}
-		ln, err := net.Listen("tcp", ":"+*indexerPort)
-		if err != nil {
-			fmt.Println(info.GetName() + "couldn't listen on port " + *indexerPort)
-			panic(err)
-		}
-		defer ln.Close()
-		fmt.Println(info.GetName()+" is listening to port", *indexerPort)
-		s := grpc.NewServer()
-		indexer.RegisterIndexerServer(s, &indexer.Server{})
 		reflection.Register(s)
 		if err := s.Serve(ln); err != nil {
 			logrus.Fatalf("failed to serve: %v", err)

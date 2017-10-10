@@ -25,11 +25,9 @@ var indexerPool []string
 var indexersVer int
 
 type JsonRecord struct {
-	Tags    map[string]string `json:"tags"`
-	Hash    []uint64          `json:"prehash"`
-	StrHash []string          `json:"strhash"`
-	Seed    uint64            `json:"seed"`
-	StrSeed string            `json:"strseed"`
+	Tags   map[string]string `json:"tags"`
+	Parent []string          `json:"parent"`
+	Seed   string            `json:"seed"`
 }
 
 func Run(port string) {
@@ -105,26 +103,12 @@ func postRecord(c *gin.Context) {
 		panic(err)
 	}
 
-	for _, strHash := range jsonRecord.StrHash {
-		hash, err := strconv.ParseUint(strHash, 10, 64)
-		if err != nil {
-			panic(err)
-		}
-		jsonRecord.Hash = append(jsonRecord.Hash, hash)
-	}
-	if jsonRecord.StrSeed != "" {
-		seed, err := strconv.ParseUint(jsonRecord.StrSeed, 10, 64)
-		if err != nil {
-			panic(err)
-		}
-		jsonRecord.Seed = seed
-	}
 	// send to batcher
 	r := batcherrpc.RPCRecord{
-		Host: uint32(info.ID),
-		Tags: jsonRecord.Tags,
-		Hash: jsonRecord.Hash,
-		Seed: jsonRecord.Seed,
+		Host:   uint32(info.ID),
+		Tags:   jsonRecord.Tags,
+		Parent: jsonRecord.Parent,
+		Seed:   jsonRecord.Seed,
 	}
 
 	hostID := rand.Intn(len(batcherPool))

@@ -16,6 +16,7 @@ var ctx context.Context
 var client *datastore.Client
 
 type Record struct {
+	Id        string `datastore:"Id"`
 	Timestamp int64  `datastore:"Timestamp"`
 	Host      uint32 `datastore:"Host"`
 	LId       uint32 `datastore:"LId"`
@@ -25,7 +26,7 @@ type Record struct {
 }
 
 type TOIDRecord struct {
-	Id        uint64 `datastore:"Id"`
+	Id        string `datastore:"Id"`
 	Timestamp int64  `datastore:"Timestamp"`
 	Host      uint32 `datastore:"Host"`
 	TOId      uint32 `datastore:"TOId"`
