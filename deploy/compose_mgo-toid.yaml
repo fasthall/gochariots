@@ -1,0 +1,97 @@
+version: '3'
+services:
+  controller:
+    image: fasthall/gochariots
+    entrypoint: gochariots controller -p 8081 -i
+    volumes:
+      - ./logs:/go/logs
+    ports: 
+      - 8081:8081
+    networks:
+      - cluster
+  app:
+    image: fasthall/gochariots
+    entrypoint: gochariots app -p 8080 -i -t -f config/config.yaml
+    depends_on:
+      - controller
+    volumes:
+      - ./config:/go/config
+      - ./logs:/go/logs
+    depends_on:
+      - controller
+    ports:
+      - 8080:8080
+    networks:
+      - cluster
+  batcher:
+    image: fasthall/gochariots
+    entrypoint: gochariots batcher -p 9000 -i -t -f config/config.yaml -d
+    depends_on:
+      - controller
+    volumes:
+      - ./config:/go/config
+      - ./logs:/go/logs
+    ports: 
+      - 9000
+    environment:
+      - TCP_PORTS=9000
+    networks:
+      - cluster
+  queue-leader:
+    image: fasthall/gochariots
+    entrypoint: gochariots queue --hold -i -t -f config/config.yaml -d
+    depends_on:
+      - controller
+    volumes:
+      - ./config:/go/config
+      - ./logs:/go/logs
+    networks:
+      - cluster
+  queue:
+    image: fasthall/gochariots
+    entrypoint: gochariots queue --no-hold -i -t -f config/config.yaml -d
+    depends_on:
+      - controller
+    volumes:
+      - ./config:/go/config
+      - ./logs:/go/logs
+    networks:
+      - cluster
+  maintainer:
+    image: fasthall/gochariots
+    entrypoint: gochariots maintainer -i -t -f config/config.yaml -d --mongodb
+    depends_on:
+      - controller
+    environment:
+      - MONGODB_HOST=169.231.235.70
+    volumes:
+      - ./config:/go/config
+      - ./logs:/go/logs
+      - ./flstore:/go/flstore
+    networks:
+      - cluster
+  indexer:
+    image: fasthall/gochariots
+    entrypoint: gochariots indexer -i -t -f config/config.yaml -d
+    depends_on:
+      - controller
+    volumes:
+      - ./config:/go/config
+      - ./logs:/go/logs
+    networks:
+      - cluster
+  batcher_lb:
+    image: dockercloud/haproxy
+    depends_on:
+      - batcher
+    ports:
+      - 9000:9000
+    links:
+      - batcher
+    networks:                                                                                                                                  
+      - cluster
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+networks:
+  cluster:

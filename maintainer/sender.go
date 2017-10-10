@@ -27,7 +27,7 @@ func Propagate(r record.Record) {
 				Host:      r.Host,
 				Lid:       r.LId,
 				Tags:      r.Tags,
-				Hash:      r.Hash,
+				Hash:      r.Parent,
 				Seed:      r.Seed,
 			}
 			_, err := remoteBatchersClient[dc].ReceiveRecord(context.Background(), &rpcRecord)

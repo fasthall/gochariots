@@ -47,7 +47,7 @@ func (s *Server) ReceiveRecords(ctx context.Context, in *RPCRecords) (*RPCReply,
 			Host:      ri.GetHost(),
 			LId:       ri.GetLid(),
 			Tags:      ri.GetTags(),
-			Hash:      ri.GetHash(),
+			Parent:    ri.GetHash(),
 			Seed:      ri.GetSeed(),
 		}
 	}

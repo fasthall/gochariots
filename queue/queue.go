@@ -43,7 +43,7 @@ func (s *Server) ReceiveRecords(ctx context.Context, in *RPCRecords) (*RPCReply,
 			Host:      ri.GetHost(),
 			LId:       ri.GetLid(),
 			Tags:      ri.GetTags(),
-			Hash:      ri.GetHash(),
+			Parent:    ri.GetHash(),
 			Seed:      ri.GetSeed(),
 		}
 	}
@@ -164,11 +164,11 @@ func tokenArrival(token Token) {
 	bufMutex.Lock()
 	head := 0
 	for _, r := range buffered {
-		if len(r.Hash) == 0 {
+		if len(r.Parent) == 0 {
 			dispatch = append(dispatch, r)
 		} else {
 			query = append(query, indexer.Query{
-				Hash: r.Hash,
+				Hash: r.Parent,
 				Seed: r.Seed,
 			})
 			buffered[head] = r
@@ -254,7 +254,7 @@ func dispatchRecords(records []record.Record, maintainerID int) {
 			Host:      r.Host,
 			Lid:       r.LId,
 			Tags:      r.Tags,
-			Hash:      r.Hash,
+			Hash:      r.Parent,
 			Seed:      r.Seed,
 		}
 		rpcRecords.Records[i] = &tmp

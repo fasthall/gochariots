@@ -36,6 +36,12 @@ func PutRecords(records []record.Record) error {
 	return nil
 }
 
+func GetRecord(id uint64) (record.Record, error) {
+	var r record.Record
+	err := c.FindId(id).One(&r)
+	return r, err
+}
+
 func PutTOIDRecord(r record.TOIDRecord) error {
 	return c.Insert(&r)
 }

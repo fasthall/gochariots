@@ -36,7 +36,7 @@ func (s *Server) ReceiveRecord(ctx context.Context, in *batcherrpc.RPCRecord) (*
 		Host:      in.GetHost(),
 		LId:       in.GetLid(),
 		Tags:      in.GetTags(),
-		Hash:      in.GetHash(),
+		Parent:    in.GetHash(),
 		Seed:      in.GetSeed(),
 	}
 	if r.Host == 0 {
@@ -53,7 +53,7 @@ func (s *Server) ReceiveRecords(ctx context.Context, in *batcherrpc.RPCRecords) 
 			Host:      i.GetHost(),
 			LId:       i.GetLid(),
 			Tags:      i.GetTags(),
-			Hash:      i.GetHash(),
+			Parent:    i.GetHash(),
 			Seed:      i.GetSeed(),
 		}
 		if r.Host == 0 {
@@ -119,7 +119,7 @@ func sendToQueue() {
 			Host:      r.Host,
 			Lid:       r.LId,
 			Tags:      r.Tags,
-			Hash:      r.Hash,
+			Hash:      r.Parent,
 			Seed:      r.Seed,
 		})
 	}

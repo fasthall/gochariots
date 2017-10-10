@@ -20,7 +20,7 @@ type Record struct {
 	Host      uint32 `datastore:"Host"`
 	LId       uint32 `datastore:"LId"`
 	Tags      string `datastore:"Tags"`
-	Hash      string `datastore:"Hash"`
+	Parent    string `datastore:"Parent"`
 	Seed      string `datastore:"Seed"`
 }
 
@@ -58,7 +58,7 @@ func PutRecord(r record.Record) error {
 		Host:      r.Host,
 		LId:       r.LId,
 		Tags:      string(tags),
-		Hash:      fmt.Sprintf("%v", r.Hash),
+		Parent:    fmt.Sprintf("%v", r.Parent),
 		Seed:      fmt.Sprintf("%v", r.Seed),
 	}
 	key := datastore.IncompleteKey("Record", nil)
