@@ -27,17 +27,13 @@ type Token struct {
 	LastLId uint32
 }
 
-type Query struct {
-	Id   []string
-	Seed string
-}
-
 type Server struct{}
 
 func (s *Server) ReceiveRecords(ctx context.Context, in *RPCRecords) (*RPCReply, error) {
 	records := make([]record.Record, len(in.GetRecords()))
 	for i, ri := range in.GetRecords() {
 		records[i] = record.Record{
+			Id:        ri.GetId(),
 			Timestamp: ri.GetTimestamp(),
 			Host:      ri.GetHost(),
 			LId:       ri.GetLid(),
@@ -137,45 +133,44 @@ func tokenArrival(token Token) {
 	// append buffered records to the token in order
 	bufMutex.Lock()
 	head := 0
-	query := []Query{}
+	// query := []mongodb.Query{}
 	for _, r := range buffered {
-		if len(r.Parent) == 0 {
-			dispatch = append(dispatch, r)
-		} else {
-			query = append(query, Query{
-				Id:   r.Parent,
-				Seed: r.Seed,
-			})
-			buffered[head] = r
-			head++
-		}
+		// if len(r.Parent) == 0 {
+		dispatch = append(dispatch, r)
+		// } else {
+		// 	query = append(query, mongodb.Query{
+		// 		Id:   r.Parent,
+		// 		Seed: r.Seed,
+		// 	})
+		// 	buffered[head] = r
+		// 	head++
+		// }
 	}
 	buffered = buffered[:head]
 
 	// Ask MongoDB if the prerequisite records exist
-	if len(query) > 0 {
-		existed := make([]bool, len(query))
-		var err error
-		// TODO
-		existed, err = queryDB(query)
-		if err != nil {
-			logrus.WithError(err).Error("couldn't connect to DB")
-		}
-		head = 0
-		for i, r := range buffered {
-			if existed[i] {
-				dispatch = append(dispatch, r)
-			} else {
-				buffered[head] = r
-				head++
-			}
-		}
-		buffered = buffered[:head]
-	}
+	// if len(query) > 0 {
+	// 	existed := make([]bool, len(query))
+	// 	var err error
+	// 	existed, err = mongodb.QueryDB(query)
+	// 	if err != nil {
+	// 		logrus.WithError(err).Error("couldn't connect to DB")
+	// 	}
+	// 	head = 0
+	// 	for i, r := range buffered {
+	// 		if existed[i] {
+	// 			dispatch = append(dispatch, r)
+	// 		} else {
+	// 			buffered[head] = r
+	// 			head++
+	// 		}
+	// 	}
+	// 	buffered = buffered[:head]
+	// }
 	bufMutex.Unlock()
 	// assign LId and send to log maintainers
-	lastID := assignLId(dispatch, token.LastLId)
-	token.LastLId = lastID
+	// lastID := assignLId(dispatch, token.LastLId)
+	// token.LastLId = lastID
 	toDispatch := make([][]record.Record, len(maintainersClient))
 	for _, r := range dispatch {
 		id := maintainer.AssignToMaintainer(r.LId, len(maintainersClient))
@@ -220,6 +215,7 @@ func dispatchRecords(records []record.Record, maintainerID int) {
 	}
 	for i, r := range records {
 		tmp := maintainer.RPCRecord{
+			Id:        r.Id,
 			Timestamp: r.Timestamp,
 			Host:      r.Host,
 			Lid:       r.LId,
@@ -236,9 +232,4 @@ func dispatchRecords(records []record.Record, maintainerID int) {
 		logrus.WithFields(logrus.Fields{"records": records, "id": maintainerID}).Debug("sent the records to maintainer")
 	}
 	// log.Printf("TIMESTAMP %s:record in queue %s\n", info.GetName(), time.Since(lastTime))
-}
-
-func queryDB(query []Query) ([]bool, error) {
-	// TODO
-	return nil, nil
 }

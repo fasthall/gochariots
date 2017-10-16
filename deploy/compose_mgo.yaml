@@ -42,6 +42,8 @@ services:
     entrypoint: gochariots queue --hold -f config/config.yaml -d
     depends_on:
       - controller
+    environment:
+      - MONGODB_HOST=169.231.235.70
     volumes:
       - ./config:/go/config
       - ./logs:/go/logs
@@ -52,6 +54,8 @@ services:
     entrypoint: gochariots queue --no-hold -f config/config.yaml -d
     depends_on:
       - controller
+    environment:
+      - MONGODB_HOST=169.231.235.70
     volumes:
       - ./config:/go/config
       - ./logs:/go/logs
@@ -68,16 +72,6 @@ services:
       - ./config:/go/config
       - ./logs:/go/logs
       - ./flstore:/go/flstore
-    networks:
-      - cluster
-  indexer:
-    image: fasthall/gochariots
-    entrypoint: gochariots indexer -f config/config.yaml -d
-    depends_on:
-      - controller
-    volumes:
-      - ./config:/go/config
-      - ./logs:/go/logs
     networks:
       - cluster
   batcher_lb:

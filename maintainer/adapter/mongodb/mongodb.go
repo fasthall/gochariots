@@ -6,6 +6,7 @@ import (
 	"github.com/fasthall/gochariots/record"
 	"github.com/satori/go.uuid"
 	mgo "gopkg.in/mgo.v2"
+	"gopkg.in/mgo.v2/bson"
 )
 
 const DB_NAME string = "gochariots"
@@ -28,9 +29,6 @@ func PutRecord(r record.Record) error {
 		connect()
 	}
 
-	if r.Id == "" {
-		r.Id = uuid.NewV4().String()
-	}
 	return c.Insert(&r)
 }
 
@@ -39,16 +37,15 @@ func PutRecords(records []record.Record) error {
 		connect()
 	}
 
-	for _, r := range records {
+	objs := make([]interface{}, len(records))
+	for i, r := range records {
 		if r.Id == "" {
 			r.Id = uuid.NewV4().String()
 		}
-		err := c.Insert(&r)
-		if err != nil {
-			return err
-		}
+		objs[i] = r
 	}
-	return nil
+
+	return c.Insert(objs...)
 }
 
 func GetRecord(id uint64) (record.Record, error) {
@@ -77,14 +74,40 @@ func PutTOIDRecords(records []record.TOIDRecord) error {
 		connect()
 	}
 
-	for _, r := range records {
+	objs := make([]interface{}, len(records))
+	for i, r := range records {
 		if r.Id == "" {
 			r.Id = uuid.NewV4().String()
 		}
-		err := c.Insert(&r)
+		objs[i] = r
+	}
+
+	return c.Insert(objs...)
+}
+
+type Query struct {
+	Id   []string
+	Seed string
+}
+
+func QueryDB(queries []Query) ([]bool, error) {
+	if c == nil {
+		connect()
+	}
+
+	existed := make([]bool, len(queries))
+	for i, q := range queries {
+		bsonm := []bson.M{}
+		for _, id := range q.Id {
+			bsonm = append(bsonm, bson.M{"seed": q.Seed, "_id": id})
+		}
+		cnt, err := c.Find(bson.M{"$or": bsonm}).Count()
 		if err != nil {
-			return err
+			return nil, err
+		}
+		if cnt == len(q.Id) {
+			existed[i] = true
 		}
 	}
-	return nil
+	return existed, nil
 }

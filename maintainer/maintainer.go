@@ -39,6 +39,7 @@ func (s *Server) ReceiveRecords(ctx context.Context, in *RPCRecords) (*RPCReply,
 	records := make([]record.Record, len(in.GetRecords()))
 	for i, ri := range in.GetRecords() {
 		records[i] = record.Record{
+			Id:        ri.GetId(),
 			Timestamp: ri.GetTimestamp(),
 			Host:      ri.GetHost(),
 			LId:       ri.GetLid(),

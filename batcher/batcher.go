@@ -3,11 +3,13 @@
 package batcher
 
 import (
+	"encoding/json"
 	"math/rand"
 	"sync"
 	"time"
 
 	"github.com/fasthall/gochariots/info"
+	"github.com/satori/uuid"
 
 	"github.com/fasthall/gochariots/batcher/batcherrpc"
 	"github.com/fasthall/gochariots/queue"
@@ -32,6 +34,7 @@ type Server struct{}
 
 func (s *Server) ReceiveRecord(ctx context.Context, in *batcherrpc.RPCRecord) (*batcherrpc.RPCReply, error) {
 	r := record.Record{
+		Id:        in.GetId(),
 		Timestamp: in.GetTimestamp(),
 		Host:      in.GetHost(),
 		LId:       in.GetLid(),
@@ -42,13 +45,18 @@ func (s *Server) ReceiveRecord(ctx context.Context, in *batcherrpc.RPCRecord) (*
 	if r.Host == 0 {
 		r.Host = uint32(info.ID)
 	}
+	if r.Id == "" {
+		r.Id = uuid.NewV4().String()
+	}
 	arrival(r)
-	return &batcherrpc.RPCReply{Message: "ok"}, nil
+	return &batcherrpc.RPCReply{Message: r.Id}, nil
 }
 
 func (s *Server) ReceiveRecords(ctx context.Context, in *batcherrpc.RPCRecords) (*batcherrpc.RPCReply, error) {
+	ids := []string{}
 	for _, i := range in.GetRecords() {
 		r := record.Record{
+			Id:        i.GetId(),
 			Timestamp: i.GetTimestamp(),
 			Host:      i.GetHost(),
 			LId:       i.GetLid(),
@@ -59,9 +67,14 @@ func (s *Server) ReceiveRecords(ctx context.Context, in *batcherrpc.RPCRecords) 
 		if r.Host == 0 {
 			r.Host = uint32(info.ID)
 		}
+		if r.Id == "" {
+			r.Id = uuid.NewV4().String()
+		}
+		ids = append(ids, r.Id)
 		arrival(r)
 	}
-	return &batcherrpc.RPCReply{Message: "ok"}, nil
+	b, err := json.Marshal(ids)
+	return &batcherrpc.RPCReply{Message: string(b)}, err
 }
 
 func (s *Server) UpdateQueue(ctx context.Context, in *batcherrpc.RPCQueues) (*batcherrpc.RPCReply, error) {
@@ -115,6 +128,7 @@ func sendToQueue() {
 	rpcRecords := queue.RPCRecords{}
 	for _, r := range buffer {
 		rpcRecords.Records = append(rpcRecords.Records, &queue.RPCRecord{
+			Id:        r.Id,
 			Timestamp: r.Timestamp,
 			Host:      r.Host,
 			Lid:       r.LId,
