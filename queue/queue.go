@@ -1,6 +1,7 @@
 package queue
 
 import (
+	"math/rand"
 	"sync"
 	"time"
 
@@ -8,13 +9,14 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	"github.com/fasthall/gochariots/maintainer"
+	"github.com/fasthall/gochariots/maintainer/adapter/mongodb"
 	"github.com/fasthall/gochariots/record"
 	"golang.org/x/net/context"
 )
 
 var lastTime time.Time
 var bufMutex sync.Mutex
-var buffered []record.Record
+var buffered []Causality
 var maintainersClient []maintainer.MaintainerClient
 var maintainersHost []string
 var maintainersVer int
@@ -25,6 +27,12 @@ var nextQueueVer int
 // Token is used by queues to ensure causality of LId assignment
 type Token struct {
 	LastLId uint32
+}
+
+// Record[Id] is caused by Record[Parent]
+type Causality struct {
+	Id     string
+	Parent string
 }
 
 type Server struct{}
@@ -99,7 +107,7 @@ func (s *Server) UpdateMaintainers(ctx context.Context, in *RPCMaintainers) (*RP
 
 // InitQueue initializes the buffer and hashmap for queued records
 func InitQueue(hasToken bool) {
-	buffered = []record.Record{}
+	buffered = []Causality{}
 	if hasToken {
 		var token Token
 		token.InitToken(0)
@@ -120,8 +128,16 @@ func (token *Token) InitToken(lastLId uint32) {
 // recordsArrival deals with the records received from filters
 func recordsArrival(records []record.Record) {
 	logrus.WithField("timestamp", time.Now()).Debug("recordsArrival")
+	dispatchRecords(records, rand.Intn(len(maintainersClient)))
 	bufMutex.Lock()
-	buffered = append(buffered, records...)
+	cs := make([]Causality, len(records))
+	for i, r := range records {
+		cs[i] = Causality{
+			Id:     r.Id,
+			Parent: r.Parent,
+		}
+	}
+	buffered = append(buffered, cs...)
 	bufMutex.Unlock()
 }
 
@@ -129,69 +145,35 @@ func recordsArrival(records []record.Record) {
 // For each deferred records in the token, check if the current max TOId in shared log satisfies the dependency.
 // If so, the deferred records are sent to the log maintainers.
 func tokenArrival(token Token) {
-	dispatch := []record.Record{}
-	// append buffered records to the token in order
+	lastLId := token.LastLId
 	bufMutex.Lock()
-	head := 0
-	// query := []mongodb.Query{}
-	for _, r := range buffered {
-		// if len(r.Parent) == 0 {
-		dispatch = append(dispatch, r)
-		// } else {
-		// 	query = append(query, mongodb.Query{
-		// 		Id:   r.Parent,
-		// 		Seed: r.Seed,
-		// 	})
-		// 	buffered[head] = r
-		// 	head++
-		// }
+	// build queries
+	query := make([]string, len(buffered))
+	for i, c := range buffered {
+		query[i] = c.Parent
 	}
-	buffered = buffered[:head]
 
-	// Ask MongoDB if the prerequisite records exist
-	// if len(query) > 0 {
-	// 	existed := make([]bool, len(query))
-	// 	var err error
-	// 	existed, err = mongodb.QueryDB(query)
-	// 	if err != nil {
-	// 		logrus.WithError(err).Error("couldn't connect to DB")
-	// 	}
-	// 	head = 0
-	// 	for i, r := range buffered {
-	// 		if existed[i] {
-	// 			dispatch = append(dispatch, r)
-	// 		} else {
-	// 			buffered[head] = r
-	// 			head++
-	// 		}
-	// 	}
-	// 	buffered = buffered[:head]
-	// }
-	bufMutex.Unlock()
-	// assign LId and send to log maintainers
-	// lastID := assignLId(dispatch, token.LastLId)
-	// token.LastLId = lastID
-	toDispatch := make([][]record.Record, len(maintainersClient))
-	for _, r := range dispatch {
-		id := maintainer.AssignToMaintainer(r.LId, len(maintainersClient))
-		toDispatch[id] = append(toDispatch[id], r)
+	// ask MongoDB if the prerequisite records exist
+	existed, err := mongodb.QueryDB(query)
+	if err != nil {
+		logrus.WithError(err).Error("couldn't connect to DB")
 	}
-	for id, t := range toDispatch {
-		if len(t) > 0 {
-			dispatchRecords(t, id)
+
+	// update LId for those records with existing parent
+	head := 0
+	for i, c := range buffered {
+		if existed[i] {
+			lastLId++
+			mongodb.UpdateLId(c.Id, lastLId)
+		} else {
+			buffered[head] = c
+			head++
 		}
 	}
+	buffered = buffered[:head]
+	bufMutex.Unlock()
+	token.LastLId = lastLId
 	go passToken(&token)
-}
-
-// assignLId assigns LId to all the records to be sent to log maintainers
-// return the last LId assigned
-func assignLId(records []record.Record, lastLId uint32) uint32 {
-	for i := range records {
-		lastLId++
-		records[i].LId = lastLId
-	}
-	return lastLId
 }
 
 // passToken sends the token to the next queue in the ring

@@ -19,7 +19,7 @@ type Record struct {
 	Host      uint32
 	LId       uint32
 	Tags      map[string]string
-	Parent    []string
+	Parent    string
 	Seed      string
 }
 

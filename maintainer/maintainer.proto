@@ -15,7 +15,7 @@ message RPCRecord {
     uint32 host = 3;
     uint32 lid = 4;
     map<string, string> tags = 5;
-    repeated string parent = 6;
+    string parent = 6;
     string seed = 7;
     // for TOID record
     uint32 toid = 8;

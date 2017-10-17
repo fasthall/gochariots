@@ -26,7 +26,7 @@ var batchersVer int
 type JsonRecord struct {
 	ID     string            `json:"id"`
 	Tags   map[string]string `json:"tags"`
-	Parent []string          `json:"parent"`
+	Parent string            `json:"parent"`
 	Seed   string            `json:"seed"`
 }
 

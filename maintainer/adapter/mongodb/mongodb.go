@@ -29,7 +29,12 @@ func PutRecord(r record.Record) error {
 		connect()
 	}
 
-	return c.Insert(&r)
+	err := c.Insert(&r)
+	if mgo.IsDup(err) {
+		err := c.UpdateId(r.Id, bson.M{"$set": bson.M{"timestamp": r.Timestamp, "host": r.Host, "tags": r.Tags, "parent": r.Parent, "seed": r.Seed}})
+		return err
+	}
+	return err
 }
 
 func PutRecords(records []record.Record) error {
@@ -39,16 +44,29 @@ func PutRecords(records []record.Record) error {
 
 	objs := make([]interface{}, len(records))
 	for i, r := range records {
-		if r.Id == "" {
-			r.Id = uuid.NewV4().String()
-		}
 		objs[i] = r
 	}
 
 	return c.Insert(objs...)
 }
 
-func GetRecord(id uint64) (record.Record, error) {
+func UpdateLId(id string, lid uint32) error {
+	if c == nil {
+		connect()
+	}
+
+	err := c.Update(bson.M{"_id": id}, bson.M{"$set": bson.M{"lid": lid}})
+	if err == mgo.ErrNotFound {
+		r := record.Record{
+			Id:  id,
+			LId: lid,
+		}
+		return PutRecord(r)
+	}
+	return err
+}
+
+func GetRecord(id string) (record.Record, error) {
 	if c == nil {
 		connect()
 	}
@@ -85,28 +103,23 @@ func PutTOIDRecords(records []record.TOIDRecord) error {
 	return c.Insert(objs...)
 }
 
-type Query struct {
-	Id   []string
-	Seed string
-}
-
-func QueryDB(queries []Query) ([]bool, error) {
+func QueryDB(queries []string) ([]bool, error) {
 	if c == nil {
 		connect()
 	}
 
 	existed := make([]bool, len(queries))
-	for i, q := range queries {
-		bsonm := []bson.M{}
-		for _, id := range q.Id {
-			bsonm = append(bsonm, bson.M{"seed": q.Seed, "_id": id})
-		}
-		cnt, err := c.Find(bson.M{"$or": bsonm}).Count()
-		if err != nil {
-			return nil, err
-		}
-		if cnt == len(q.Id) {
+	for i, id := range queries {
+		if id == "" {
 			existed[i] = true
+		} else {
+			cnt, err := c.Find(bson.M{"_id": id, "lid": bson.M{"$gt": 0}}).Count()
+			if err != nil {
+				return nil, err
+			}
+			if cnt > 0 {
+				existed[i] = true
+			}
 		}
 	}
 	return existed, nil
