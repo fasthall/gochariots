@@ -1,13 +1,11 @@
-package mongodb
+package main
 
 import (
-	"errors"
-	"os"
-
-	"github.com/Sirupsen/logrus"
+	"fmt"
+	"strconv"
+	"sync"
 
 	"github.com/fasthall/gochariots/record"
-	"github.com/satori/go.uuid"
 	mgo "gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 )
@@ -16,15 +14,15 @@ const DB_NAME string = "gochariots"
 const COLLECTION_NAME string = "record"
 
 var c *mgo.Collection
+var batchSize = 1000
+var batch = 1000
 
 func connect() {
-	if os.Getenv("MONGODB_HOST") != "" {
-		session, err := mgo.Dial(os.Getenv("MONGODB_HOST"))
-		if err != nil {
-			panic(err)
-		}
-		c = session.DB(DB_NAME).C(COLLECTION_NAME)
+	session, err := mgo.Dial("169.231.235.70")
+	if err != nil {
+		panic(err)
 	}
+	c = session.DB(DB_NAME).C(COLLECTION_NAME)
 }
 
 func PutRecord(r record.Record) error {
@@ -70,14 +68,6 @@ func UpdateLId(id string, lid uint32) error {
 }
 
 func UpdateLIds(id []string, lid []uint32) error {
-	if len(id) != len(lid) {
-		return errors.New("length doesn't match")
-	}
-	for len(id) > 1000 {
-		UpdateLIds(id[:1000], lid[:1000])
-		id = id[1000:]
-		lid = lid[1000:]
-	}
 	if c == nil {
 		connect()
 	}
@@ -90,7 +80,7 @@ func UpdateLIds(id []string, lid []uint32) error {
 	bulk.Update(q...)
 	_, err := bulk.Run()
 	if err == mgo.ErrNotFound {
-		logrus.WithError(err).Error("mgo.ErrNotFound")
+		fmt.Println(err)
 	}
 	return err
 }
@@ -105,46 +95,67 @@ func GetRecord(id string) (record.Record, error) {
 	return r, err
 }
 
-func PutTOIDRecord(r record.TOIDRecord) error {
+func QueryDB(queries []string) ([]bool, error) {
 	if c == nil {
 		connect()
 	}
 
-	if r.Id == "" {
-		r.Id = uuid.NewV4().String()
+	existed := make([]bool, len(queries))
+	for i, id := range queries {
+		if id == "" {
+			existed[i] = true
+		} else {
+			cnt, err := c.Find(bson.M{"_id": id, "lid": bson.M{"$gt": 0}}).Count()
+			if err != nil {
+				return nil, err
+			}
+			if cnt > 0 {
+				existed[i] = true
+			}
+		}
 	}
-	return c.Insert(&r)
+	return existed, nil
 }
 
-func PutTOIDRecords(records []record.TOIDRecord) error {
-	if c == nil {
-		connect()
-	}
+func main() {
+	var wg sync.WaitGroup
+	wg.Add(batch)
 
-	objs := make([]interface{}, len(records))
-	for i, r := range records {
-		if r.Id == "" {
-			r.Id = uuid.NewV4().String()
+	for b := 0; b < batch; b++ {
+		id := []string{}
+		lid := []uint32{}
+		for i := 0; i < batchSize; i++ {
+			id = append(id, strconv.Itoa(b*batchSize+i))
+			lid = append(lid, uint32(b*batchSize+i+1))
 		}
-		objs[i] = r
+		go func() {
+			defer wg.Done()
+			err := UpdateLIds(id, lid)
+			if err != nil {
+				fmt.Println(err)
+			}
+		}()
 	}
 
-	return c.Insert(objs...)
-}
+	// for b := 0; b < batch; b++ {
+	// 	records := make([]record.Record, batchSize)
+	// 	for i := 0; i < batchSize; i++ {
+	// 		records[i] = record.Record{
+	// 			Id:     strconv.Itoa(b*batchSize + i),
+	// 			Host:   1,
+	// 			Tags:   map[string]string{},
+	// 			Parent: "",
+	// 			Seed:   uuid.NewV4().String(),
+	// 		}
+	// 	}
+	// 	go func() {
+	// 		defer wg.Done()
+	// 		err := PutRecords(records)
+	// 		if err != nil {
+	// 			fmt.Println(err)
+	// 		}
+	// 	}()
+	// }
 
-func QueryDB(queries *map[string]bool) error {
-	if c == nil {
-		connect()
-	}
-
-	for key, _ := range *queries {
-		cnt, err := c.Find(bson.M{"_id": key, "lid": bson.M{"$gt": 0}}).Count()
-		if err != nil {
-			return err
-		}
-		if cnt > 0 {
-			(*queries)[key] = true
-		}
-	}
-	return nil
+	wg.Wait()
 }

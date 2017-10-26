@@ -54,13 +54,6 @@ func (s *Server) TOIDReadByLId(ctx context.Context, in *RPCLId) (*RPCReply, erro
 func TOIDAppend(r record.TOIDRecord) error {
 	// info.LogTimestamp("Append")
 	r.Timestamp = time.Now().UnixNano()
-	if logRecordNth > 0 {
-		if r.LId == 1 {
-			logFirstTime = time.Now()
-		} else if r.LId == logRecordNth {
-			logrus.WithField("duration", time.Since(logFirstTime)).Info("appended", logRecordNth, "records")
-		}
-	}
 
 	if maintainerInterface == adapter.DYNAMODB {
 		err := dynamodb.PutTOIDRecord(r)
@@ -98,7 +91,6 @@ func TOIDAppend(r record.TOIDRecord) error {
 	}
 	// log.Println(info.GetName(), "wrote record ", lid)
 
-	LastLId = r.LId
 	if r.Host == uint32(info.ID) {
 		TOIDPropagate(r)
 	}

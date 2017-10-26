@@ -3,13 +3,13 @@
 package batcher
 
 import (
-	"encoding/json"
 	"math/rand"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/fasthall/gochariots/info"
-	"github.com/satori/uuid"
+	"github.com/satori/go.uuid"
 
 	"github.com/fasthall/gochariots/batcher/batcherrpc"
 	"github.com/fasthall/gochariots/queue"
@@ -20,8 +20,7 @@ import (
 	"golang.org/x/net/context"
 )
 
-const bufferSize int = 256
-
+var bufferSize int
 var bufMutex sync.Mutex
 var buffer []record.Record
 var connMutex sync.Mutex
@@ -73,8 +72,8 @@ func (s *Server) ReceiveRecords(ctx context.Context, in *batcherrpc.RPCRecords) 
 		ids = append(ids, r.Id)
 		arrival(r)
 	}
-	b, err := json.Marshal(ids)
-	return &batcherrpc.RPCReply{Message: string(b)}, err
+	// b, err := json.Marshal(ids)
+	return &batcherrpc.RPCReply{Message: strconv.Itoa(len(ids))}, nil
 }
 
 func (s *Server) UpdateQueue(ctx context.Context, in *batcherrpc.RPCQueues) (*batcherrpc.RPCReply, error) {
@@ -101,7 +100,8 @@ func (s *Server) UpdateQueue(ctx context.Context, in *batcherrpc.RPCQueues) (*ba
 }
 
 // InitBatcher allocates n buffers, where n is the number of filters
-func InitBatcher() {
+func InitBatcher(bs int) {
+	bufferSize = bs
 	buffer = make([]record.Record, 0, bufferSize)
 }
 
@@ -124,7 +124,7 @@ func sendToQueue() {
 	if len(buffer) == 0 {
 		return
 	}
-	// logrus.WithField("timestamp", time.Now()).Debug("sendToQueue")
+	logrus.WithField("timestamp", time.Now()).Debug("sendToQueue")
 	rpcRecords := queue.RPCRecords{}
 	for _, r := range buffer {
 		rpcRecords.Records = append(rpcRecords.Records, &queue.RPCRecord{
@@ -139,13 +139,15 @@ func sendToQueue() {
 	}
 	buffer = buffer[:0]
 
-	queueID := rand.Intn(len(queuePool))
-	_, err := queueClient[queueID].ReceiveRecords(context.Background(), &rpcRecords)
-	if err != nil {
-		logrus.WithField("id", queueID).Error("couldn't connect to queue")
-	} else {
-		logrus.WithField("id", queueID).Debug("sent to queue")
-	}
+	go func() {
+		queueID := rand.Intn(len(queuePool))
+		_, err := queueClient[queueID].ReceiveRecords(context.Background(), &rpcRecords)
+		if err != nil {
+			logrus.WithField("id", queueID).Error("couldn't connect to queue")
+		} else {
+			logrus.WithField("id", queueID).Debug("sent to queue")
+		}
+	}()
 }
 
 // Sweeper periodcally sends the buffer content to filters

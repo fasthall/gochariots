@@ -128,7 +128,7 @@ func (token *Token) InitToken(lastLId uint32) {
 // recordsArrival deals with the records received from filters
 func recordsArrival(records []record.Record) {
 	logrus.WithField("timestamp", time.Now()).Debug("recordsArrival")
-	dispatchRecords(records, rand.Intn(len(maintainersClient)))
+	go dispatchRecords(records, rand.Intn(len(maintainersClient)))
 	bufMutex.Lock()
 	cs := make([]Causality, len(records))
 	for i, r := range records {
@@ -148,29 +148,50 @@ func tokenArrival(token Token) {
 	lastLId := token.LastLId
 	bufMutex.Lock()
 	// build queries
-	query := make([]string, len(buffered))
-	for i, c := range buffered {
-		query[i] = c.Parent
-	}
-
-	// ask MongoDB if the prerequisite records exist
-	existed, err := mongodb.QueryDB(query)
-	if err != nil {
-		logrus.WithError(err).Error("couldn't connect to DB")
-	}
-
-	// update LId for those records with existing parent
-	head := 0
-	for i, c := range buffered {
-		if existed[i] {
-			lastLId++
-			mongodb.UpdateLId(c.Id, lastLId)
-		} else {
-			buffered[head] = c
-			head++
+	if len(buffered) > 0 {
+		queries := map[string]bool{}
+		existed := make([]bool, len(buffered))
+		for i, c := range buffered {
+			if c.Parent == "" {
+				existed[i] = true
+			} else {
+				queries[c.Parent] = false
+			}
 		}
+
+		// ask MongoDB if the prerequisite records exist
+		err := mongodb.QueryDB(&queries)
+		if err != nil {
+			logrus.WithError(err).Error("couldn't connect to DB")
+		}
+		for i, c := range buffered {
+			if existed[i] == false && queries[c.Parent] {
+				existed[i] = true
+			}
+		}
+
+		// update LId for those records with existing parent
+		head := 0
+		ids := []string{}
+		lids := []uint32{}
+		for i, c := range buffered {
+			if existed[i] {
+				lastLId++
+				ids = append(ids, c.Id)
+				lids = append(lids, lastLId)
+			} else {
+				buffered[head] = c
+				head++
+			}
+		}
+		go func() {
+			err := mongodb.UpdateLIds(ids, lids)
+			if err != nil {
+				logrus.WithError(err).Error("error when updating lid")
+			}
+		}()
+		buffered = buffered[:head]
 	}
-	buffered = buffered[:head]
 	bufMutex.Unlock()
 	token.LastLId = lastLId
 	go passToken(&token)
@@ -178,7 +199,7 @@ func tokenArrival(token Token) {
 
 // passToken sends the token to the next queue in the ring
 func passToken(token *Token) {
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(10 * time.Millisecond)
 	if nextQueueHost == "" {
 		tokenArrival(*token)
 	} else {
@@ -192,6 +213,10 @@ func passToken(token *Token) {
 // dispatchRecords sends the ready records to log maintainers
 func dispatchRecords(records []record.Record, maintainerID int) {
 	// info.LogTimestamp("dispatchRecords")
+	// err := mongodb.PutRecords(records)
+	// if err != nil {
+	// 	logrus.WithError(err).Error("can't put records")
+	// }
 	rpcRecords := maintainer.RPCRecords{
 		Records: make([]*maintainer.RPCRecord, len(records)),
 	}
@@ -207,11 +232,12 @@ func dispatchRecords(records []record.Record, maintainerID int) {
 		}
 		rpcRecords.Records[i] = &tmp
 	}
-	_, err := maintainersClient[maintainerID].ReceiveRecords(context.Background(), &rpcRecords)
-	if err != nil {
-		logrus.WithField("id", maintainerID).Error("failed to connect to maintainer")
-	} else {
-		logrus.WithFields(logrus.Fields{"records": records, "id": maintainerID}).Debug("sent the records to maintainer")
-	}
-	// log.Printf("TIMESTAMP %s:record in queue %s\n", info.GetName(), time.Since(lastTime))
+	go func() {
+		_, err := maintainersClient[maintainerID].ReceiveRecords(context.Background(), &rpcRecords)
+		if err != nil {
+			logrus.WithField("id", maintainerID).Error("failed to connect to maintainer")
+		} else {
+			logrus.WithFields(logrus.Fields{"records": len(records), "id": maintainerID}).Debug("sent the records to maintainer")
+		}
+	}()
 }

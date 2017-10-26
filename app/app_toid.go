@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/fasthall/gochariots/batcher/batcherrpc"
-	"github.com/satori/uuid"
+	"github.com/satori/go.uuid"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/fasthall/gochariots/info"

@@ -36,6 +36,12 @@ var mutex sync.Mutex
 
 // StartController starts controller's REST API server on sepcified port
 func StartController(port string) {
+	appsVersion = 1
+	batchersVersion = 1
+	queuesVersion = 1
+	maintainersVersion = 1
+	remoteBatcherVer = 1
+
 	router := gin.Default()
 
 	router.GET("/", getInfo)
@@ -174,7 +180,10 @@ func addQueue(c *gin.Context) {
 	}
 	// update batchers about queues
 	for i, cli := range batcherClient {
-		rpcQueues := batcherrpc.RPCQueues{}
+		rpcQueues := batcherrpc.RPCQueues{
+			Version: queuesVersion,
+			Queues:  queues,
+		}
 		_, err := cli.UpdateQueue(context.Background(), &rpcQueues)
 		if err != nil {
 			logrus.WithField("id", i).WithError(err).Error("couldn't send new queue host")

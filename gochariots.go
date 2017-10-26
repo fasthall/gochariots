@@ -33,14 +33,15 @@ var (
 	appInfo    = appCommand.Flag("info", "Turn on info level logging.").Short('i').Bool()
 	appDebug   = appCommand.Flag("debug", "Turn on debug level logging.").Short('d').Bool()
 
-	batcherCommand = gochariots.Command("batcher", "Start a batcher instance.")
-	batcherNumDC   = batcherCommand.Flag("num_dc", "The port batcher listens to.").Int()
-	batcherID      = batcherCommand.Flag("id", "The port batcher listens to.").Int()
-	batcherPort    = batcherCommand.Flag("port", "The port app listens to. By default it's 9000").Short('p').String()
-	batcherTOId    = batcherCommand.Flag("toid", "Use TOId version.").Short('t').Bool()
-	batcherConfig  = batcherCommand.Flag("config_file", "Configuration file to read.").Short('f').String()
-	batcherInfo    = batcherCommand.Flag("info", "Turn on info level logging.").Short('i').Bool()
-	batcherDebug   = batcherCommand.Flag("debug", "Turn on debug level logging.").Short('d').Bool()
+	batcherCommand    = gochariots.Command("batcher", "Start a batcher instance.")
+	batcherNumDC      = batcherCommand.Flag("num_dc", "The port batcher listens to.").Int()
+	batcherID         = batcherCommand.Flag("id", "The port batcher listens to.").Int()
+	batcherBufferSize = batcherCommand.Flag("buffer_size", "The buffer size.").Default("2000").Int()
+	batcherPort       = batcherCommand.Flag("port", "The port app listens to. By default it's 9000").Short('p').String()
+	batcherTOId       = batcherCommand.Flag("toid", "Use TOId version.").Short('t').Bool()
+	batcherConfig     = batcherCommand.Flag("config_file", "Configuration file to read.").Short('f').String()
+	batcherInfo       = batcherCommand.Flag("info", "Turn on info level logging.").Short('i').Bool()
+	batcherDebug      = batcherCommand.Flag("debug", "Turn on debug level logging.").Short('d').Bool()
 
 	controllerCommand = gochariots.Command("controller", "Start a controller instance.")
 	controllerNumDC   = controllerCommand.Flag("num_dc", "The port controller listens to.").Int()
@@ -70,7 +71,6 @@ var (
 	queueDebug   = queueCommand.Flag("debug", "Turn on debug level logging.").Short('d').Bool()
 
 	maintainerCommand   = gochariots.Command("maintainer", "Start a maintainer instance.")
-	maintainerInstN     = maintainerCommand.Arg("ntime", "Record the time maintainer takes to append n records").Uint32()
 	maintainerNumDC     = maintainerCommand.Flag("num_dc", "The port maintainer listens to.").Int()
 	maintainerID        = maintainerCommand.Flag("id", "The port maintainer listens to.").Int()
 	maintainerPort      = maintainerCommand.Flag("port", "The port app listens to. By default it's 9030").Short('p').String()
@@ -155,7 +155,7 @@ func main() {
 		if *batcherTOId {
 			batcher.TOIDInitBatcher()
 		} else {
-			batcher.InitBatcher()
+			batcher.InitBatcher(*batcherBufferSize)
 		}
 		ln, err := net.Listen("tcp", ":"+*batcherPort)
 		if err != nil {
@@ -243,7 +243,7 @@ func main() {
 		} else if *maintainerMongoDB {
 			adap = adapter.MONGODB
 		}
-		maintainer.InitLogMaintainer(info.GetName(), *maintainerInstN, adap)
+		maintainer.InitLogMaintainer(info.GetName(), adap)
 		ln, err := net.Listen("tcp", ":"+*maintainerPort)
 		if err != nil {
 			fmt.Println(info.GetName() + "couldn't listen on port " + *maintainerPort)
