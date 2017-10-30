@@ -42,6 +42,7 @@ services:
     image: fasthall/gochariots
     entrypoint: gochariots queue --hold -f config/config.yaml -i
     depends_on:
+      - queue
       - controller
     environment:
       - MONGODB_HOST=169.231.235.70

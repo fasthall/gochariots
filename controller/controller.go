@@ -121,10 +121,12 @@ func addBatchers(c *gin.Context) {
 	conn, err := grpc.Dial(c.Query("host"), grpc.WithInsecure())
 	if err != nil {
 		c.String(http.StatusBadRequest, "couldn't connect to batcher")
+		logrus.WithError(err).Error("couldn't connect to batcher")
 		return
 	}
 	cli := batcherrpc.NewBatcherRPCClient(conn)
 	batcherClient = append(batcherClient, cli)
+	logrus.Error("batcherClient[" + strconv.Itoa(len(batcherClient)-1) + "]=" + c.Query("host"))
 	mutex.Unlock()
 	for _, host := range apps {
 		informAppBatcher(host)
@@ -186,7 +188,7 @@ func addQueue(c *gin.Context) {
 		}
 		_, err := cli.UpdateQueue(context.Background(), &rpcQueues)
 		if err != nil {
-			logrus.WithField("id", i).WithError(err).Error("couldn't send new queue host")
+			logrus.WithField("batcherID", i).WithError(err).Error("couldn't send new queue host")
 			panic("failing to update cluster may cause unexpected error")
 		}
 		logrus.WithFields(logrus.Fields{"batcher": i, "queues": queues}).Info("successfully informed batcher about new queue host")

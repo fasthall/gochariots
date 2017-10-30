@@ -9,9 +9,9 @@ import (
 	"google.golang.org/grpc"
 )
 
-var batchSize = 10000
-var batch = 100
-var poolSize = 20
+var batchSize = 1000
+var batch = 1000
+var poolSize = 10
 var batcherClient []batcherrpc.BatcherRPCClient
 
 func main() {

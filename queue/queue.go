@@ -213,10 +213,6 @@ func passToken(token *Token) {
 // dispatchRecords sends the ready records to log maintainers
 func dispatchRecords(records []record.Record, maintainerID int) {
 	// info.LogTimestamp("dispatchRecords")
-	// err := mongodb.PutRecords(records)
-	// if err != nil {
-	// 	logrus.WithError(err).Error("can't put records")
-	// }
 	rpcRecords := maintainer.RPCRecords{
 		Records: make([]*maintainer.RPCRecord, len(records)),
 	}

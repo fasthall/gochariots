@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"sync"
@@ -30,11 +31,7 @@ func PutRecord(r record.Record) error {
 		connect()
 	}
 
-	err := c.Insert(&r)
-	if mgo.IsDup(err) {
-		err := c.UpdateId(r.Id, bson.M{"$set": bson.M{"timestamp": r.Timestamp, "host": r.Host, "tags": r.Tags, "parent": r.Parent, "seed": r.Seed}})
-		return err
-	}
+	_, err := c.UpsertId(r.Id, &r)
 	return err
 }
 
@@ -43,12 +40,21 @@ func PutRecords(records []record.Record) error {
 		connect()
 	}
 
-	objs := make([]interface{}, len(records))
-	for i, r := range records {
-		objs[i] = r
+	if len(records) > 1000 {
+		PutRecords(records[1000:])
+		records = records[:1000]
 	}
-
-	return c.Insert(objs...)
+	bulk := c.Bulk()
+	objs := make([]interface{}, len(records)*2)
+	for i, r := range records {
+		objs[2*i] = bson.M{"_id": r.Id}
+		objs[2*i+1] = bson.M{
+			"$set":         bson.M{"host": r.Host, "tags": r.Tags, "parent": r.Parent, "seed": r.Seed, "timestamp": r.Timestamp},
+			"$setOnInsert": bson.M{"lid": r.LId}}
+	}
+	bulk.Upsert(objs...)
+	_, err := bulk.Run()
+	return err
 }
 
 func UpdateLId(id string, lid uint32) error {
@@ -56,18 +62,19 @@ func UpdateLId(id string, lid uint32) error {
 		connect()
 	}
 
-	err := c.Update(bson.M{"_id": id}, bson.M{"$set": bson.M{"lid": lid}})
-	if err == mgo.ErrNotFound {
-		r := record.Record{
-			Id:  id,
-			LId: lid,
-		}
-		return PutRecord(r)
-	}
+	_, err := c.Upsert(bson.M{"_id": id}, bson.M{"$set": bson.M{"lid": lid}})
 	return err
 }
 
 func UpdateLIds(id []string, lid []uint32) error {
+	if len(id) != len(lid) {
+		return errors.New("length doesn't match")
+	}
+	for len(id) > 1000 {
+		UpdateLIds(id[:1000], lid[:1000])
+		id = id[1000:]
+		lid = lid[1000:]
+	}
 	if c == nil {
 		connect()
 	}
@@ -77,22 +84,9 @@ func UpdateLIds(id []string, lid []uint32) error {
 		q[2*i] = bson.M{"_id": id[i]}
 		q[2*i+1] = bson.M{"$set": bson.M{"lid": lid[i]}}
 	}
-	bulk.Update(q...)
+	bulk.Upsert(q...)
 	_, err := bulk.Run()
-	if err == mgo.ErrNotFound {
-		fmt.Println(err)
-	}
 	return err
-}
-
-func GetRecord(id string) (record.Record, error) {
-	if c == nil {
-		connect()
-	}
-
-	var r record.Record
-	err := c.FindId(id).One(&r)
-	return r, err
 }
 
 func QueryDB(queries []string) ([]bool, error) {

@@ -43,7 +43,12 @@ func (s *Server) ReceiveRecords(ctx context.Context, in *RPCRecords) (*RPCReply,
 			propagated = append(propagated, records[i])
 		}
 	}
-	go mongodb.PutRecords(records)
+	go func() {
+		err := mongodb.PutRecords(records)
+		if err != nil {
+			logrus.WithError(err).Error("couldn't put records to mongodb")
+		}
+	}()
 	go Propagate(propagated)
 	return &RPCReply{Message: "ok"}, nil
 }

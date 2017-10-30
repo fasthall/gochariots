@@ -21,8 +21,12 @@ import (
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
 
+const version string = "mongodb 1030"
+
 var (
 	gochariots = kingpin.New("gochariots", "A distributed shared log system.")
+
+	versionCommand = gochariots.Command("version", "The version of GoChariots.")
 
 	appCommand = gochariots.Command("app", "Start an app instance.")
 	appNumDC   = appCommand.Flag("num_dc", "The port app listens to.").Int()
@@ -86,6 +90,8 @@ var (
 
 func main() {
 	switch kingpin.MustParse(gochariots.Parse(os.Args[1:])) {
+	case versionCommand.FullCommand():
+		fmt.Println(version)
 	case appCommand.FullCommand():
 		if *appPort == "" {
 			*appPort = "8080"
