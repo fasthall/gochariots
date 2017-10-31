@@ -21,7 +21,7 @@ import (
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
 
-const version string = "mongodb 1030"
+const version string = "mongodb 1031"
 
 var (
 	gochariots = kingpin.New("gochariots", "A distributed shared log system.")
@@ -63,16 +63,17 @@ var (
 	filterInfo    = filterCommand.Flag("info", "Turn on info level logging.").Short('i').Bool()
 	filterDebug   = filterCommand.Flag("debug", "Turn on debug level logging.").Short('d').Bool()
 
-	queueCommand = gochariots.Command("queue", "Start a queue instance.")
-	queueNumDC   = queueCommand.Flag("num_dc", "The port queue listens to.").Int()
-	queueID      = queueCommand.Flag("id", "The port queue listens to.").Int()
-	queuePort    = queueCommand.Flag("port", "The port app listens to. By default it's 9020").Short('p').String()
-	queueHold    = queueCommand.Flag("hold", "Whether this queue instance holds a token when launched.").Required().Short('h').Bool()
-	queueTOId    = queueCommand.Flag("toid", "Use TOId version.").Short('t').Bool()
-	queueCarry   = queueCommand.Flag("carry", "Carry deferred records with token. Only work when toid is on.").Short('c').Bool()
-	queueConfig  = queueCommand.Flag("config_file", "Configuration file to read.").Short('f').String()
-	queueInfo    = queueCommand.Flag("info", "Turn on info level logging.").Short('i').Bool()
-	queueDebug   = queueCommand.Flag("debug", "Turn on debug level logging.").Short('d').Bool()
+	queueCommand        = gochariots.Command("queue", "Start a queue instance.")
+	queueNumDC          = queueCommand.Flag("num_dc", "The port queue listens to.").Int()
+	queueID             = queueCommand.Flag("id", "The port queue listens to.").Int()
+	queuePort           = queueCommand.Flag("port", "The port app listens to. By default it's 9020").Short('p').String()
+	queueHold           = queueCommand.Flag("hold", "Whether this queue instance holds a token when launched.").Required().Short('h').Bool()
+	queueTOId           = queueCommand.Flag("toid", "Use TOId version.").Short('t').Bool()
+	queueCarry          = queueCommand.Flag("carry", "Carry deferred records with token. Only work when toid is on.").Short('c').Bool()
+	queueConfig         = queueCommand.Flag("config_file", "Configuration file to read.").Short('f').String()
+	queueInfo           = queueCommand.Flag("info", "Turn on info level logging.").Short('i').Bool()
+	queueDebug          = queueCommand.Flag("debug", "Turn on debug level logging.").Short('d').Bool()
+	queueTwoPhaseAppend = queueCommand.Flag("two_phase_append", "Enable two phase append.").Bool()
 
 	maintainerCommand   = gochariots.Command("maintainer", "Start a maintainer instance.")
 	maintainerNumDC     = maintainerCommand.Flag("num_dc", "The port maintainer listens to.").Int()
@@ -204,7 +205,7 @@ func main() {
 		if *queueTOId {
 			queue.TOIDInitQueue(*queueHold, *queueCarry)
 		} else {
-			queue.InitQueue(*queueHold)
+			queue.InitQueue(*queueHold, *queueTwoPhaseAppend)
 		}
 		ln, err := net.Listen("tcp", ":"+*queuePort)
 		if err != nil {
