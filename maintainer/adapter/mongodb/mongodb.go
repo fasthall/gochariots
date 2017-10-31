@@ -13,31 +13,33 @@ import (
 const DB_NAME string = "gochariots"
 const COLLECTION_NAME string = "record"
 
-var c *mgo.Collection
+var session *mgo.Session
 
-func connect() {
+func init() {
 	if os.Getenv("MONGODB_HOST") != "" {
-		session, err := mgo.Dial(os.Getenv("MONGODB_HOST"))
+		var err error
+		session, err = mgo.Dial(os.Getenv("MONGODB_HOST"))
+		session.SetMode(mgo.Monotonic, true)
+		session.SetPoolLimit(50)
 		if err != nil {
 			panic(err)
 		}
-		c = session.DB(DB_NAME).C(COLLECTION_NAME)
 	}
 }
 
 func PutRecord(r record.Record) error {
-	if c == nil {
-		connect()
-	}
+	sessionCopy := session.Copy()
+	defer sessionCopy.Close()
+	c := sessionCopy.DB(DB_NAME).C(COLLECTION_NAME)
 
 	_, err := c.UpsertId(r.Id, &r)
 	return err
 }
 
 func PutRecords(records []record.Record) error {
-	if c == nil {
-		connect()
-	}
+	sessionCopy := session.Copy()
+	defer sessionCopy.Close()
+	c := sessionCopy.DB(DB_NAME).C(COLLECTION_NAME)
 
 	if len(records) > 1000 {
 		PutRecords(records[1000:])
@@ -57,9 +59,9 @@ func PutRecords(records []record.Record) error {
 }
 
 func UpdateLId(id string, lid uint32) error {
-	if c == nil {
-		connect()
-	}
+	sessionCopy := session.Copy()
+	defer sessionCopy.Close()
+	c := sessionCopy.DB(DB_NAME).C(COLLECTION_NAME)
 
 	_, err := c.Upsert(bson.M{"_id": id}, bson.M{"$set": bson.M{"lid": lid}})
 	return err
@@ -74,9 +76,10 @@ func UpdateLIds(id []string, lid []uint32) error {
 		id = id[:1000]
 		lid = lid[:1000]
 	}
-	if c == nil {
-		connect()
-	}
+	sessionCopy := session.Copy()
+	defer sessionCopy.Close()
+	c := sessionCopy.DB(DB_NAME).C(COLLECTION_NAME)
+
 	bulk := c.Bulk()
 	q := make([]interface{}, len(id)*2)
 	for i := range id {
@@ -89,9 +92,9 @@ func UpdateLIds(id []string, lid []uint32) error {
 }
 
 func GetRecord(id string) (record.Record, error) {
-	if c == nil {
-		connect()
-	}
+	sessionCopy := session.Copy()
+	defer sessionCopy.Close()
+	c := sessionCopy.DB(DB_NAME).C(COLLECTION_NAME)
 
 	var r record.Record
 	err := c.FindId(id).One(&r)
@@ -99,9 +102,9 @@ func GetRecord(id string) (record.Record, error) {
 }
 
 func PutTOIDRecord(r record.TOIDRecord) error {
-	if c == nil {
-		connect()
-	}
+	sessionCopy := session.Copy()
+	defer sessionCopy.Close()
+	c := sessionCopy.DB(DB_NAME).C(COLLECTION_NAME)
 
 	if r.Id == "" {
 		r.Id = uuid.NewV4().String()
@@ -110,9 +113,9 @@ func PutTOIDRecord(r record.TOIDRecord) error {
 }
 
 func PutTOIDRecords(records []record.TOIDRecord) error {
-	if c == nil {
-		connect()
-	}
+	sessionCopy := session.Copy()
+	defer sessionCopy.Close()
+	c := sessionCopy.DB(DB_NAME).C(COLLECTION_NAME)
 
 	objs := make([]interface{}, len(records))
 	for i, r := range records {
@@ -126,9 +129,9 @@ func PutTOIDRecords(records []record.TOIDRecord) error {
 }
 
 func QueryDB(queries *map[string]bool) error {
-	if c == nil {
-		connect()
-	}
+	sessionCopy := session.Copy()
+	defer sessionCopy.Close()
+	c := sessionCopy.DB(DB_NAME).C(COLLECTION_NAME)
 
 	for key, _ := range *queries {
 		cnt, err := c.Find(bson.M{"_id": key, "lid": bson.M{"$gt": 0}}).Count()

@@ -14,32 +14,32 @@ import (
 const DB_NAME string = "gochariots"
 const COLLECTION_NAME string = "record"
 
-var c *mgo.Collection
+var session *mgo.Session
 var batchSize = 1000
 var batch = 1000
 
-func connect() {
-	session, err := mgo.Dial("169.231.235.70")
+func init() {
+	var err error
+	session, err = mgo.Dial("169.231.235.70")
+	session.SetMode(mgo.Monotonic, true)
+	session.SetPoolLimit(50)
 	if err != nil {
 		panic(err)
 	}
-	c = session.DB(DB_NAME).C(COLLECTION_NAME)
 }
 
 func PutRecord(r record.Record) error {
-	if c == nil {
-		connect()
-	}
-
+	sessionCopy := session.Copy()
+	defer sessionCopy.Close()
+	c := sessionCopy.DB(DB_NAME).C(COLLECTION_NAME)
 	_, err := c.UpsertId(r.Id, &r)
 	return err
 }
 
 func PutRecords(records []record.Record) error {
-	if c == nil {
-		connect()
-	}
-
+	sessionCopy := session.Copy()
+	defer sessionCopy.Close()
+	c := sessionCopy.DB(DB_NAME).C(COLLECTION_NAME)
 	if len(records) > 1000 {
 		PutRecords(records[1000:])
 		records = records[:1000]
@@ -58,15 +58,17 @@ func PutRecords(records []record.Record) error {
 }
 
 func UpdateLId(id string, lid uint32) error {
-	if c == nil {
-		connect()
-	}
-
+	sessionCopy := session.Copy()
+	defer sessionCopy.Close()
+	c := sessionCopy.DB(DB_NAME).C(COLLECTION_NAME)
 	_, err := c.Upsert(bson.M{"_id": id}, bson.M{"$set": bson.M{"lid": lid}})
 	return err
 }
 
 func UpdateLIds(id []string, lid []uint32) error {
+	sessionCopy := session.Copy()
+	defer sessionCopy.Close()
+	c := sessionCopy.DB(DB_NAME).C(COLLECTION_NAME)
 	if len(id) != len(lid) {
 		return errors.New("length doesn't match")
 	}
@@ -74,9 +76,6 @@ func UpdateLIds(id []string, lid []uint32) error {
 		UpdateLIds(id[:1000], lid[:1000])
 		id = id[1000:]
 		lid = lid[1000:]
-	}
-	if c == nil {
-		connect()
 	}
 	bulk := c.Bulk()
 	q := make([]interface{}, len(id)*2)
@@ -90,10 +89,9 @@ func UpdateLIds(id []string, lid []uint32) error {
 }
 
 func QueryDB(queries []string) ([]bool, error) {
-	if c == nil {
-		connect()
-	}
-
+	sessionCopy := session.Copy()
+	defer sessionCopy.Close()
+	c := sessionCopy.DB(DB_NAME).C(COLLECTION_NAME)
 	existed := make([]bool, len(queries))
 	for i, id := range queries {
 		if id == "" {
