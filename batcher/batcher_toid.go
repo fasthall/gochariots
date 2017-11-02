@@ -14,7 +14,7 @@ import (
 	"golang.org/x/net/context"
 )
 
-var TOIDbuffer []record.TOIDRecord
+var TOIDbuffer chan record.TOIDRecord
 
 func (s *Server) TOIDReceiveRecord(ctx context.Context, in *batcherrpc.RPCRecord) (*batcherrpc.RPCReply, error) {
 	r := record.TOIDRecord{
@@ -32,7 +32,7 @@ func (s *Server) TOIDReceiveRecord(ctx context.Context, in *batcherrpc.RPCRecord
 	if r.Host == 0 {
 		r.Host = uint32(info.ID)
 	}
-	TOIDarrival(r)
+	go TOIDarrival(r)
 	return &batcherrpc.RPCReply{Message: "ok"}, nil
 }
 
@@ -53,7 +53,7 @@ func (s *Server) TOIDReceiveRecords(ctx context.Context, in *batcherrpc.RPCRecor
 		if r.Host == 0 {
 			r.Host = uint32(info.ID)
 		}
-		TOIDarrival(r)
+		go TOIDarrival(r)
 	}
 	return &batcherrpc.RPCReply{Message: "ok"}, nil
 }
@@ -63,8 +63,11 @@ func (s *Server) TOIDUpdateQueue(ctx context.Context, in *batcherrpc.RPCQueues) 
 }
 
 // InitBatcher allocates n buffers, where n is the number of filters
-func TOIDInitBatcher() {
-	TOIDbuffer = make([]record.TOIDRecord, 0, bufferSize)
+func TOIDInitBatcher(bs int) {
+	bufferSize = bs
+	TOIDbuffer = make(chan record.TOIDRecord, bufferSize)
+	bufferFull = make(chan bool)
+	go TOIDSweeper()
 }
 
 // arrival buffers arriving records.
@@ -73,14 +76,15 @@ func TOIDInitBatcher() {
 // BUG(fasthall) In Arrival(), the mechanism to match the record and filter needs to be done. Currently the number of filters needs to be equal to datacenters.
 func TOIDarrival(r record.TOIDRecord) {
 	// r.Timestamp = time.Now()
-	bufMutex.Lock()
-	TOIDbuffer = append(TOIDbuffer, r)
-
-	// if the buffer is full, send all records to the filter
-	if len(TOIDbuffer) == cap(TOIDbuffer) {
-		TOIDsendToQueue()
+	for {
+		select {
+		case TOIDbuffer <- r:
+			// send record into buffered channel
+			return
+		default:
+			bufferFull <- true
+		}
 	}
-	bufMutex.Unlock()
 }
 
 func TOIDsendToQueue() {
@@ -89,37 +93,50 @@ func TOIDsendToQueue() {
 	}
 	// logrus.WithField("timestamp", time.Now()).Debug("sendToQueue")
 	rpcRecords := queue.RPCRecords{}
-	for _, r := range TOIDbuffer {
-		rpcRecords.Records = append(rpcRecords.Records, &queue.RPCRecord{
-			Id:        r.Id,
-			Timestamp: r.Timestamp,
-			Host:      r.Host,
-			Toid:      r.TOId,
-			Lid:       r.LId,
-			Tags:      r.Tags,
-			Causality: &queue.RPCCausality{
-				Host: r.Pre.Host,
-				Toid: r.Pre.TOId,
-			},
-		})
+	done := false
+	for !done {
+		select {
+		case r := <-TOIDbuffer:
+			rpcRecords.Records = append(rpcRecords.Records, &queue.RPCRecord{
+				Id:        r.Id,
+				Timestamp: r.Timestamp,
+				Host:      r.Host,
+				Toid:      r.TOId,
+				Lid:       r.LId,
+				Tags:      r.Tags,
+				Causality: &queue.RPCCausality{
+					Host: r.Pre.Host,
+					Toid: r.Pre.TOId,
+				},
+			})
+			if len(rpcRecords.Records) == bufferSize {
+				done = true
+			}
+		default:
+			done = true
+		}
 	}
-	TOIDbuffer = TOIDbuffer[:0]
 
-	queueID := rand.Intn(len(queuePool))
-	_, err := queueClient[queueID].TOIDReceiveRecords(context.Background(), &rpcRecords)
-	if err != nil {
-		logrus.WithField("id", queueID).Error("couldn't connect to queue")
-	} else {
-		logrus.WithField("id", queueID).Debug("sent to queue")
-	}
+	go func() {
+		queueID := rand.Intn(len(queuePool))
+		_, err := queueClient[queueID].TOIDReceiveRecords(context.Background(), &rpcRecords)
+		if err != nil {
+			logrus.WithField("id", queueID).Error("couldn't connect to queue")
+		} else {
+			logrus.WithField("id", queueID).Debug("sent to queue")
+		}
+	}()
 }
 
 // Sweeper periodcally sends the buffer content to filters
 func TOIDSweeper() {
+	cron := time.NewTicker(10 * time.Millisecond)
 	for {
-		time.Sleep(10 * time.Millisecond)
-		bufMutex.Lock()
-		TOIDsendToQueue()
-		bufMutex.Unlock()
+		select {
+		case <-cron.C:
+			TOIDsendToQueue()
+		case <-bufferFull:
+			TOIDsendToQueue()
+		}
 	}
 }

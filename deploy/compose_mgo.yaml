@@ -40,7 +40,7 @@ services:
       - cluster
   queue-leader:
     image: fasthall/gochariots
-    entrypoint: gochariots queue --hold -f config/config.yaml -i --two_phase_append
+    entrypoint: gochariots queue --hold -f config/config.yaml -i --two_phase_append -p 9020
     depends_on:
       - queue
       - controller
@@ -53,7 +53,7 @@ services:
       - cluster
   queue:
     image: fasthall/gochariots
-    entrypoint: gochariots queue --no-hold -f config/config.yaml -i --two_phase_append
+    entrypoint: gochariots queue --no-hold -f config/config.yaml -i --two_phase_append -p 9021
     depends_on:
       - controller
     environment:

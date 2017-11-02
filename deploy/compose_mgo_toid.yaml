@@ -11,7 +11,7 @@ services:
       - cluster
   app:
     image: fasthall/gochariots
-    entrypoint: gochariots app -p 8080 -i -t -f config/config.yaml
+    entrypoint: gochariots app -p 8080 -f config/config.yaml -i -t
     depends_on:
       - controller
     volumes:
@@ -25,7 +25,7 @@ services:
       - cluster
   batcher:
     image: fasthall/gochariots
-    entrypoint: gochariots batcher -p 9000 -i -t -f config/config.yaml -d
+    entrypoint: gochariots batcher -p 9000 -f config/config.yaml -i -t --buffer_size=10000
     depends_on:
       - controller
     volumes:
@@ -35,13 +35,17 @@ services:
       - 9000
     environment:
       - TCP_PORTS=9000
+      - MONGODB_HOST=169.231.235.70
     networks:
       - cluster
   queue-leader:
     image: fasthall/gochariots
-    entrypoint: gochariots queue --hold -i -t -f config/config.yaml -d
+    entrypoint: gochariots queue --hold -f config/config.yaml -i -t -p 9020
     depends_on:
+      - queue
       - controller
+    environment:
+      - MONGODB_HOST=169.231.235.70
     volumes:
       - ./config:/go/config
       - ./logs:/go/logs
@@ -49,9 +53,11 @@ services:
       - cluster
   queue:
     image: fasthall/gochariots
-    entrypoint: gochariots queue --no-hold -i -t -f config/config.yaml -d
+    entrypoint: gochariots queue --no-hold -f config/config.yaml -i -t -p 9021
     depends_on:
       - controller
+    environment:
+      - MONGODB_HOST=169.231.235.70
     volumes:
       - ./config:/go/config
       - ./logs:/go/logs
@@ -59,7 +65,7 @@ services:
       - cluster
   maintainer:
     image: fasthall/gochariots
-    entrypoint: gochariots maintainer -i -t -f config/config.yaml -d --mongodb
+    entrypoint: gochariots maintainer -f config/config.yaml -i --mongodb -t
     depends_on:
       - controller
     environment:
@@ -68,16 +74,6 @@ services:
       - ./config:/go/config
       - ./logs:/go/logs
       - ./flstore:/go/flstore
-    networks:
-      - cluster
-  indexer:
-    image: fasthall/gochariots
-    entrypoint: gochariots indexer -i -t -f config/config.yaml -d
-    depends_on:
-      - controller
-    volumes:
-      - ./config:/go/config
-      - ./logs:/go/logs
     networks:
       - cluster
   batcher_lb:

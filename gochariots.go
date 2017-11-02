@@ -21,7 +21,7 @@ import (
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
 
-const version string = "mongodb 1031"
+const version string = "mongodb 1102"
 
 var (
 	gochariots = kingpin.New("gochariots", "A distributed shared log system.")
@@ -160,7 +160,7 @@ func main() {
 			info.Config(*batcherConfig, "batcher")
 		}
 		if *batcherTOId {
-			batcher.TOIDInitBatcher()
+			batcher.TOIDInitBatcher(*batcherBufferSize)
 		} else {
 			batcher.InitBatcher(*batcherBufferSize)
 		}
@@ -170,11 +170,6 @@ func main() {
 		}
 		defer ln.Close()
 		fmt.Println(info.GetName()+" is listening to port", *batcherPort)
-		if *batcherTOId {
-			go batcher.TOIDSweeper()
-		} else {
-			go batcher.Sweeper()
-		}
 		s := grpc.NewServer()
 		batcherrpc.RegisterBatcherRPCServer(s, &batcher.Server{})
 		reflection.Register(s)

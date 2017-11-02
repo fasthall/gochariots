@@ -5,7 +5,6 @@ package batcher
 import (
 	"math/rand"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/fasthall/gochariots/info"
@@ -21,9 +20,8 @@ import (
 )
 
 var bufferSize int
-var bufMutex sync.Mutex
-var buffer []record.Record
-var connMutex sync.Mutex
+var buffer chan record.Record
+var bufferFull chan bool
 var queueClient []queue.QueueClient
 var queuePool []string
 var queuePoolVer int
@@ -47,7 +45,7 @@ func (s *Server) ReceiveRecord(ctx context.Context, in *batcherrpc.RPCRecord) (*
 	if r.Id == "" {
 		r.Id = uuid.NewV4().String()
 	}
-	arrival(r)
+	go arrival(r)
 	return &batcherrpc.RPCReply{Message: r.Id}, nil
 }
 
@@ -70,7 +68,7 @@ func (s *Server) ReceiveRecords(ctx context.Context, in *batcherrpc.RPCRecords) 
 			r.Id = uuid.NewV4().String()
 		}
 		ids = append(ids, r.Id)
-		arrival(r)
+		go arrival(r)
 	}
 	// b, err := json.Marshal(ids)
 	return &batcherrpc.RPCReply{Message: strconv.Itoa(len(ids))}, nil
@@ -102,7 +100,9 @@ func (s *Server) UpdateQueue(ctx context.Context, in *batcherrpc.RPCQueues) (*ba
 // InitBatcher allocates n buffers, where n is the number of filters
 func InitBatcher(bs int) {
 	bufferSize = bs
-	buffer = make([]record.Record, 0, bufferSize)
+	buffer = make(chan record.Record, bufferSize)
+	bufferFull = make(chan bool)
+	go Sweeper()
 }
 
 // arrival buffers arriving records.
@@ -110,34 +110,43 @@ func InitBatcher(bs int) {
 // When a buffer is full, all the records in the buffer will be sent to the corresponding filter.
 func arrival(r record.Record) {
 	// r.Timestamp = time.Now()
-	bufMutex.Lock()
-	buffer = append(buffer, r)
-
-	// if the buffer is full, send all records to the filter
-	if len(buffer) == cap(buffer) {
-		sendToQueue()
+	for {
+		select {
+		case buffer <- r:
+			// send record into buffered channel
+			return
+		default:
+			bufferFull <- true
+		}
 	}
-	bufMutex.Unlock()
 }
 
 func sendToQueue() {
 	if len(buffer) == 0 {
 		return
 	}
-	logrus.WithField("timestamp", time.Now()).Debug("sendToQueue")
+	// logrus.WithField("timestamp", time.Now()).Debug("sendToQueue")
 	rpcRecords := queue.RPCRecords{}
-	for _, r := range buffer {
-		rpcRecords.Records = append(rpcRecords.Records, &queue.RPCRecord{
-			Id:        r.Id,
-			Timestamp: r.Timestamp,
-			Host:      r.Host,
-			Lid:       r.LId,
-			Tags:      r.Tags,
-			Parent:    r.Parent,
-			Seed:      r.Seed,
-		})
+	done := false
+	for !done {
+		select {
+		case r := <-buffer:
+			rpcRecords.Records = append(rpcRecords.Records, &queue.RPCRecord{
+				Id:        r.Id,
+				Timestamp: r.Timestamp,
+				Host:      r.Host,
+				Lid:       r.LId,
+				Tags:      r.Tags,
+				Parent:    r.Parent,
+				Seed:      r.Seed,
+			})
+			if len(rpcRecords.Records) == bufferSize {
+				done = true
+			}
+		default:
+			done = true
+		}
 	}
-	buffer = buffer[:0]
 
 	go func() {
 		queueID := rand.Intn(len(queuePool))
@@ -152,10 +161,13 @@ func sendToQueue() {
 
 // Sweeper periodcally sends the buffer content to filters
 func Sweeper() {
+	cron := time.NewTicker(10 * time.Millisecond)
 	for {
-		time.Sleep(10 * time.Millisecond)
-		bufMutex.Lock()
-		sendToQueue()
-		bufMutex.Unlock()
+		select {
+		case <-cron.C:
+			sendToQueue()
+		case <-bufferFull:
+			sendToQueue()
+		}
 	}
 }

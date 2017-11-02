@@ -39,7 +39,7 @@ func Propagate(rs []record.Record) {
 			if err != nil {
 				logrus.WithFields(logrus.Fields{"batcher": host, "error": err}).Error("couldn't send to remote batcher")
 			} else {
-				logrus.WithFields(logrus.Fields{"batcher": host, "recordS": rs}).Debug("sent to remote batcher")
+				logrus.WithFields(logrus.Fields{"batcher": host, "records": len(rs)}).Debug("sent to remote batcher")
 			}
 		}
 	}

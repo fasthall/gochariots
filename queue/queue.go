@@ -14,7 +14,6 @@ import (
 	"golang.org/x/net/context"
 )
 
-var lastTime time.Time
 var bufMutex sync.Mutex
 var bufferedCausality []Causality // for two phase append
 var bufferedRecord []record.Record
@@ -108,7 +107,7 @@ func (s *Server) UpdateMaintainers(ctx context.Context, in *RPCMaintainers) (*RP
 }
 
 // InitQueue initializes the buffer and hashmap for queued records
-func InitQueue(hasToken bool, twoPhaseAppend bool) {
+func InitQueue(hasToken, twoPhaseAppend bool) {
 	twoPhase = twoPhaseAppend
 	if twoPhase {
 		bufferedCausality = []Causality{}
@@ -259,8 +258,8 @@ func tokenArrival(token Token) {
 
 // passToken sends the token to the next queue in the ring
 func passToken(token *Token) {
-	time.Sleep(10 * time.Millisecond)
-	if nextQueueHost == "" {
+	// time.Sleep(10 * time.Millisecond)
+	if nextQueueHost == "" || nextQueueClient == nil {
 		tokenArrival(*token)
 	} else {
 		rpcToken := RPCToken{

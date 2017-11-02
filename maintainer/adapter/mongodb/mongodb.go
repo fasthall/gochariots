@@ -58,6 +58,28 @@ func PutRecords(records []record.Record) error {
 	return err
 }
 
+func PutTOIDRecords(records []record.TOIDRecord) error {
+	sessionCopy := session.Copy()
+	defer sessionCopy.Close()
+	c := sessionCopy.DB(DB_NAME).C(COLLECTION_NAME)
+
+	if len(records) > 1000 {
+		PutTOIDRecords(records[1000:])
+		records = records[:1000]
+	}
+	bulk := c.Bulk()
+	objs := make([]interface{}, len(records)*2)
+	for i, r := range records {
+		objs[2*i] = bson.M{"_id": r.Id}
+		objs[2*i+1] = bson.M{
+			"$set": bson.M{"host": r.Host, "toid": r.TOId, "lid": r.LId, "tags": r.Tags, "prehost": r.Pre.Host, "pretoid": r.Pre.TOId, "timestamp": r.Timestamp},
+		}
+	}
+	bulk.Upsert(objs...)
+	_, err := bulk.Run()
+	return err
+}
+
 func UpdateLId(id string, lid uint32) error {
 	sessionCopy := session.Copy()
 	defer sessionCopy.Close()
@@ -112,21 +134,21 @@ func PutTOIDRecord(r record.TOIDRecord) error {
 	return c.Insert(&r)
 }
 
-func PutTOIDRecords(records []record.TOIDRecord) error {
-	sessionCopy := session.Copy()
-	defer sessionCopy.Close()
-	c := sessionCopy.DB(DB_NAME).C(COLLECTION_NAME)
+// func PutTOIDRecords(records []record.TOIDRecord) error {
+// 	sessionCopy := session.Copy()
+// 	defer sessionCopy.Close()
+// 	c := sessionCopy.DB(DB_NAME).C(COLLECTION_NAME)
 
-	objs := make([]interface{}, len(records))
-	for i, r := range records {
-		if r.Id == "" {
-			r.Id = uuid.NewV4().String()
-		}
-		objs[i] = r
-	}
+// 	objs := make([]interface{}, len(records))
+// 	for i, r := range records {
+// 		if r.Id == "" {
+// 			r.Id = uuid.NewV4().String()
+// 		}
+// 		objs[i] = r
+// 	}
 
-	return c.Insert(objs...)
-}
+// 	return c.Insert(objs...)
+// }
 
 func QueryDB(queries *map[string]bool) error {
 	sessionCopy := session.Copy()

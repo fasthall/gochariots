@@ -9,27 +9,30 @@ import (
 )
 
 // Propagate sends the local record to remote datacenter's batcher
-func TOIDPropagate(r record.TOIDRecord) {
+func TOIDPropagate(rs []record.TOIDRecord) {
 	for dc, host := range remoteBatchers {
 		if dc != info.ID && host != "" {
-			// log.Printf("%s is propagating record to remoteBatchers[%d] %s", info.GetName(), dc, host)
-			rpcRecord := batcherrpc.RPCRecord{
-				Id:        r.Id,
-				Timestamp: r.Timestamp,
-				Host:      r.Host,
-				Toid:      r.TOId,
-				Lid:       r.LId,
-				Tags:      r.Tags,
-				Causality: &batcherrpc.RPCCausality{
-					Host: r.Pre.Host,
-					Toid: r.Pre.TOId,
-				},
+			rpcRecords := batcherrpc.RPCRecords{
+				Records: make([]*batcherrpc.RPCRecord, len(rs)),
 			}
-			_, err := remoteBatchersClient[dc].TOIDReceiveRecord(context.Background(), &rpcRecord)
+			for i, r := range rs {
+				rpcRecords.Records[i] = &batcherrpc.RPCRecord{
+					Timestamp: r.Timestamp,
+					Host:      r.Host,
+					Toid:      r.TOId,
+					Lid:       r.LId,
+					Tags:      r.Tags,
+					Causality: &batcherrpc.RPCCausality{
+						Host: r.Pre.Host,
+						Toid: r.Pre.TOId,
+					},
+				}
+			}
+			_, err := remoteBatchersClient[dc].TOIDReceiveRecords(context.Background(), &rpcRecords)
 			if err != nil {
 				logrus.WithError(err).Error("couldn't send to remote batcher")
 			} else {
-				logrus.WithFields(logrus.Fields{"batcher": host, "record": r}).Debug("sent to remote batcher")
+				logrus.WithFields(logrus.Fields{"batcher": host, "records": len(rs)}).Debug("sent to remote batcher")
 			}
 		}
 	}
