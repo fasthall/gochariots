@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"os"
-	"path/filepath"
 
 	"github.com/fasthall/gochariots/maintainer/adapter/mongodb"
 
@@ -86,15 +85,15 @@ func (s *Server) ReadByLId(ctx context.Context, in *RPCLId) (*RPCReply, error) {
 
 // InitLogMaintainer initializes the maintainer and assign the path name to store the records
 func InitLogMaintainer(p string, itf int) {
-	err := os.MkdirAll(path, os.ModePerm)
-	if err != nil {
-		logrus.WithField("path", path).Error("couldn't access path")
-	}
-	f, err = os.Create(filepath.Join(path, p))
-	if err != nil {
-		logrus.WithField("path", p).Error("couldn't create file")
-		panic(err)
-	}
+	// err := os.MkdirAll(path, os.ModePerm)
+	// if err != nil {
+	// 	logrus.WithField("path", path).Error("couldn't access path")
+	// }
+	// f, err = os.Create(filepath.Join(path, p))
+	// if err != nil {
+	// 	logrus.WithField("path", p).Error("couldn't create file")
+	// 	panic(err)
+	// }
 	maintainerInterface = itf
 }
 
