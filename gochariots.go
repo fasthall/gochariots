@@ -15,15 +15,18 @@ import (
 	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/maintainer"
 	"github.com/fasthall/gochariots/maintainer/adapter"
-	"github.com/fasthall/gochariots/maintainer/indexer"
 	"github.com/fasthall/gochariots/queue"
 
 	"github.com/Sirupsen/logrus"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
 
+const version string = "mongodb 1102"
+
 var (
 	gochariots = kingpin.New("gochariots", "A distributed shared log system.")
+
+	versionCommand = gochariots.Command("version", "The version of GoChariots.")
 
 	appCommand = gochariots.Command("app", "Start an app instance.")
 	appNumDC   = appCommand.Flag("num_dc", "The port app listens to.").Int()
@@ -34,14 +37,15 @@ var (
 	appInfo    = appCommand.Flag("info", "Turn on info level logging.").Short('i').Bool()
 	appDebug   = appCommand.Flag("debug", "Turn on debug level logging.").Short('d').Bool()
 
-	batcherCommand = gochariots.Command("batcher", "Start a batcher instance.")
-	batcherNumDC   = batcherCommand.Flag("num_dc", "The port batcher listens to.").Int()
-	batcherID      = batcherCommand.Flag("id", "The port batcher listens to.").Int()
-	batcherPort    = batcherCommand.Flag("port", "The port app listens to. By default it's 9000").Short('p').String()
-	batcherTOId    = batcherCommand.Flag("toid", "Use TOId version.").Short('t').Bool()
-	batcherConfig  = batcherCommand.Flag("config_file", "Configuration file to read.").Short('f').String()
-	batcherInfo    = batcherCommand.Flag("info", "Turn on info level logging.").Short('i').Bool()
-	batcherDebug   = batcherCommand.Flag("debug", "Turn on debug level logging.").Short('d').Bool()
+	batcherCommand    = gochariots.Command("batcher", "Start a batcher instance.")
+	batcherNumDC      = batcherCommand.Flag("num_dc", "The port batcher listens to.").Int()
+	batcherID         = batcherCommand.Flag("id", "The port batcher listens to.").Int()
+	batcherBufferSize = batcherCommand.Flag("buffer_size", "The buffer size.").Default("2000").Int()
+	batcherPort       = batcherCommand.Flag("port", "The port app listens to. By default it's 9000").Short('p').String()
+	batcherTOId       = batcherCommand.Flag("toid", "Use TOId version.").Short('t').Bool()
+	batcherConfig     = batcherCommand.Flag("config_file", "Configuration file to read.").Short('f').String()
+	batcherInfo       = batcherCommand.Flag("info", "Turn on info level logging.").Short('i').Bool()
+	batcherDebug      = batcherCommand.Flag("debug", "Turn on debug level logging.").Short('d').Bool()
 
 	controllerCommand = gochariots.Command("controller", "Start a controller instance.")
 	controllerNumDC   = controllerCommand.Flag("num_dc", "The port controller listens to.").Int()
@@ -59,19 +63,19 @@ var (
 	filterInfo    = filterCommand.Flag("info", "Turn on info level logging.").Short('i').Bool()
 	filterDebug   = filterCommand.Flag("debug", "Turn on debug level logging.").Short('d').Bool()
 
-	queueCommand = gochariots.Command("queue", "Start a queue instance.")
-	queueNumDC   = queueCommand.Flag("num_dc", "The port queue listens to.").Int()
-	queueID      = queueCommand.Flag("id", "The port queue listens to.").Int()
-	queuePort    = queueCommand.Flag("port", "The port app listens to. By default it's 9020").Short('p').String()
-	queueHold    = queueCommand.Flag("hold", "Whether this queue instance holds a token when launched.").Required().Short('h').Bool()
-	queueTOId    = queueCommand.Flag("toid", "Use TOId version.").Short('t').Bool()
-	queueCarry   = queueCommand.Flag("carry", "Carry deferred records with token. Only work when toid is on.").Short('c').Bool()
-	queueConfig  = queueCommand.Flag("config_file", "Configuration file to read.").Short('f').String()
-	queueInfo    = queueCommand.Flag("info", "Turn on info level logging.").Short('i').Bool()
-	queueDebug   = queueCommand.Flag("debug", "Turn on debug level logging.").Short('d').Bool()
+	queueCommand        = gochariots.Command("queue", "Start a queue instance.")
+	queueNumDC          = queueCommand.Flag("num_dc", "The port queue listens to.").Int()
+	queueID             = queueCommand.Flag("id", "The port queue listens to.").Int()
+	queuePort           = queueCommand.Flag("port", "The port app listens to. By default it's 9020").Short('p').String()
+	queueHold           = queueCommand.Flag("hold", "Whether this queue instance holds a token when launched.").Required().Short('h').Bool()
+	queueTOId           = queueCommand.Flag("toid", "Use TOId version.").Short('t').Bool()
+	queueCarry          = queueCommand.Flag("carry", "Carry deferred records with token. Only work when toid is on.").Short('c').Bool()
+	queueConfig         = queueCommand.Flag("config_file", "Configuration file to read.").Short('f').String()
+	queueInfo           = queueCommand.Flag("info", "Turn on info level logging.").Short('i').Bool()
+	queueDebug          = queueCommand.Flag("debug", "Turn on debug level logging.").Short('d').Bool()
+	queueTwoPhaseAppend = queueCommand.Flag("two_phase_append", "Enable two phase append.").Bool()
 
 	maintainerCommand   = gochariots.Command("maintainer", "Start a maintainer instance.")
-	maintainerInstN     = maintainerCommand.Arg("ntime", "Record the time maintainer takes to append n records").Uint32()
 	maintainerNumDC     = maintainerCommand.Flag("num_dc", "The port maintainer listens to.").Int()
 	maintainerID        = maintainerCommand.Flag("id", "The port maintainer listens to.").Int()
 	maintainerPort      = maintainerCommand.Flag("port", "The port app listens to. By default it's 9030").Short('p').String()
@@ -83,20 +87,12 @@ var (
 	maintainerDatastore = maintainerCommand.Flag("datastore", "Use Datastore as physical storage.").Bool()
 	maintainerCosmosDB  = maintainerCommand.Flag("cosmosdb", "Use CosmosDB as physical storage.").Bool()
 	maintainerMongoDB   = maintainerCommand.Flag("mongodb", "Use MongoDB as physical storage.").Bool()
-
-	indexerCommand = gochariots.Command("indexer", "Start an indexer instance.")
-	indexerNumDC   = indexerCommand.Flag("num_dc", "The port indexer listens to.").Int()
-	indexerID      = indexerCommand.Flag("id", "The port indexer listens to.").Int()
-	indexerPort    = indexerCommand.Flag("port", "The port app listens to. By default it's 9040").Short('p').String()
-	indexerTOId    = indexerCommand.Flag("toid", "Use TOId version.").Short('t').Bool()
-	indexerBoltDB  = indexerCommand.Flag("boltdb", "Use BoltDB. Only work when not using TOId version.").Short('b').Bool()
-	indexerConfig  = indexerCommand.Flag("config_file", "Configuration file to read.").Short('f').String()
-	indexerInfo    = indexerCommand.Flag("info", "Turn on info level logging.").Short('i').Bool()
-	indexerDebug   = indexerCommand.Flag("debug", "Turn on debug level logging.").Short('d').Bool()
 )
 
 func main() {
 	switch kingpin.MustParse(gochariots.Parse(os.Args[1:])) {
+	case versionCommand.FullCommand():
+		fmt.Println(version)
 	case appCommand.FullCommand():
 		if *appPort == "" {
 			*appPort = "8080"
@@ -106,7 +102,6 @@ func main() {
 		}
 		info.NumDC = *appNumDC
 		info.ID = *appID
-		indexerCommand.GetArg("info")
 		info.SetName("app" + *appPort)
 		info.SetPort(*appPort)
 		level := logrus.WarnLevel
@@ -165,9 +160,9 @@ func main() {
 			info.Config(*batcherConfig, "batcher")
 		}
 		if *batcherTOId {
-			batcher.TOIDInitBatcher()
+			batcher.TOIDInitBatcher(*batcherBufferSize)
 		} else {
-			batcher.InitBatcher()
+			batcher.InitBatcher(*batcherBufferSize)
 		}
 		ln, err := net.Listen("tcp", ":"+*batcherPort)
 		if err != nil {
@@ -175,11 +170,6 @@ func main() {
 		}
 		defer ln.Close()
 		fmt.Println(info.GetName()+" is listening to port", *batcherPort)
-		if *batcherTOId {
-			go batcher.TOIDSweeper()
-		} else {
-			go batcher.Sweeper()
-		}
 		s := grpc.NewServer()
 		batcherrpc.RegisterBatcherRPCServer(s, &batcher.Server{})
 		reflection.Register(s)
@@ -210,7 +200,7 @@ func main() {
 		if *queueTOId {
 			queue.TOIDInitQueue(*queueHold, *queueCarry)
 		} else {
-			queue.InitQueue(*queueHold)
+			queue.InitQueue(*queueHold, *queueTwoPhaseAppend)
 		}
 		ln, err := net.Listen("tcp", ":"+*queuePort)
 		if err != nil {
@@ -255,7 +245,7 @@ func main() {
 		} else if *maintainerMongoDB {
 			adap = adapter.MONGODB
 		}
-		maintainer.InitLogMaintainer(info.GetName(), *maintainerInstN, adap)
+		maintainer.InitLogMaintainer(info.GetName(), adap)
 		ln, err := net.Listen("tcp", ":"+*maintainerPort)
 		if err != nil {
 			fmt.Println(info.GetName() + "couldn't listen on port " + *maintainerPort)
@@ -265,45 +255,6 @@ func main() {
 		fmt.Println(info.GetName()+" is listening to port", *maintainerPort)
 		s := grpc.NewServer()
 		maintainer.RegisterMaintainerServer(s, &maintainer.Server{})
-		reflection.Register(s)
-		if err := s.Serve(ln); err != nil {
-			logrus.Fatalf("failed to serve: %v", err)
-		}
-	case indexerCommand.FullCommand():
-		if *indexerPort == "" {
-			*indexerPort = "9040"
-		}
-		if *indexerNumDC == 0 {
-			*indexerNumDC = 1
-		}
-		info.NumDC = *indexerNumDC
-		info.ID = *indexerID
-		info.SetName("indexer" + *indexerPort)
-		info.SetPort(*indexerPort)
-		level := logrus.WarnLevel
-		if *indexerDebug {
-			level = logrus.DebugLevel
-		} else if *indexerInfo {
-			level = logrus.InfoLevel
-		}
-		info.RedirectLog(info.GetName()+".log", level)
-		if *indexerConfig != "" {
-			info.Config(*indexerConfig, "indexer")
-		}
-		if *indexerTOId {
-			indexer.TOIDInitIndexer(info.GetName())
-		} else {
-			indexer.InitIndexer(info.GetName(), *indexerBoltDB)
-		}
-		ln, err := net.Listen("tcp", ":"+*indexerPort)
-		if err != nil {
-			fmt.Println(info.GetName() + "couldn't listen on port " + *indexerPort)
-			panic(err)
-		}
-		defer ln.Close()
-		fmt.Println(info.GetName()+" is listening to port", *indexerPort)
-		s := grpc.NewServer()
-		indexer.RegisterIndexerServer(s, &indexer.Server{})
 		reflection.Register(s)
 		if err := s.Serve(ln); err != nil {
 			logrus.Fatalf("failed to serve: %v", err)

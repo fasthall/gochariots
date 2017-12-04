@@ -4,54 +4,51 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"os"
-	"path/filepath"
-	"time"
+
+	"github.com/fasthall/gochariots/maintainer/adapter/mongodb"
 
 	"google.golang.org/grpc"
 
 	"github.com/fasthall/gochariots/batcher/batcherrpc"
-	"github.com/fasthall/gochariots/maintainer/indexer"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/fasthall/gochariots/info"
-	"github.com/fasthall/gochariots/maintainer/adapter"
-	"github.com/fasthall/gochariots/maintainer/adapter/cosmos"
-	"github.com/fasthall/gochariots/maintainer/adapter/datastore"
-	"github.com/fasthall/gochariots/maintainer/adapter/dynamodb"
-	"github.com/fasthall/gochariots/maintainer/adapter/mongodb"
 	"github.com/fasthall/gochariots/record"
 	"golang.org/x/net/context"
 )
 
-const batchSize int = 1000
+const batchSize int = 10000
 
-// LastLId records the last LID maintained by this maintainer
-var LastLId uint32
 var path = "flstore"
 var f *os.File
-var indexerClient indexer.IndexerClient
-var indexerHost string
-var indexerVer int
 var maintainerInterface int
-
-var logFirstTime time.Time
-var logRecordNth uint32
 
 type Server struct{}
 
 func (s *Server) ReceiveRecords(ctx context.Context, in *RPCRecords) (*RPCReply, error) {
 	records := make([]record.Record, len(in.GetRecords()))
+	propagated := []record.Record{}
 	for i, ri := range in.GetRecords() {
 		records[i] = record.Record{
+			Id:        ri.GetId(),
 			Timestamp: ri.GetTimestamp(),
 			Host:      ri.GetHost(),
 			LId:       ri.GetLid(),
 			Tags:      ri.GetTags(),
-			Hash:      ri.GetHash(),
+			Parent:    ri.GetParent(),
 			Seed:      ri.GetSeed(),
 		}
+		if ri.GetHost() == uint32(info.ID) {
+			propagated = append(propagated, records[i])
+		}
 	}
-	recordsArrival(records)
+	go func() {
+		err := mongodb.PutRecords(records)
+		if err != nil {
+			logrus.WithError(err).Error("couldn't put records to mongodb")
+		}
+	}()
+	go Propagate(propagated)
 	return &RPCReply{Message: "ok"}, nil
 }
 
@@ -76,26 +73,6 @@ func (s *Server) UpdateBatchers(ctx context.Context, in *RPCBatchers) (*RPCReply
 	return &RPCReply{Message: "ok"}, nil
 }
 
-func (s *Server) UpdateIndexer(ctx context.Context, in *RPCIndexer) (*RPCReply, error) {
-	ver := int(in.GetVersion())
-	if ver > indexerVer {
-		indexerVer = ver
-		indexerHost = in.GetIndexer()
-		conn, err := grpc.Dial(indexerHost, grpc.WithInsecure())
-		if err != nil {
-			reply := RPCReply{
-				Message: "couldn't connect to indexer",
-			}
-			return &reply, err
-		}
-		indexerClient = indexer.NewIndexerClient(conn)
-		logrus.WithField("host", in.GetIndexer()).Info("received indexer hosts update")
-	} else {
-		logrus.WithFields(logrus.Fields{"current": indexerVer, "received": ver}).Debug("receiver older version of indexer hosts")
-	}
-	return &RPCReply{Message: "ok"}, nil
-}
-
 func (s *Server) ReadByLId(ctx context.Context, in *RPCLId) (*RPCReply, error) {
 	lid := int(in.GetLid())
 	r, err := ReadByLId(lid)
@@ -107,86 +84,17 @@ func (s *Server) ReadByLId(ctx context.Context, in *RPCLId) (*RPCReply, error) {
 }
 
 // InitLogMaintainer initializes the maintainer and assign the path name to store the records
-func InitLogMaintainer(p string, n uint32, itf int) {
-	logRecordNth = n
-	LastLId = 0
-	err := os.MkdirAll(path, os.ModePerm)
-	if err != nil {
-		logrus.WithField("path", path).Error("couldn't access path")
-	}
-	f, err = os.Create(filepath.Join(path, p))
-	if err != nil {
-		logrus.WithField("path", p).Error("couldn't create file")
-		panic(err)
-	}
+func InitLogMaintainer(p string, itf int) {
+	// err := os.MkdirAll(path, os.ModePerm)
+	// if err != nil {
+	// 	logrus.WithField("path", path).Error("couldn't access path")
+	// }
+	// f, err = os.Create(filepath.Join(path, p))
+	// if err != nil {
+	// 	logrus.WithField("path", p).Error("couldn't create file")
+	// 	panic(err)
+	// }
 	maintainerInterface = itf
-}
-
-// Append appends a new record to the maintainer.
-func Append(r record.Record) error {
-	// logrus.WithField("timestamp", time.Now()).Debug("Append")
-	r.Timestamp = time.Now().UnixNano()
-	if logRecordNth > 0 {
-		if r.LId == 1 {
-			logFirstTime = time.Now()
-		} else if r.LId == logRecordNth {
-			logrus.WithField("duration", time.Since(logFirstTime)).Info("appended", logRecordNth, "records")
-		}
-	}
-
-	if maintainerInterface == adapter.DYNAMODB {
-		err := dynamodb.PutRecord(r)
-		if err != nil {
-			return err
-		}
-	} else if maintainerInterface == adapter.DATASTORE {
-		err := datastore.PutRecord(r)
-		if err != nil {
-			return err
-		}
-	} else if maintainerInterface == adapter.FLSTORE {
-		b, err := record.ToJSON(r)
-		if err != nil {
-			return err
-		}
-		lenbuf := make([]byte, 4)
-		binary.BigEndian.PutUint32(lenbuf, uint32(len(b)))
-		lid := r.LId
-		_, err = f.WriteAt(append(lenbuf, b...), int64(512*lid))
-		if err != nil {
-			return err
-		}
-		// log.Println(info.GetName(), "wrote record ", lid)
-	} else if maintainerInterface == adapter.COSMOSDB {
-		err := cosmos.PutRecord(r)
-		if err != nil {
-			return err
-		}
-	} else if maintainerInterface == adapter.MONGODB {
-		err := mongodb.PutRecord(r)
-		if err != nil {
-			return err
-		}
-	}
-
-	InsertIndexer(r)
-	LastLId = r.LId
-	if r.Host == uint32(info.ID) {
-		Propagate(r)
-	}
-	return nil
-}
-
-func InsertIndexer(r record.Record) {
-	rpcTags := indexer.RPCTags{
-		Lid:  r.LId,
-		Seed: r.Seed,
-		Tags: r.Tags,
-	}
-	_, err := indexerClient.InsertTags(context.Background(), &rpcTags)
-	if err != nil {
-		logrus.WithField("host", indexerHost).Error("failed to connect to indexer")
-	}
 }
 
 // ReadByLId reads from the maintainer according to LId.
@@ -218,16 +126,6 @@ func ReadByLIds(lids []int) ([]record.Record, error) {
 		result = append(result, r)
 	}
 	return result, nil
-}
-
-func recordsArrival(records []record.Record) {
-	// info.LogTimestamp("recordsArrival")
-	for _, record := range records {
-		err := Append(record)
-		if err != nil {
-			logrus.WithError(err).Error("couldn't append the record to the store")
-		}
-	}
 }
 
 func AssignToMaintainer(LId uint32, numMaintainers int) int {

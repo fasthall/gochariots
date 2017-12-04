@@ -2,18 +2,19 @@ package queue
 
 import (
 	"container/heap"
+	"math/rand"
 	"time"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/maintainer"
+	"github.com/fasthall/gochariots/maintainer/adapter/mongodb"
 	"github.com/fasthall/gochariots/record"
 	"golang.org/x/net/context"
 )
 
 var sameDCBuffered []record.TOIDRecord
 var TOIDbuffered []BufferHeap
-
 var Carry bool
 
 func (s *Server) TOIDReceiveRecords(ctx context.Context, in *RPCRecords) (*RPCReply, error) {
@@ -27,8 +28,8 @@ func (s *Server) TOIDReceiveRecords(ctx context.Context, in *RPCRecords) (*RPCRe
 			LId:       ri.GetLid(),
 			Tags:      ri.GetTags(),
 			Pre: record.TOIDCausality{
-				Host: ri.GetHost(),
-				TOId: ri.GetToid(),
+				Host: ri.GetCausality().GetHost(),
+				TOId: ri.GetCausality().GetToid(),
 			},
 		}
 	}
@@ -73,10 +74,6 @@ func (s *Server) TOIDUpdateMaintainers(ctx context.Context, in *RPCMaintainers) 
 	return s.UpdateMaintainers(ctx, in)
 }
 
-func (s *Server) TOIDUpdateIndexers(ctx context.Context, in *RPCIndexers) (*RPCReply, error) {
-	return s.UpdateIndexers(ctx, in)
-}
-
 // Token is used by queues to ensure causality of LId assignment
 type TOIDToken struct {
 	MaxTOId         []uint32
@@ -94,7 +91,7 @@ func TOIDInitQueue(hasToken, carry bool) {
 	}
 	if hasToken {
 		var token TOIDToken
-		token.InitToken(make([]uint32, info.NumDC), 0)
+		token.InitToken(make([]uint32, info.NumDC+1))
 		if Carry {
 			TokenArrivalCarryDeferred(token)
 		} else {
@@ -109,10 +106,11 @@ func TOIDInitQueue(hasToken, carry bool) {
 }
 
 // InitToken intializes a token. The IDs info should be accuired from log maintainers
-func (token *TOIDToken) InitToken(maxTOId []uint32, lastLId uint32) {
+func (token *TOIDToken) InitToken(maxTOId []uint32) {
 	token.MaxTOId = maxTOId
-	token.LastLId = lastLId
+	token.LastLId = 0
 	token.DeferredRecords = []record.TOIDRecord{}
+	logrus.WithFields(logrus.Fields{"len(maxTOId)": len(maxTOId)}).Info("token initialized")
 }
 
 // recordsArrival deals with the records received from filters
@@ -133,6 +131,7 @@ func TOIDrecordsArrival(records []record.TOIDRecord) {
 // For each deferred records in the token, check if the current max TOId in shared log satisfies the dependency.
 // If so, the deferred records are sent to the log maintainers.
 func TokenArrivalCarryDeferred(token TOIDToken) {
+	logrus.WithField("timestamp", time.Now()).Debug("recordsArrival")
 	bufMutex.Lock()
 	// append buffered records to the token in order
 	for host := range TOIDbuffered {
@@ -176,32 +175,34 @@ func TokenArrivalCarryDeferred(token TOIDToken) {
 		// assign LId and send to log maintainers
 		lastID := TOIDassignLId(dispatch, token.LastLId)
 		token.LastLId = lastID
-		toDispatch := make([][]record.TOIDRecord, len(maintainersClient))
-		for _, r := range dispatch {
-			id := maintainer.AssignToMaintainer(r.LId, len(maintainersClient))
-			toDispatch[id] = append(toDispatch[id], r)
-		}
-		for id, t := range toDispatch {
-			if len(t) > 0 {
-				TOIDdispatchRecords(t, id)
-			}
-		}
+		// toDispatch := make([][]record.TOIDRecord, len(maintainersClient))
+		// for _, r := range dispatch {
+		// 	id := maintainer.AssignToMaintainer(r.LId, len(maintainersClient))
+		// 	toDispatch[id] = append(toDispatch[id], r)
+		// }
+		// for id, t := range toDispatch {
+		// 	if len(t) > 0 {
+		// 		TOIDdispatchRecords(t, id)
+		// 	}
+		// }
+		go TOIDdispatchRecords(dispatch, rand.Intn(len(maintainersClient)))
 	}
 	go TOIDpassToken(&token)
 }
 
 // TokenArrivalBufferDeferred is similar to TokenArrivalCarryDeferred, except deferred records will be buffered rather than carried with token
 func TokenArrivalBufferDeferred(token TOIDToken) {
+	logrus.WithField("timestamp", time.Now()).Debug("recordsArrival")
 	dispatch := []record.TOIDRecord{}
 	bufMutex.Lock()
 	for host := range TOIDbuffered {
 		for TOIDbuffered[host].Len() > 0 {
-			r := heap.Pop(&TOIDbuffered[host]).(record.TOIDRecord)
+			r := &TOIDbuffered[host][0]
 			if r.TOId == token.MaxTOId[r.Host]+1 && r.Pre.TOId <= token.MaxTOId[r.Pre.Host] {
-				dispatch = append(dispatch, r)
+				dispatch = append(dispatch, *r)
 				token.MaxTOId[r.Host] = r.TOId
+				heap.Pop(&TOIDbuffered[host])
 			} else {
-				heap.Push(&TOIDbuffered[host], r)
 				break
 			}
 		}
@@ -224,16 +225,23 @@ func TokenArrivalBufferDeferred(token TOIDToken) {
 		// assign LId and send to log maintainers
 		lastID := TOIDassignLId(dispatch, token.LastLId)
 		token.LastLId = lastID
-		toDispatch := make([][]record.TOIDRecord, len(maintainersClient))
-		for _, r := range dispatch {
-			id := maintainer.AssignToMaintainer(r.LId, len(maintainersClient))
-			toDispatch[id] = append(toDispatch[id], r)
-		}
-		for id, t := range toDispatch {
-			if len(t) > 0 {
-				TOIDdispatchRecords(t, id)
+		// toDispatch := make([][]record.TOIDRecord, len(maintainersClient))
+		// for _, r := range dispatch {
+		// 	id := maintainer.AssignToMaintainer(r.LId, len(maintainersClient))
+		// 	toDispatch[id] = append(toDispatch[id], r)
+		// }
+		// for id, t := range toDispatch {
+		// 	if len(t) > 0 {
+		// 		TOIDdispatchRecords(t, id)
+		// 	}
+		// }
+		// go TOIDdispatchRecords(dispatch, rand.Intn(len(maintainersClient)))
+		go func() {
+			err := mongodb.PutTOIDRecords(dispatch)
+			if err != nil {
+				logrus.WithError(err).Error("couldn't put records to mongodb")
 			}
-		}
+		}()
 	}
 	go TOIDpassToken(&token)
 }
@@ -250,8 +258,8 @@ func TOIDassignLId(records []record.TOIDRecord, lastLId uint32) uint32 {
 
 // passToken sends the token to the next queue in the ring
 func TOIDpassToken(token *TOIDToken) {
-	time.Sleep(100 * time.Millisecond)
-	if nextQueueHost == "" {
+	// time.Sleep(10 * time.Millisecond)
+	if nextQueueHost == "" || nextQueueClient == nil {
 		if Carry {
 			TokenArrivalCarryDeferred(*token)
 		} else {

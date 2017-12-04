@@ -9,7 +9,7 @@ import (
 )
 
 type TOIDRecord struct {
-	Id        uint64 `bson:"_id,omitempty"`
+	Id        string `bson:"_id,omitempty"`
 	Timestamp int64
 	Host      uint32
 	TOId      uint32

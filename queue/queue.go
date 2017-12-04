@@ -1,6 +1,7 @@
 package queue
 
 import (
+	"math/rand"
 	"sync"
 	"time"
 
@@ -8,29 +9,31 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	"github.com/fasthall/gochariots/maintainer"
-	"github.com/fasthall/gochariots/maintainer/indexer"
+	"github.com/fasthall/gochariots/maintainer/adapter/mongodb"
 	"github.com/fasthall/gochariots/record"
 	"golang.org/x/net/context"
 )
 
-var lastTime time.Time
 var bufMutex sync.Mutex
-var buffered []record.Record
+var bufferedCausality []Causality // for two phase append
+var bufferedRecord []record.Record
 var maintainersClient []maintainer.MaintainerClient
 var maintainersHost []string
 var maintainersVer int
-var indexerClient []indexer.IndexerClient
-var indexerHost []string
-var indexersVer int
 var nextQueueClient QueueClient
 var nextQueueHost string
 var nextQueueVer int
-
-var indexerBuf []byte
+var twoPhase bool
 
 // Token is used by queues to ensure causality of LId assignment
 type Token struct {
 	LastLId uint32
+}
+
+// Record[Id] is caused by Record[Parent]
+type Causality struct {
+	Id     string
+	Parent string
 }
 
 type Server struct{}
@@ -39,11 +42,12 @@ func (s *Server) ReceiveRecords(ctx context.Context, in *RPCRecords) (*RPCReply,
 	records := make([]record.Record, len(in.GetRecords()))
 	for i, ri := range in.GetRecords() {
 		records[i] = record.Record{
+			Id:        ri.GetId(),
 			Timestamp: ri.GetTimestamp(),
 			Host:      ri.GetHost(),
 			LId:       ri.GetLid(),
 			Tags:      ri.GetTags(),
-			Hash:      ri.GetHash(),
+			Parent:    ri.GetParent(),
 			Seed:      ri.GetSeed(),
 		}
 	}
@@ -102,32 +106,14 @@ func (s *Server) UpdateMaintainers(ctx context.Context, in *RPCMaintainers) (*RP
 	return &RPCReply{Message: "ok"}, nil
 }
 
-func (s *Server) UpdateIndexers(ctx context.Context, in *RPCIndexers) (*RPCReply, error) {
-	ver := int(in.GetVersion())
-	if ver > indexersVer {
-		indexersVer = ver
-		indexerHost = in.GetIndexer()
-		indexerClient = make([]indexer.IndexerClient, len(indexerHost))
-		for i := range indexerHost {
-			conn, err := grpc.Dial(indexerHost[i], grpc.WithInsecure())
-			if err != nil {
-				reply := RPCReply{
-					Message: "couldn't connect to indexer",
-				}
-				return &reply, err
-			}
-			indexerClient[i] = indexer.NewIndexerClient(conn)
-		}
-		logrus.WithField("host", in.GetIndexer()).Info("received indexer hosts update")
-	} else {
-		logrus.WithFields(logrus.Fields{"current": indexersVer, "received": ver}).Debug("receiver older version of indexer hosts")
-	}
-	return &RPCReply{Message: "ok"}, nil
-}
-
 // InitQueue initializes the buffer and hashmap for queued records
-func InitQueue(hasToken bool) {
-	buffered = []record.Record{}
+func InitQueue(hasToken, twoPhaseAppend bool) {
+	twoPhase = twoPhaseAppend
+	if twoPhase {
+		bufferedCausality = []Causality{}
+	} else {
+		bufferedRecord = []record.Record{}
+	}
 	if hasToken {
 		var token Token
 		token.InitToken(0)
@@ -138,7 +124,6 @@ func InitQueue(hasToken bool) {
 	} else {
 		logrus.WithField("token", false).Info("initialized")
 	}
-	indexerBuf = make([]byte, 1024*1024*32)
 }
 
 // InitToken intializes a token. The IDs info should be accuired from log maintainers
@@ -149,90 +134,132 @@ func (token *Token) InitToken(lastLId uint32) {
 // recordsArrival deals with the records received from filters
 func recordsArrival(records []record.Record) {
 	logrus.WithField("timestamp", time.Now()).Debug("recordsArrival")
-	bufMutex.Lock()
-	buffered = append(buffered, records...)
-	bufMutex.Unlock()
+	if twoPhase {
+		go dispatchRecords(records, rand.Intn(len(maintainersClient)))
+		bufMutex.Lock()
+		cs := make([]Causality, len(records))
+		for i, r := range records {
+			cs[i] = Causality{
+				Id:     r.Id,
+				Parent: r.Parent,
+			}
+		}
+		bufferedCausality = append(bufferedCausality, cs...)
+		bufMutex.Unlock()
+	} else {
+		bufMutex.Lock()
+		bufferedRecord = append(bufferedRecord, records...)
+		bufMutex.Unlock()
+	}
 }
 
 // tokenArrival function deals with token received.
 // For each deferred records in the token, check if the current max TOId in shared log satisfies the dependency.
 // If so, the deferred records are sent to the log maintainers.
 func tokenArrival(token Token) {
-	dispatch := []record.Record{}
-	query := []indexer.Query{}
-	// append buffered records to the token in order
-	bufMutex.Lock()
-	head := 0
-	for _, r := range buffered {
-		if len(r.Hash) == 0 {
-			dispatch = append(dispatch, r)
-		} else {
-			query = append(query, indexer.Query{
-				Hash: r.Hash,
-				Seed: r.Seed,
-			})
-			buffered[head] = r
-			head++
-		}
-	}
-	buffered = buffered[:head]
-
-	// Ask indexer if the prerequisite records have been indexed already
-	if len(query) > 0 {
-		existed := make([]bool, len(query))
-		for i := range indexerClient {
-			logrus.WithField("query", query).Debug("queryIndexer")
-			result, err := queryIndexer(query, i)
-			if err != nil {
-				logrus.WithField("id", i).Warning("indexer stops responding")
-			} else {
-				for j := range existed {
-					existed[j] = existed[j] || result[j]
+	lastLId := token.LastLId
+	// two phase append
+	if twoPhase {
+		bufMutex.Lock()
+		// build queries
+		if len(bufferedCausality) > 0 {
+			queries := map[string]bool{}
+			existed := make([]bool, len(bufferedCausality))
+			for i, c := range bufferedCausality {
+				if c.Parent == "" {
+					existed[i] = true
+				} else {
+					queries[c.Parent] = false
 				}
 			}
-		}
-		head = 0
-		for i, r := range buffered {
-			if existed[i] {
-				dispatch = append(dispatch, r)
-			} else {
-				buffered[head] = r
-				head++
-			}
-		}
-		buffered = buffered[:head]
-	}
-	bufMutex.Unlock()
-	// assign LId and send to log maintainers
-	lastID := assignLId(dispatch, token.LastLId)
-	token.LastLId = lastID
-	toDispatch := make([][]record.Record, len(maintainersClient))
-	for _, r := range dispatch {
-		id := maintainer.AssignToMaintainer(r.LId, len(maintainersClient))
-		toDispatch[id] = append(toDispatch[id], r)
-	}
-	for id, t := range toDispatch {
-		if len(t) > 0 {
-			dispatchRecords(t, id)
-		}
-	}
-	go passToken(&token)
-}
 
-// assignLId assigns LId to all the records to be sent to log maintainers
-// return the last LId assigned
-func assignLId(records []record.Record, lastLId uint32) uint32 {
-	for i := range records {
-		lastLId++
-		records[i].LId = lastLId
+			// ask MongoDB if the prerequisite records exist
+			err := mongodb.QueryDB(&queries)
+			if err != nil {
+				logrus.WithError(err).Error("couldn't connect to DB")
+			}
+			for i, c := range bufferedCausality {
+				if existed[i] == false && queries[c.Parent] {
+					existed[i] = true
+				}
+			}
+
+			// update LId for those records with existing parent
+			head := 0
+			ids := []string{}
+			lids := []uint32{}
+			for i, c := range bufferedCausality {
+				if existed[i] {
+					lastLId++
+					ids = append(ids, c.Id)
+					lids = append(lids, lastLId)
+				} else {
+					bufferedCausality[head] = c
+					head++
+				}
+			}
+			go func() {
+				err := mongodb.InsertLIds(ids, lids)
+				if err != nil {
+					logrus.WithError(err).Error("error when updating lid")
+				}
+			}()
+			bufferedCausality = bufferedCausality[:head]
+		}
+		bufMutex.Unlock()
+	} else {
+		// non two phase append
+		bufMutex.Lock()
+		// build queries
+		if len(bufferedRecord) > 0 {
+			queries := map[string]bool{}
+			existed := make([]bool, len(bufferedRecord))
+			for i, c := range bufferedRecord {
+				if c.Parent == "" {
+					existed[i] = true
+				} else {
+					queries[c.Parent] = false
+				}
+			}
+
+			// ask MongoDB if the prerequisite records exist
+			err := mongodb.QueryDB(&queries)
+			if err != nil {
+				logrus.WithError(err).Error("couldn't connect to DB")
+			}
+			for i, c := range bufferedRecord {
+				if existed[i] == false && queries[c.Parent] {
+					existed[i] = true
+				}
+			}
+
+			// update LId for those records with existing parent
+			head := 0
+			toDispatch := []record.Record{}
+			for i, _ := range bufferedRecord {
+				if existed[i] {
+					lastLId++
+					r := record.Record(bufferedRecord[i])
+					r.LId = lastLId
+					toDispatch = append(toDispatch, r)
+				} else {
+					bufferedRecord[head] = bufferedRecord[i]
+					head++
+				}
+			}
+			go dispatchRecords(toDispatch, rand.Intn(len(maintainersClient)))
+			bufferedRecord = bufferedRecord[:head]
+		}
+		bufMutex.Unlock()
 	}
-	return lastLId
+	token.LastLId = lastLId
+	go passToken(&token)
 }
 
 // passToken sends the token to the next queue in the ring
 func passToken(token *Token) {
-	time.Sleep(100 * time.Millisecond)
-	if nextQueueHost == "" {
+	// time.Sleep(10 * time.Millisecond)
+	if nextQueueHost == "" || nextQueueClient == nil {
 		tokenArrival(*token)
 	} else {
 		rpcToken := RPCToken{
@@ -250,11 +277,12 @@ func dispatchRecords(records []record.Record, maintainerID int) {
 	}
 	for i, r := range records {
 		tmp := maintainer.RPCRecord{
+			Id:        r.Id,
 			Timestamp: r.Timestamp,
 			Host:      r.Host,
 			Lid:       r.LId,
 			Tags:      r.Tags,
-			Hash:      r.Hash,
+			Parent:    r.Parent,
 			Seed:      r.Seed,
 		}
 		rpcRecords.Records[i] = &tmp
@@ -263,26 +291,6 @@ func dispatchRecords(records []record.Record, maintainerID int) {
 	if err != nil {
 		logrus.WithField("id", maintainerID).Error("failed to connect to maintainer")
 	} else {
-		logrus.WithFields(logrus.Fields{"records": records, "id": maintainerID}).Debug("sent the records to maintainer")
+		logrus.WithFields(logrus.Fields{"records": len(records), "id": maintainerID}).Debug("sent the records to maintainer")
 	}
-	// log.Printf("TIMESTAMP %s:record in queue %s\n", info.GetName(), time.Since(lastTime))
-}
-
-func queryIndexer(query []indexer.Query, indexerID int) ([]bool, error) {
-	rpcQueries := indexer.RPCQueries{
-		Queries: make([]*indexer.RPCQuery, len(query)),
-	}
-	for i, q := range query {
-		tmp := indexer.RPCQuery{
-			Hash: q.Hash,
-			Seed: q.Seed,
-		}
-		rpcQueries.Queries[i] = &tmp
-	}
-	reply, err := indexerClient[indexerID].Query(context.Background(), &rpcQueries)
-	if err != nil {
-		logrus.WithField("id", indexerID).Error("failed to connect to indexer after retrying 5 times")
-		return nil, err
-	}
-	return reply.GetReply(), nil
 }

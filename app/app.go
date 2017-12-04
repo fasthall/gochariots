@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/fasthall/gochariots/batcher/batcherrpc"
+	"github.com/satori/go.uuid"
 
 	"google.golang.org/grpc"
 
@@ -21,15 +22,12 @@ import (
 var batcherClient []batcherrpc.BatcherRPCClient
 var batcherPool []string
 var batchersVer int
-var indexerPool []string
-var indexersVer int
 
 type JsonRecord struct {
-	Tags    map[string]string `json:"tags"`
-	Hash    []uint64          `json:"prehash"`
-	StrHash []string          `json:"strhash"`
-	Seed    uint64            `json:"seed"`
-	StrSeed string            `json:"strseed"`
+	ID     string            `json:"id"`
+	Tags   map[string]string `json:"tags"`
+	Parent string            `json:"parent"`
+	Seed   string            `json:"seed"`
 }
 
 func Run(port string) {
@@ -37,8 +35,6 @@ func Run(port string) {
 	router.POST("/record", postRecord)
 	router.POST("/batcher", addBatchers)
 	router.GET("/batcher", getBatchers)
-	router.POST("/indexer", addIndexer)
-	router.GET("/indexer", getindexers)
 	router.Run(":" + port)
 }
 
@@ -74,29 +70,6 @@ func getBatchers(c *gin.Context) {
 	})
 }
 
-func addIndexer(c *gin.Context) {
-	ver, err := strconv.Atoi(c.Query("ver"))
-	if err != nil {
-		c.String(http.StatusBadRequest, "invalid version $ver")
-		return
-	}
-	if ver > indexersVer {
-		indexersVer = ver
-		json.Unmarshal([]byte(c.Query("host")), &indexerPool)
-		c.String(http.StatusOK, c.Query("host")+" added")
-		logrus.WithFields(logrus.Fields{"ver": indexersVer, "indexers": indexerPool}).Info("indexer list updated")
-	} else {
-		c.String(http.StatusOK, "received older version of indexer list")
-		logrus.WithFields(logrus.Fields{"current": indexersVer, "received": ver}).Info("received older version of indexer list")
-	}
-}
-
-func getindexers(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"indexer": indexerPool,
-	})
-}
-
 func postRecord(c *gin.Context) {
 	logrus.WithField("timestamp", time.Now()).Info("postRecord")
 	var jsonRecord JsonRecord
@@ -105,26 +78,16 @@ func postRecord(c *gin.Context) {
 		panic(err)
 	}
 
-	for _, strHash := range jsonRecord.StrHash {
-		hash, err := strconv.ParseUint(strHash, 10, 64)
-		if err != nil {
-			panic(err)
-		}
-		jsonRecord.Hash = append(jsonRecord.Hash, hash)
-	}
-	if jsonRecord.StrSeed != "" {
-		seed, err := strconv.ParseUint(jsonRecord.StrSeed, 10, 64)
-		if err != nil {
-			panic(err)
-		}
-		jsonRecord.Seed = seed
-	}
 	// send to batcher
 	r := batcherrpc.RPCRecord{
-		Host: uint32(info.ID),
-		Tags: jsonRecord.Tags,
-		Hash: jsonRecord.Hash,
-		Seed: jsonRecord.Seed,
+		Id:     jsonRecord.ID,
+		Host:   uint32(info.ID),
+		Tags:   jsonRecord.Tags,
+		Parent: jsonRecord.Parent,
+		Seed:   jsonRecord.Seed,
+	}
+	if r.Id == "" {
+		r.Id = uuid.NewV4().String()
 	}
 
 	hostID := rand.Intn(len(batcherPool))
@@ -135,5 +98,5 @@ func postRecord(c *gin.Context) {
 	}
 	logrus.WithField("timestamp", time.Now()).Info("sendToBatcher")
 	logrus.WithField("id", hostID).Info("sent record to batcher")
-	c.String(http.StatusOK, "Record posted")
+	c.String(http.StatusOK, r.Id)
 }

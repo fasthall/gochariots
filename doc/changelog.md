@@ -1,5 +1,9 @@
 # October
 
+## October 17, 2017
+### Two-phase append
+When a record hits queue, the queue immediately appends it to the maintainer without LogID assigned. The record's UUID and its parent's UUID is buffered in the queue. When the parent's UUID presents in the maintainers, the queue assign LogID and update the entries in maintainer.
+
 ## October 5, 2017
 ### Change datacenter ID numbering
 Now dc ID in config.yaml starts from 1. When create a new record using library, host id will be 0. If a batcher receive a record with host id 0, it will fill in host id as dc id automatically.

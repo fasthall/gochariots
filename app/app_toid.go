@@ -4,10 +4,10 @@ import (
 	"context"
 	"math/rand"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/fasthall/gochariots/batcher/batcherrpc"
+	"github.com/satori/go.uuid"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/fasthall/gochariots/info"
@@ -15,8 +15,7 @@ import (
 )
 
 type TOIDJsonRecord struct {
-	ID      uint64            `json:"id"`
-	StrID   string            `json:"strid"`
+	ID      string            `json:"id"`
 	Tags    map[string]string `json:"tags"`
 	PreHost uint32            `json:"prehost"`
 	PreTOId uint32            `json:"pretoid"`
@@ -27,8 +26,6 @@ func TOIDRun(port string) {
 	router.POST("/record", TOIDpostRecord)
 	router.POST("/batcher", addBatchers)
 	router.GET("/batcher", getBatchers)
-	router.POST("/indexer", addIndexer)
-	router.GET("/indexer", getindexers)
 	router.Run(":" + port)
 }
 
@@ -38,13 +35,6 @@ func TOIDpostRecord(c *gin.Context) {
 	err := c.Bind(&jsonRecord)
 	if err != nil {
 		panic(err)
-	}
-	if jsonRecord.StrID != "" {
-		id, err := strconv.ParseUint(jsonRecord.StrID, 10, 64)
-		if err != nil {
-			panic(err)
-		}
-		jsonRecord.ID = id
 	}
 	// send to batcher
 	r := batcherrpc.RPCRecord{
@@ -56,6 +46,9 @@ func TOIDpostRecord(c *gin.Context) {
 			Toid: jsonRecord.PreTOId,
 		},
 	}
+	if r.Id == "" {
+		r.Id = uuid.NewV4().String()
+	}
 
 	hostID := rand.Intn(len(batcherPool))
 	_, err = batcherClient[hostID].TOIDReceiveRecord(context.Background(), &r)
@@ -65,5 +58,5 @@ func TOIDpostRecord(c *gin.Context) {
 	}
 	logrus.WithField("timestamp", time.Now()).Info("sendToBatcher")
 	logrus.WithField("id", hostID).Info("sent record to batcher")
-	c.String(http.StatusOK, "Record posted")
+	c.String(http.StatusOK, r.Id)
 }

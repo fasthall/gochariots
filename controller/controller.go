@@ -30,14 +30,18 @@ var queuesVersion uint32
 var maintainers []string
 var maintainerClient []maintainer.MaintainerClient
 var maintainersVersion uint32
-var indexers []string
-var indexersVersion uint32
 var remoteBatcher []string
 var remoteBatcherVer uint32
 var mutex sync.Mutex
 
 // StartController starts controller's REST API server on sepcified port
 func StartController(port string) {
+	appsVersion = 1
+	batchersVersion = 1
+	queuesVersion = 1
+	maintainersVersion = 1
+	remoteBatcherVer = 1
+
 	router := gin.Default()
 
 	router.GET("/", getInfo)
@@ -49,8 +53,6 @@ func StartController(port string) {
 	router.GET("/queue", getQueues)
 	router.POST("/maintainer", addMaintainer)
 	router.GET("/maintainer", getMaintainers)
-	router.POST("/indexer", addIndexer)
-	router.GET("/indexer", getIndexers)
 	router.POST("/remote/batcher", addRemoteBatcher)
 	router.GET("/remote/batcher", getRemoteBatcher)
 
@@ -63,7 +65,6 @@ func getInfo(c *gin.Context) {
 		"batchers":       batchers,
 		"queues":         queues,
 		"maintainers":    maintainers,
-		"indexers":       indexers,
 		"remoteBatchers": remoteBatcher,
 	})
 }
@@ -79,7 +80,6 @@ func addApps(c *gin.Context) {
 	mutex.Unlock()
 
 	go informAppBatcher(c.Query("host"))
-	go informAppIndexer(c.Query("host"))
 
 	c.String(http.StatusOK, c.Query("host")+" added")
 }
@@ -104,26 +104,6 @@ func informAppBatcher(host string) {
 	logrus.WithFields(logrus.Fields{"host": host, "batchers": batchers}).Info("successfully informed app about batcher list")
 }
 
-func informAppIndexer(host string) {
-	jsonIndexers, err := json.Marshal(indexers)
-	if err != nil {
-		logrus.WithError(err).Error("couldn't convert indexers to bytes")
-		panic("failing to update cluster may cause unexpected error")
-	}
-	p := misc.NewParams()
-	p.AddParam("host", string(jsonIndexers))
-	p.AddParam("ver", strconv.Itoa(int(indexersVersion)))
-	code := http.StatusBadRequest
-	for code != http.StatusOK {
-		time.Sleep(1 * time.Second)
-		code, _, err = misc.Report(host, "indexer", p)
-		if err != nil {
-			logrus.WithError(err).Error("couldn't inform app about indexers")
-		}
-	}
-	logrus.WithFields(logrus.Fields{"host": host, "indexers": indexers}).Info("successfully informed app about indexer list")
-}
-
 func getApps(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"apps": apps,
@@ -141,10 +121,12 @@ func addBatchers(c *gin.Context) {
 	conn, err := grpc.Dial(c.Query("host"), grpc.WithInsecure())
 	if err != nil {
 		c.String(http.StatusBadRequest, "couldn't connect to batcher")
+		logrus.WithError(err).Error("couldn't connect to batcher")
 		return
 	}
 	cli := batcherrpc.NewBatcherRPCClient(conn)
 	batcherClient = append(batcherClient, cli)
+	logrus.Error("batcherClient[" + strconv.Itoa(len(batcherClient)-1) + "]=" + c.Query("host"))
 	mutex.Unlock()
 	for _, host := range apps {
 		informAppBatcher(host)
@@ -200,10 +182,13 @@ func addQueue(c *gin.Context) {
 	}
 	// update batchers about queues
 	for i, cli := range batcherClient {
-		rpcQueues := batcherrpc.RPCQueues{}
+		rpcQueues := batcherrpc.RPCQueues{
+			Version: queuesVersion,
+			Queues:  queues,
+		}
 		_, err := cli.UpdateQueue(context.Background(), &rpcQueues)
 		if err != nil {
-			logrus.WithField("id", i).WithError(err).Error("couldn't send new queue host")
+			logrus.WithField("batcherID", i).WithError(err).Error("couldn't send new queue host")
 			panic("failing to update cluster may cause unexpected error")
 		}
 		logrus.WithFields(logrus.Fields{"batcher": i, "queues": queues}).Info("successfully informed batcher about new queue host")
@@ -220,18 +205,6 @@ func addQueue(c *gin.Context) {
 		panic("failing to update cluster may cause unexpected error")
 	}
 	logrus.WithField("maintainers", maintainers).Info("successfully informed new queue about maintainer list")
-
-	// tell queue about indexer
-	rpcIndexers := queue.RPCIndexers{
-		Version: indexersVersion,
-		Indexer: indexers,
-	}
-	_, err = cli.UpdateIndexers(context.Background(), &rpcIndexers)
-	if err != nil {
-		logrus.WithField("host", c.Query("host")).Error("couldn't send indexer list to queue")
-		panic("failing to update cluster may cause unexpected error")
-	}
-	logrus.WithField("indexers", indexers).Info("successfully informed queue about indexer list")
 }
 
 func getQueues(c *gin.Context) {
@@ -254,23 +227,8 @@ func addMaintainer(c *gin.Context) {
 	mutex.Unlock()
 	c.String(http.StatusOK, c.Query("host")+" added")
 
-	// tell maintainer its indexer
-	i := len(maintainers) - 1
-	if i < len(indexers) {
-		rpcIndexer := maintainer.RPCIndexer{
-			Version: indexersVersion,
-			Indexer: indexers[i],
-		}
-		_, err := cli.UpdateIndexer(context.Background(), &rpcIndexer)
-		if err != nil {
-			logrus.WithFields(logrus.Fields{"maintainer": c.Query("host"), "indexer": indexers[i]}).Error("couldn't notify maintainer its indexer")
-			panic("failing to update cluster may cause unexpected error")
-		}
-		logrus.WithFields(logrus.Fields{"maintainer": c.Query("host"), "indexer": indexers[i]}).Info("successfully informed maintainer its indexer")
-	}
-
 	// update queues' maintainer list
-	for _, cli := range queueClient {
+	for i, cli := range queueClient {
 		rpcMaintainers := queue.RPCMaintainers{
 			Version:    maintainersVersion,
 			Maintainer: maintainers,
@@ -290,7 +248,7 @@ func addMaintainer(c *gin.Context) {
 	}
 	_, err = cli.UpdateBatchers(context.Background(), &rpcBatchers)
 	if err != nil {
-		logrus.WithField("id", i).Error("couldn't send remoteBatcher to maintainer")
+		logrus.WithField("host", c.Query("host")).Error("couldn't send remoteBatcher to maintainer")
 		panic("failing to update cluster may cause unexpected error")
 	}
 	logrus.WithField("batchers", remoteBatcher).Info("successfully informed maintainers about new remote batchers")
@@ -299,57 +257,6 @@ func addMaintainer(c *gin.Context) {
 func getMaintainers(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"maintainers": maintainers,
-	})
-}
-
-func addIndexer(c *gin.Context) {
-	if c.Query("host") == "" {
-		c.String(http.StatusBadRequest, "invalid parameter, needs $host")
-		return
-	}
-	mutex.Lock()
-	indexers = append(indexers, c.Query("host"))
-	indexersVersion++
-	mutex.Unlock()
-	c.String(http.StatusOK, c.Query("host")+" added")
-
-	for _, host := range apps {
-		informAppIndexer(host)
-	}
-
-	// tell maintainer its indexer
-	i := len(indexers) - 1
-	if i < len(maintainers) {
-		rpcIndexer := maintainer.RPCIndexer{
-			Version: indexersVersion,
-			Indexer: indexers[i],
-		}
-		_, err := maintainerClient[i].UpdateIndexer(context.Background(), &rpcIndexer)
-		if err != nil {
-			logrus.WithFields(logrus.Fields{"maintainer": c.Query("host"), "indexer": indexers[i]}).Error("couldn't notify maintainer its indexer")
-			panic("failing to update cluster may cause unexpected error")
-		}
-		logrus.WithFields(logrus.Fields{"maintainer": maintainers[i], "indexer": indexers[i]}).Info("successfully informed maintainer its indexer")
-	}
-
-	// update queues' indexer list
-	for i, cli := range queueClient {
-		rpcIndexers := queue.RPCIndexers{
-			Version: indexersVersion,
-			Indexer: indexers,
-		}
-		_, err := cli.UpdateIndexers(context.Background(), &rpcIndexers)
-		if err != nil {
-			logrus.WithField("host", queues[i]).Error("couldn't send indexer list to queue")
-			panic("failing to update cluster may cause unexpected error")
-		}
-		logrus.WithField("indexers", indexers).Info("successfully informed queues about indexer list")
-	}
-}
-
-func getIndexers(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"indexers": indexers,
 	})
 }
 

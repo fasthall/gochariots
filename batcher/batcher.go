@@ -4,10 +4,11 @@ package batcher
 
 import (
 	"math/rand"
-	"sync"
+	"strconv"
 	"time"
 
 	"github.com/fasthall/gochariots/info"
+	"github.com/satori/go.uuid"
 
 	"github.com/fasthall/gochariots/batcher/batcherrpc"
 	"github.com/fasthall/gochariots/queue"
@@ -18,11 +19,9 @@ import (
 	"golang.org/x/net/context"
 )
 
-const bufferSize int = 256
-
-var bufMutex sync.Mutex
-var buffer []record.Record
-var connMutex sync.Mutex
+var bufferSize int
+var buffer chan record.Record
+var bufferFull chan bool
 var queueClient []queue.QueueClient
 var queuePool []string
 var queuePoolVer int
@@ -32,36 +31,47 @@ type Server struct{}
 
 func (s *Server) ReceiveRecord(ctx context.Context, in *batcherrpc.RPCRecord) (*batcherrpc.RPCReply, error) {
 	r := record.Record{
+		Id:        in.GetId(),
 		Timestamp: in.GetTimestamp(),
 		Host:      in.GetHost(),
 		LId:       in.GetLid(),
 		Tags:      in.GetTags(),
-		Hash:      in.GetHash(),
+		Parent:    in.GetParent(),
 		Seed:      in.GetSeed(),
 	}
 	if r.Host == 0 {
 		r.Host = uint32(info.ID)
 	}
-	arrival(r)
-	return &batcherrpc.RPCReply{Message: "ok"}, nil
+	if r.Id == "" {
+		r.Id = uuid.NewV4().String()
+	}
+	go arrival(r)
+	return &batcherrpc.RPCReply{Message: r.Id}, nil
 }
 
 func (s *Server) ReceiveRecords(ctx context.Context, in *batcherrpc.RPCRecords) (*batcherrpc.RPCReply, error) {
+	ids := []string{}
 	for _, i := range in.GetRecords() {
 		r := record.Record{
+			Id:        i.GetId(),
 			Timestamp: i.GetTimestamp(),
 			Host:      i.GetHost(),
 			LId:       i.GetLid(),
 			Tags:      i.GetTags(),
-			Hash:      i.GetHash(),
+			Parent:    i.GetParent(),
 			Seed:      i.GetSeed(),
 		}
 		if r.Host == 0 {
 			r.Host = uint32(info.ID)
 		}
-		arrival(r)
+		if r.Id == "" {
+			r.Id = uuid.NewV4().String()
+		}
+		ids = append(ids, r.Id)
+		go arrival(r)
 	}
-	return &batcherrpc.RPCReply{Message: "ok"}, nil
+	// b, err := json.Marshal(ids)
+	return &batcherrpc.RPCReply{Message: strconv.Itoa(len(ids))}, nil
 }
 
 func (s *Server) UpdateQueue(ctx context.Context, in *batcherrpc.RPCQueues) (*batcherrpc.RPCReply, error) {
@@ -88,8 +98,11 @@ func (s *Server) UpdateQueue(ctx context.Context, in *batcherrpc.RPCQueues) (*ba
 }
 
 // InitBatcher allocates n buffers, where n is the number of filters
-func InitBatcher() {
-	buffer = make([]record.Record, 0, bufferSize)
+func InitBatcher(bs int) {
+	bufferSize = bs
+	buffer = make(chan record.Record, bufferSize)
+	bufferFull = make(chan bool)
+	go Sweeper()
 }
 
 // arrival buffers arriving records.
@@ -97,14 +110,15 @@ func InitBatcher() {
 // When a buffer is full, all the records in the buffer will be sent to the corresponding filter.
 func arrival(r record.Record) {
 	// r.Timestamp = time.Now()
-	bufMutex.Lock()
-	buffer = append(buffer, r)
-
-	// if the buffer is full, send all records to the filter
-	if len(buffer) == cap(buffer) {
-		sendToQueue()
+	for {
+		select {
+		case buffer <- r:
+			// send record into buffered channel
+			return
+		default:
+			bufferFull <- true
+		}
 	}
-	bufMutex.Unlock()
 }
 
 func sendToQueue() {
@@ -113,33 +127,47 @@ func sendToQueue() {
 	}
 	// logrus.WithField("timestamp", time.Now()).Debug("sendToQueue")
 	rpcRecords := queue.RPCRecords{}
-	for _, r := range buffer {
-		rpcRecords.Records = append(rpcRecords.Records, &queue.RPCRecord{
-			Timestamp: r.Timestamp,
-			Host:      r.Host,
-			Lid:       r.LId,
-			Tags:      r.Tags,
-			Hash:      r.Hash,
-			Seed:      r.Seed,
-		})
+	done := false
+	for !done {
+		select {
+		case r := <-buffer:
+			rpcRecords.Records = append(rpcRecords.Records, &queue.RPCRecord{
+				Id:        r.Id,
+				Timestamp: r.Timestamp,
+				Host:      r.Host,
+				Lid:       r.LId,
+				Tags:      r.Tags,
+				Parent:    r.Parent,
+				Seed:      r.Seed,
+			})
+			if len(rpcRecords.Records) == bufferSize {
+				done = true
+			}
+		default:
+			done = true
+		}
 	}
-	buffer = buffer[:0]
 
-	queueID := rand.Intn(len(queuePool))
-	_, err := queueClient[queueID].ReceiveRecords(context.Background(), &rpcRecords)
-	if err != nil {
-		logrus.WithField("id", queueID).Error("couldn't connect to queue")
-	} else {
-		logrus.WithField("id", queueID).Debug("sent to queue")
-	}
+	go func() {
+		queueID := rand.Intn(len(queuePool))
+		_, err := queueClient[queueID].ReceiveRecords(context.Background(), &rpcRecords)
+		if err != nil {
+			logrus.WithField("id", queueID).Error("couldn't connect to queue")
+		} else {
+			logrus.WithField("id", queueID).Debug("sent to queue")
+		}
+	}()
 }
 
 // Sweeper periodcally sends the buffer content to filters
 func Sweeper() {
+	cron := time.NewTicker(10 * time.Millisecond)
 	for {
-		time.Sleep(10 * time.Millisecond)
-		bufMutex.Lock()
-		sendToQueue()
-		bufMutex.Unlock()
+		select {
+		case <-cron.C:
+			sendToQueue()
+		case <-bufferFull:
+			sendToQueue()
+		}
 	}
 }
