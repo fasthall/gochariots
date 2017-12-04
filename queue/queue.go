@@ -199,7 +199,7 @@ func tokenArrival(token Token) {
 				}
 			}
 			go func() {
-				err := mongodb.UpdateLIds(ids, lids)
+				err := mongodb.InsertLIds(ids, lids)
 				if err != nil {
 					logrus.WithError(err).Error("error when updating lid")
 				}
