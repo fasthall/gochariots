@@ -74,6 +74,7 @@ var (
 	queueInfo           = queueCommand.Flag("info", "Turn on info level logging.").Short('i').Bool()
 	queueDebug          = queueCommand.Flag("debug", "Turn on debug level logging.").Short('d').Bool()
 	queueTwoPhaseAppend = queueCommand.Flag("two_phase_append", "Enable two phase append.").Bool()
+	queueQuerySizeLimit = queueCommand.Flag("query_size", "Query size of MongoDB. Only work when using two phase append.").Short('q').Int()
 
 	maintainerCommand   = gochariots.Command("maintainer", "Start a maintainer instance.")
 	maintainerNumDC     = maintainerCommand.Flag("num_dc", "The port maintainer listens to.").Int()
@@ -183,6 +184,9 @@ func main() {
 		if *queueNumDC == 0 {
 			*queueNumDC = 1
 		}
+		if *queueQuerySizeLimit == 0 {
+			*queueQuerySizeLimit = 1000
+		}
 		info.NumDC = *queueNumDC
 		info.ID = *queueID
 		info.SetName("queue" + *queuePort)
@@ -200,7 +204,7 @@ func main() {
 		if *queueTOId {
 			queue.TOIDInitQueue(*queueHold, *queueCarry)
 		} else {
-			queue.InitQueue(*queueHold, *queueTwoPhaseAppend)
+			queue.InitQueue(*queueHold, *queueTwoPhaseAppend, *queueQuerySizeLimit)
 		}
 		ln, err := net.Listen("tcp", ":"+*queuePort)
 		if err != nil {

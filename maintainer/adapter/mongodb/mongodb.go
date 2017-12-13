@@ -14,8 +14,7 @@ const DB_NAME string = "gochariots"
 const COLLECTION_RECORD string = "record"
 const COLLECTION_MAPPING string = "mapping"
 
-var mismatched = 0
-var cnt = 0
+var INSERT_SIZE_LIMIT = 1000
 
 var session *mgo.Session
 
@@ -40,9 +39,9 @@ func PutRecords(records []record.Record) error {
 	sessionCopy := session.Copy()
 	defer sessionCopy.Close()
 	c := sessionCopy.DB(DB_NAME).C(COLLECTION_RECORD)
-	if len(records) > 1000 {
-		PutRecords(records[1000:])
-		records = records[:1000]
+	if len(records) > INSERT_SIZE_LIMIT {
+		PutRecords(records[INSERT_SIZE_LIMIT:])
+		records = records[:INSERT_SIZE_LIMIT]
 	}
 	bulk := c.Bulk()
 	objs := make([]interface{}, len(records))
@@ -60,9 +59,9 @@ func PutTOIDRecords(records []record.TOIDRecord) error {
 	defer sessionCopy.Close()
 	c := sessionCopy.DB(DB_NAME).C(COLLECTION_RECORD)
 
-	if len(records) > 1000 {
-		PutTOIDRecords(records[1000:])
-		records = records[:1000]
+	if len(records) > INSERT_SIZE_LIMIT {
+		PutTOIDRecords(records[INSERT_SIZE_LIMIT:])
+		records = records[:INSERT_SIZE_LIMIT]
 	}
 	bulk := c.Bulk()
 	objs := make([]interface{}, len(records)*2)
@@ -78,16 +77,19 @@ func PutTOIDRecords(records []record.TOIDRecord) error {
 }
 
 func InsertLIds(id []string, lid []uint32) error {
+	if len(id) == 0 {
+		return nil
+	}
 	sessionCopy := session.Copy()
 	defer sessionCopy.Close()
 	c := sessionCopy.DB(DB_NAME).C(COLLECTION_MAPPING)
 	if len(id) != len(lid) {
 		return errors.New("length doesn't match")
 	}
-	for len(id) > 1000 {
-		InsertLIds(id[:1000], lid[:1000])
-		id = id[1000:]
-		lid = lid[1000:]
+	for len(id) > INSERT_SIZE_LIMIT {
+		InsertLIds(id[:INSERT_SIZE_LIMIT], lid[:INSERT_SIZE_LIMIT])
+		id = id[INSERT_SIZE_LIMIT:]
+		lid = lid[INSERT_SIZE_LIMIT:]
 	}
 	bulk := c.Bulk()
 	q := make([]interface{}, len(id))
@@ -122,18 +124,21 @@ func PutTOIDRecord(r record.TOIDRecord) error {
 }
 
 func QueryDB(queries *map[string]bool) error {
+	ids := make([]string, 0, len(*queries))
+	for key, _ := range *queries {
+		ids = append(ids, key)
+	}
 	sessionCopy := session.Copy()
 	defer sessionCopy.Close()
 	c := sessionCopy.DB(DB_NAME).C(COLLECTION_MAPPING)
-
-	for key, _ := range *queries {
-		cnt, err := c.Find(bson.M{"_id": key}).Count()
-		if err != nil {
-			return err
-		}
-		if cnt > 0 {
-			(*queries)[key] = true
+	q := c.Find(bson.M{"_id": bson.M{"$in": ids}})
+	var result []record.Record
+	err := q.Select(bson.M{"_id": 1}).All(&result)
+	for _, r := range result {
+		_, found := (*queries)[r.Id]
+		if found {
+			(*queries)[r.Id] = true
 		}
 	}
-	return nil
+	return err
 }

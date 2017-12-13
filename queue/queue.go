@@ -1,6 +1,7 @@
 package queue
 
 import (
+	"fmt"
 	"math/rand"
 	"sync"
 	"time"
@@ -24,6 +25,8 @@ var nextQueueClient QueueClient
 var nextQueueHost string
 var nextQueueVer int
 var twoPhase bool
+
+var querySizeLimit = 1000
 
 // Token is used by queues to ensure causality of LId assignment
 type Token struct {
@@ -107,8 +110,9 @@ func (s *Server) UpdateMaintainers(ctx context.Context, in *RPCMaintainers) (*RP
 }
 
 // InitQueue initializes the buffer and hashmap for queued records
-func InitQueue(hasToken, twoPhaseAppend bool) {
+func InitQueue(hasToken, twoPhaseAppend bool, querySize int) {
 	twoPhase = twoPhaseAppend
+	querySizeLimit = querySize
 	if twoPhase {
 		bufferedCausality = []Causality{}
 	} else {
@@ -163,33 +167,34 @@ func tokenArrival(token Token) {
 		bufMutex.Lock()
 		// build queries
 		if len(bufferedCausality) > 0 {
+			logrus.Errorln(len(bufferedCausality))
 			queries := map[string]bool{}
-			existed := make([]bool, len(bufferedCausality))
-			for i, c := range bufferedCausality {
-				if c.Parent == "" {
-					existed[i] = true
-				} else {
+			querySize := len(bufferedCausality)
+			if querySize > querySizeLimit {
+				querySize = querySizeLimit
+			}
+			lastQueryIndex := rand.Intn(len(bufferedCausality))
+			for i := 0; i < querySize; i++ {
+				c := bufferedCausality[(lastQueryIndex+i)%len(bufferedCausality)]
+				if c.Parent != "" {
 					queries[c.Parent] = false
 				}
 			}
 
+			t := time.Now()
 			// ask MongoDB if the prerequisite records exist
 			err := mongodb.QueryDB(&queries)
 			if err != nil {
 				logrus.WithError(err).Error("couldn't connect to DB")
 			}
-			for i, c := range bufferedCausality {
-				if existed[i] == false && queries[c.Parent] {
-					existed[i] = true
-				}
-			}
-
+			logrus.Error("done querying " + fmt.Sprint(time.Since(t)))
 			// update LId for those records with existing parent
 			head := 0
 			ids := []string{}
 			lids := []uint32{}
-			for i, c := range bufferedCausality {
-				if existed[i] {
+			for _, c := range bufferedCausality {
+				exist, found := queries[c.Parent]
+				if c.Parent == "" || (found && exist) {
 					lastLId++
 					ids = append(ids, c.Id)
 					lids = append(lids, lastLId)
