@@ -2,7 +2,10 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"strconv"
 	"sync"
+	"time"
 
 	"github.com/fasthall/gochariots/batcher/batcherrpc"
 	"github.com/satori/uuid"
@@ -12,9 +15,13 @@ import (
 var batchSize = 1000
 var batch = 1000
 var poolSize = 10
+var speed = 1000 // records per second
+var waitTime = time.Second / time.Duration(batch/speed)
 var batcherClient []batcherrpc.BatcherRPCClient
 
 func main() {
+	fmt.Println("Send " + strconv.Itoa(speed) + " records per second.")
+	fmt.Println("Send a batch per " + fmt.Sprint(waitTime) + ".")
 	batcherClient = make([]batcherrpc.BatcherRPCClient, poolSize)
 	for i := 0; i < poolSize; i++ {
 		conn, err := grpc.Dial("localhost:9000", grpc.WithInsecure())
@@ -25,6 +32,8 @@ func main() {
 	}
 	var wg sync.WaitGroup
 	wg.Add(batch * 2)
+
+	lastSent := time.Now()
 	for b := 0; b < batch; b++ {
 		id1 := make([]string, batchSize)
 		id2 := make([]string, batchSize)
@@ -34,6 +43,11 @@ func main() {
 			id2[i] = uuid.NewV4().String()
 			seed[i] = uuid.NewV4().String()
 		}
+
+		for time.Since(lastSent) < waitTime {
+			//
+		}
+
 		go func() {
 			defer wg.Done()
 			records := batcherrpc.RPCRecords{
@@ -72,6 +86,8 @@ func main() {
 				panic("couldn't send to batcher" + err.Error())
 			}
 		}()
+
+		lastSent = time.Now()
 	}
 	wg.Wait()
 }

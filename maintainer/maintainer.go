@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/fasthall/gochariots/maintainer/adapter/mongodb"
+	"github.com/fasthall/gochariots/misc"
 
 	"google.golang.org/grpc"
 
@@ -22,6 +23,7 @@ const batchSize int = 10000
 var path = "flstore"
 var f *os.File
 var maintainerInterface int
+var benchmark misc.Benchmark
 
 type Server struct{}
 
@@ -46,6 +48,8 @@ func (s *Server) ReceiveRecords(ctx context.Context, in *RPCRecords) (*RPCReply,
 		err := mongodb.PutRecords(records)
 		if err != nil {
 			logrus.WithError(err).Error("couldn't put records to mongodb")
+		} else {
+			benchmark.Logging(len(records))
 		}
 	}()
 	go Propagate(propagated)
@@ -84,7 +88,7 @@ func (s *Server) ReadByLId(ctx context.Context, in *RPCLId) (*RPCReply, error) {
 }
 
 // InitLogMaintainer initializes the maintainer and assign the path name to store the records
-func InitLogMaintainer(p string, itf int) {
+func InitLogMaintainer(p string, itf int, benchmarkAccuracy int) {
 	// err := os.MkdirAll(path, os.ModePerm)
 	// if err != nil {
 	// 	logrus.WithField("path", path).Error("couldn't access path")
@@ -95,6 +99,7 @@ func InitLogMaintainer(p string, itf int) {
 	// 	panic(err)
 	// }
 	maintainerInterface = itf
+	benchmark = misc.NewBenchmark(benchmarkAccuracy)
 }
 
 // ReadByLId reads from the maintainer according to LId.

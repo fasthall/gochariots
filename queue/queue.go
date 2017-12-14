@@ -1,10 +1,11 @@
 package queue
 
 import (
-	"fmt"
 	"math/rand"
 	"sync"
 	"time"
+
+	"github.com/fasthall/gochariots/misc"
 
 	"google.golang.org/grpc"
 
@@ -27,6 +28,7 @@ var nextQueueVer int
 var twoPhase bool
 
 var querySizeLimit = 1000
+var benchmark misc.Benchmark
 
 // Token is used by queues to ensure causality of LId assignment
 type Token struct {
@@ -110,9 +112,10 @@ func (s *Server) UpdateMaintainers(ctx context.Context, in *RPCMaintainers) (*RP
 }
 
 // InitQueue initializes the buffer and hashmap for queued records
-func InitQueue(hasToken, twoPhaseAppend bool, querySize int) {
+func InitQueue(hasToken, twoPhaseAppend bool, querySize, benchmarkAccuracy int) {
 	twoPhase = twoPhaseAppend
 	querySizeLimit = querySize
+	benchmark = misc.NewBenchmark(benchmarkAccuracy)
 	if twoPhase {
 		bufferedCausality = []Causality{}
 	} else {
@@ -181,13 +184,11 @@ func tokenArrival(token Token) {
 				}
 			}
 
-			t := time.Now()
 			// ask MongoDB if the prerequisite records exist
 			err := mongodb.QueryDB(&queries)
 			if err != nil {
 				logrus.WithError(err).Error("couldn't connect to DB")
 			}
-			logrus.Error("done querying " + fmt.Sprint(time.Since(t)))
 			// update LId for those records with existing parent
 			head := 0
 			ids := []string{}
@@ -205,6 +206,7 @@ func tokenArrival(token Token) {
 			}
 			go func() {
 				err := mongodb.InsertLIds(ids, lids)
+				benchmark.Logging(len(ids))
 				if err != nil {
 					logrus.WithError(err).Error("error when updating lid")
 				}

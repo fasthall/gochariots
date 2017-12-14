@@ -9,6 +9,7 @@ import (
 	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/maintainer"
 	"github.com/fasthall/gochariots/maintainer/adapter/mongodb"
+	"github.com/fasthall/gochariots/misc"
 	"github.com/fasthall/gochariots/record"
 	"golang.org/x/net/context"
 )
@@ -82,9 +83,10 @@ type TOIDToken struct {
 }
 
 // InitQueue initializes the buffer and hashmap for queued records
-func TOIDInitQueue(hasToken, carry bool) {
+func TOIDInitQueue(hasToken, carry bool, benchmarkAccuracy int) {
 	Carry = carry
 	TOIDbuffered = make([]BufferHeap, info.NumDC)
+	benchmark = misc.NewBenchmark(benchmarkAccuracy)
 	for i := range TOIDbuffered {
 		TOIDbuffered[i] = BufferHeap{}
 		heap.Init(&TOIDbuffered[i])
@@ -116,6 +118,7 @@ func (token *TOIDToken) InitToken(maxTOId []uint32) {
 // recordsArrival deals with the records received from filters
 func TOIDrecordsArrival(records []record.TOIDRecord) {
 	// info.LogTimestamp("recordsArrival")
+	benchmark.Logging(len(records))
 	bufMutex.Lock()
 	for _, r := range records {
 		if r.Host == uint32(info.ID) {

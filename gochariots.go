@@ -75,6 +75,7 @@ var (
 	queueDebug          = queueCommand.Flag("debug", "Turn on debug level logging.").Short('d').Bool()
 	queueTwoPhaseAppend = queueCommand.Flag("two_phase_append", "Enable two phase append.").Bool()
 	queueQuerySizeLimit = queueCommand.Flag("query_size", "Query size of MongoDB. Only work when using two phase append.").Short('q').Int()
+	queueBenchmark      = queueCommand.Flag("benchmark_accuracy", "How many records betweeen each throughput logging.").Int()
 
 	maintainerCommand   = gochariots.Command("maintainer", "Start a maintainer instance.")
 	maintainerNumDC     = maintainerCommand.Flag("num_dc", "The port maintainer listens to.").Int()
@@ -88,6 +89,7 @@ var (
 	maintainerDatastore = maintainerCommand.Flag("datastore", "Use Datastore as physical storage.").Bool()
 	maintainerCosmosDB  = maintainerCommand.Flag("cosmosdb", "Use CosmosDB as physical storage.").Bool()
 	maintainerMongoDB   = maintainerCommand.Flag("mongodb", "Use MongoDB as physical storage.").Bool()
+	maintainerBenchmark = maintainerCommand.Flag("benchmark_accuracy", "How many records betweeen each throughput logging.").Int()
 )
 
 func main() {
@@ -202,9 +204,9 @@ func main() {
 			info.Config(*queueConfig, "queue")
 		}
 		if *queueTOId {
-			queue.TOIDInitQueue(*queueHold, *queueCarry)
+			queue.TOIDInitQueue(*queueHold, *queueCarry, *queueBenchmark)
 		} else {
-			queue.InitQueue(*queueHold, *queueTwoPhaseAppend, *queueQuerySizeLimit)
+			queue.InitQueue(*queueHold, *queueTwoPhaseAppend, *queueQuerySizeLimit, *queueBenchmark)
 		}
 		ln, err := net.Listen("tcp", ":"+*queuePort)
 		if err != nil {
@@ -249,7 +251,7 @@ func main() {
 		} else if *maintainerMongoDB {
 			adap = adapter.MONGODB
 		}
-		maintainer.InitLogMaintainer(info.GetName(), adap)
+		maintainer.InitLogMaintainer(info.GetName(), adap, *maintainerBenchmark)
 		ln, err := net.Listen("tcp", ":"+*maintainerPort)
 		if err != nil {
 			fmt.Println(info.GetName() + "couldn't listen on port " + *maintainerPort)
