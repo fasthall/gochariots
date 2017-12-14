@@ -170,7 +170,6 @@ func tokenArrival(token Token) {
 		bufMutex.Lock()
 		// build queries
 		if len(bufferedCausality) > 0 {
-			logrus.Errorln(len(bufferedCausality))
 			queries := map[string]bool{}
 			querySize := len(bufferedCausality)
 			if querySize > querySizeLimit {

@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	kingpin "gopkg.in/alecthomas/kingpin.v2"
+
 	"github.com/fasthall/gochariots/batcher/batcherrpc"
 	"github.com/satori/uuid"
 	"google.golang.org/grpc"
@@ -16,10 +18,27 @@ var batchSize = 1000
 var batch = 1000
 var poolSize = 10
 var speed = 1000 // records per second
-var waitTime = time.Second / time.Duration(batch/speed)
+var waitTime time.Duration
 var batcherClient []batcherrpc.BatcherRPCClient
 
+var (
+	fBatchSize = kingpin.Flag("batch_size", "Number of records per batch.").Short('n').Int()
+	fBatch     = kingpin.Flag("batch_num", "Number of batches.").Short('b').Int()
+	fSpeed     = kingpin.Flag("speed", "Number of records sent per second.").Short('s').Int()
+)
+
 func main() {
+	kingpin.Parse()
+	if *fBatchSize > 0 {
+		batchSize = *fBatchSize
+	}
+	if *fBatch > 0 {
+		batch = *fBatch
+	}
+	if *fSpeed > 0 {
+		speed = *fSpeed
+	}
+	waitTime = time.Second * time.Duration(batchSize) / time.Duration(speed)
 	fmt.Println("Send " + strconv.Itoa(speed) + " records per second.")
 	fmt.Println("Send a batch per " + fmt.Sprint(waitTime) + ".")
 	batcherClient = make([]batcherrpc.BatcherRPCClient, poolSize)
