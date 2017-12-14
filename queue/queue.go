@@ -185,7 +185,7 @@ func tokenArrival(token Token) {
 			}
 
 			// ask MongoDB if the prerequisite records exist
-			err := mongodb.QueryDB(&queries)
+			err := mongodb.QueryDB(&queries, true)
 			if err != nil {
 				logrus.WithError(err).Error("couldn't connect to DB")
 			}
@@ -230,7 +230,7 @@ func tokenArrival(token Token) {
 			}
 
 			// ask MongoDB if the prerequisite records exist
-			err := mongodb.QueryDB(&queries)
+			err := mongodb.QueryDB(&queries, false)
 			if err != nil {
 				logrus.WithError(err).Error("couldn't connect to DB")
 			}

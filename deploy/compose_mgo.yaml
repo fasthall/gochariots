@@ -9,20 +9,20 @@ services:
       - 8081:8081
     networks:
       - cluster
-  app:
-    image: fasthall/gochariots
-    entrypoint: gochariots app -p 8080 -f config/config.yaml -i
-    depends_on:
-      - controller
-    volumes:
-      - ./config:/go/config
-      - ./logs:/go/logs
-    depends_on:
-      - controller
-    ports:
-      - 8080:8080
-    networks:
-      - cluster
+#  app:
+#    image: fasthall/gochariots
+#    entrypoint: gochariots app -p 8080 -f config/config.yaml -i
+#    depends_on:
+#      - controller
+#    volumes:
+#      - ./config:/go/config
+#      - ./logs:/go/logs
+#    depends_on:
+#      - controller
+#    ports:
+#      - 8080:8080
+#    networks:
+#      - cluster
   batcher:
     image: fasthall/gochariots
     entrypoint: gochariots batcher -p 9000 -f config/config.yaml -i --buffer_size=10000

@@ -123,14 +123,19 @@ func PutTOIDRecord(r record.TOIDRecord) error {
 	return c.Insert(&r)
 }
 
-func QueryDB(queries *map[string]bool) error {
+func QueryDB(queries *map[string]bool, twoPhase bool) error {
 	ids := make([]string, 0, len(*queries))
 	for key, _ := range *queries {
 		ids = append(ids, key)
 	}
 	sessionCopy := session.Copy()
 	defer sessionCopy.Close()
-	c := sessionCopy.DB(DB_NAME).C(COLLECTION_MAPPING)
+	var c *mgo.Collection
+	if twoPhase {
+		c = sessionCopy.DB(DB_NAME).C(COLLECTION_MAPPING)
+	} else {
+		c = sessionCopy.DB(DB_NAME).C(COLLECTION_RECORD)
+	}
 	q := c.Find(bson.M{"_id": bson.M{"$in": ids}})
 	var result []record.Record
 	err := q.Select(bson.M{"_id": 1}).All(&result)

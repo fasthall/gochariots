@@ -9,20 +9,20 @@ services:
       - 8081:8081
     networks:
       - cluster
-  app:
-    image: fasthall/gochariots
-    entrypoint: gochariots app -p 8080 -f config/config.yaml -i
-    depends_on:
-      - controller
-    volumes:
-      - ./config:/go/config
-      - ./logs:/go/logs
-    depends_on:
-      - controller
-    ports:
-      - 8080:8080
-    networks:
-      - cluster
+#  app:
+#    image: fasthall/gochariots
+#    entrypoint: gochariots app -p 8080 -f config/config.yaml -i
+#    depends_on:
+#      - controller
+#    volumes:
+#      - ./config:/go/config
+#      - ./logs:/go/logs
+#    depends_on:
+#      - controller
+#    ports:
+#      - 8080:8080
+#    networks:
+#      - cluster
   batcher:
     image: fasthall/gochariots
     entrypoint: gochariots batcher -p 9000 -f config/config.yaml -i --buffer_size=10000
@@ -40,7 +40,7 @@ services:
       - cluster
   queue-leader:
     image: fasthall/gochariots
-    entrypoint: gochariots queue --hold -f config/config.yaml -i
+    entrypoint: gochariots queue --hold -f config/config.yaml -i -p 9020
     depends_on:
       - queue
       - controller
@@ -53,7 +53,7 @@ services:
       - cluster
   queue:
     image: fasthall/gochariots
-    entrypoint: gochariots queue --no-hold -f config/config.yaml -i
+    entrypoint: gochariots queue --no-hold -f config/config.yaml -i -p 9021
     depends_on:
       - controller
     environment:
@@ -65,7 +65,7 @@ services:
       - cluster
   maintainer:
     image: fasthall/gochariots
-    entrypoint: gochariots maintainer -f config/config.yaml -i --mongodb
+    entrypoint: gochariots maintainer -f config/config.yaml -i --mongodb --benchmark_accuracy 1000
     depends_on:
       - controller
     environment:
