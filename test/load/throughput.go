@@ -18,6 +18,7 @@ var batchSize = 1000
 var batch = 1000
 var poolSize = 10
 var speed = 1000 // records per second
+var depLevel = 2
 var waitTime time.Duration
 var batcherClient []batcherrpc.BatcherRPCClient
 
@@ -25,6 +26,7 @@ var (
 	fBatchSize = kingpin.Flag("batch_size", "Number of records per batch.").Short('n').Int()
 	fBatch     = kingpin.Flag("batch_num", "Number of batches.").Short('b').Int()
 	fSpeed     = kingpin.Flag("speed", "Number of records sent per second.").Short('s').Int()
+	fDepLevel  = kingpin.Flag("dep_level", "The level of dependency.").Short('l').Int()
 )
 
 func main() {
@@ -38,6 +40,9 @@ func main() {
 	if *fSpeed > 0 {
 		speed = *fSpeed
 	}
+	if *fDepLevel > 0 {
+		depLevel = *fDepLevel
+	}
 	waitTime = time.Second * time.Duration(batchSize) / time.Duration(speed)
 	fmt.Println("Send " + strconv.Itoa(speed) + " records per second.")
 	fmt.Println("Send a batch per " + fmt.Sprint(waitTime) + ".")
@@ -50,16 +55,19 @@ func main() {
 		batcherClient[i] = batcherrpc.NewBatcherRPCClient(conn)
 	}
 	var wg sync.WaitGroup
-	wg.Add(batch * 2)
+	wg.Add(batch * depLevel)
 
 	lastSent := time.Now()
 	for b := 0; b < batch; b++ {
-		id1 := make([]string, batchSize)
-		id2 := make([]string, batchSize)
+		id := make([][]string, depLevel)
+		for i := range id {
+			id[i] = make([]string, batchSize)
+		}
 		seed := make([]string, batchSize)
 		for i := 0; i < batchSize; i++ {
-			id1[i] = uuid.NewV4().String()
-			id2[i] = uuid.NewV4().String()
+			for l := range id {
+				id[l][i] = uuid.NewV4().String()
+			}
 			seed[i] = uuid.NewV4().String()
 		}
 
@@ -67,44 +75,31 @@ func main() {
 			//
 		}
 
-		go func() {
-			defer wg.Done()
-			records := batcherrpc.RPCRecords{
-				Records: make([]*batcherrpc.RPCRecord, batchSize),
-			}
-			for i := range records.Records {
-				records.Records[i] = &batcherrpc.RPCRecord{
-					Id:     id1[i],
-					Host:   1,
-					Tags:   map[string]string{},
-					Parent: "",
-					Seed:   seed[i],
+		for l := 0; l < depLevel; l++ {
+			ll := l
+			go func() {
+				defer wg.Done()
+				records := batcherrpc.RPCRecords{
+					Records: make([]*batcherrpc.RPCRecord, batchSize),
 				}
-			}
-			_, err := batcherClient[batch%poolSize].ReceiveRecords(context.Background(), &records)
-			if err != nil {
-				panic("couldn't send to batcher" + err.Error())
-			}
-		}()
-		go func() {
-			defer wg.Done()
-			records := batcherrpc.RPCRecords{
-				Records: make([]*batcherrpc.RPCRecord, batchSize),
-			}
-			for i := range records.Records {
-				records.Records[i] = &batcherrpc.RPCRecord{
-					Id:     id2[i],
-					Host:   1,
-					Tags:   map[string]string{},
-					Parent: id1[i],
-					Seed:   seed[i],
+				for i := range records.Records {
+					records.Records[i] = &batcherrpc.RPCRecord{
+						Id:     id[ll][i],
+						Host:   1,
+						Tags:   map[string]string{},
+						Parent: "",
+						Seed:   seed[i],
+					}
+					if ll > 0 {
+						records.Records[i].Parent = id[ll-1][i]
+					}
 				}
-			}
-			_, err := batcherClient[batch%poolSize].ReceiveRecords(context.Background(), &records)
-			if err != nil {
-				panic("couldn't send to batcher" + err.Error())
-			}
-		}()
+				_, err := batcherClient[batch%poolSize].ReceiveRecords(context.Background(), &records)
+				if err != nil {
+					panic("couldn't send to batcher" + err.Error())
+				}
+			}()
+		}
 
 		lastSent = time.Now()
 	}
