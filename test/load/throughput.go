@@ -14,6 +14,7 @@ import (
 	"google.golang.org/grpc"
 )
 
+var host = "localhost:9000"
 var batchSize = 1000
 var batch = 1000
 var poolSize = 10
@@ -23,6 +24,7 @@ var waitTime time.Duration
 var batcherClient []batcherrpc.BatcherRPCClient
 
 var (
+	fHost      = kingpin.Flag("host", "Batcher hostname.").Short('h').String()
 	fBatchSize = kingpin.Flag("batch_size", "Number of records per batch.").Short('n').Int()
 	fBatch     = kingpin.Flag("batch_num", "Number of batches.").Short('b').Int()
 	fSpeed     = kingpin.Flag("speed", "Number of records sent per second.").Short('s').Int()
@@ -43,12 +45,15 @@ func main() {
 	if *fDepLevel > 0 {
 		depLevel = *fDepLevel
 	}
+	if *fHost != "" {
+		host = *fHost
+	}
 	waitTime = time.Second * time.Duration(batchSize) / time.Duration(speed)
 	fmt.Println("Send " + strconv.Itoa(speed) + " records per second.")
 	fmt.Println("Send a batch per " + fmt.Sprint(waitTime) + ".")
 	batcherClient = make([]batcherrpc.BatcherRPCClient, poolSize)
 	for i := 0; i < poolSize; i++ {
-		conn, err := grpc.Dial("localhost:9000", grpc.WithInsecure())
+		conn, err := grpc.Dial(host, grpc.WithInsecure())
 		if err != nil {
 			panic("couldn't connect to batcher" + err.Error())
 		}
