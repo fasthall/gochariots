@@ -51,6 +51,7 @@ func main() {
 	waitTime = time.Second * time.Duration(batchSize) / time.Duration(speed)
 	fmt.Println("Send " + strconv.Itoa(speed) + " records per second.")
 	fmt.Println("Send a batch per " + fmt.Sprint(waitTime) + ".")
+	fmt.Println("Host: ", host)
 	batcherClient = make([]batcherrpc.BatcherRPCClient, poolSize)
 	for i := 0; i < poolSize; i++ {
 		conn, err := grpc.Dial(host, grpc.WithInsecure())

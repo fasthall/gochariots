@@ -219,11 +219,14 @@ func tokenArrival(token Token) {
 		// build queries
 		if len(bufferedRecord) > 0 {
 			queries := map[string]bool{}
-			existed := make([]bool, len(bufferedRecord))
-			for i, c := range bufferedRecord {
-				if c.Parent == "" {
-					existed[i] = true
-				} else {
+			querySize := len(bufferedRecord)
+			if querySize > querySizeLimit {
+				querySize = querySizeLimit
+			}
+			lastQueryIndex := rand.Intn(len(bufferedRecord))
+			for i := 0; i < querySize; i++ {
+				c := bufferedRecord[(lastQueryIndex+i)%len(bufferedRecord)]
+				if c.Parent != "" {
 					queries[c.Parent] = false
 				}
 			}
@@ -233,23 +236,17 @@ func tokenArrival(token Token) {
 			if err != nil {
 				logrus.WithError(err).Error("couldn't connect to DB")
 			}
-			for i, c := range bufferedRecord {
-				if existed[i] == false && queries[c.Parent] {
-					existed[i] = true
-				}
-			}
-
 			// update LId for those records with existing parent
 			head := 0
 			toDispatch := []record.Record{}
-			for i, _ := range bufferedRecord {
-				if existed[i] {
+			for _, c := range bufferedRecord {
+				exist, found := queries[c.Parent]
+				if c.Parent == "" || (found && exist) {
 					lastLId++
-					r := record.Record(bufferedRecord[i])
-					r.LId = lastLId
-					toDispatch = append(toDispatch, r)
+					c.LId = lastLId
+					toDispatch = append(toDispatch, c)
 				} else {
-					bufferedRecord[head] = bufferedRecord[i]
+					bufferedRecord[head] = c
 					head++
 				}
 			}
