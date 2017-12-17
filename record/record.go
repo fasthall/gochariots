@@ -23,6 +23,12 @@ type Record struct {
 	Seed      string
 }
 
+// Record[Id] is caused by Record[Parent]
+type Causality struct {
+	Id     string
+	Parent string
+}
+
 // ToJSON encodes a record into bytes
 func ToJSON(r Record) ([]byte, error) {
 	return json.Marshal(r)

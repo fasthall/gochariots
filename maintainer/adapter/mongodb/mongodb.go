@@ -3,6 +3,7 @@ package mongodb
 import (
 	"errors"
 	"os"
+	"sync"
 
 	"github.com/fasthall/gochariots/record"
 	"github.com/satori/go.uuid"
@@ -121,6 +122,114 @@ func PutTOIDRecord(r record.TOIDRecord) error {
 		r.Id = uuid.NewV4().String()
 	}
 	return c.Insert(&r)
+}
+
+func ParellelQueryDBCausality(queries []record.Causality, querySize int) ([]record.Causality, []record.Causality, error) {
+	nonexist := []record.Causality{}
+	exist := []record.Causality{}
+
+	subQueries := []map[string]bool{map[string]bool{}}
+	subQuery := map[string]bool{}
+	for _, q := range queries {
+		if len(subQuery) == querySize {
+			subQueries = append(subQueries, subQuery)
+			subQuery = map[string]bool{}
+		}
+		if q.Parent != "" {
+			subQuery[q.Parent] = false
+		}
+	}
+	if len(subQuery) > 0 {
+		subQueries = append(subQueries, subQuery)
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(len(subQueries))
+	// map
+	for i := range subQueries {
+		subQ := subQueries[i]
+		go func() {
+			_ = QueryDB(&subQ, true)
+			wg.Done()
+		}()
+	}
+
+	wg.Wait()
+	// reduce
+	result := map[string]bool{}
+	for i := range subQueries {
+		for k, v := range subQueries[i] {
+			result[k] = v
+		}
+	}
+
+	for _, q := range queries {
+		if q.Parent == "" {
+			exist = append(exist, q)
+		} else {
+			value, found := result[q.Parent]
+			if found && value {
+				exist = append(exist, q)
+			} else {
+				nonexist = append(nonexist, q)
+			}
+		}
+	}
+	return exist, nonexist, nil
+}
+
+func ParellelQueryDBRecord(queries []record.Record, querySize int) ([]record.Record, []record.Record, error) {
+	nonexist := []record.Record{}
+	exist := []record.Record{}
+
+	subQueries := []map[string]bool{map[string]bool{}}
+	subQuery := map[string]bool{}
+	for _, q := range queries {
+		if len(subQuery) == querySize {
+			subQueries = append(subQueries, subQuery)
+			subQuery = map[string]bool{}
+		}
+		if q.Parent != "" {
+			subQuery[q.Parent] = false
+		}
+	}
+	if len(subQuery) > 0 {
+		subQueries = append(subQueries, subQuery)
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(len(subQueries))
+	// map
+	for i := range subQueries {
+		subQ := subQueries[i]
+		go func() {
+			_ = QueryDB(&subQ, false)
+			wg.Done()
+		}()
+	}
+
+	wg.Wait()
+	// reduce
+	result := map[string]bool{}
+	for i := range subQueries {
+		for k, v := range subQueries[i] {
+			result[k] = v
+		}
+	}
+
+	for _, q := range queries {
+		if q.Parent == "" {
+			exist = append(exist, q)
+		} else {
+			value, found := result[q.Parent]
+			if found && value {
+				exist = append(exist, q)
+			} else {
+				nonexist = append(nonexist, q)
+			}
+		}
+	}
+	return exist, nonexist, nil
 }
 
 func QueryDB(queries *map[string]bool, twoPhase bool) error {

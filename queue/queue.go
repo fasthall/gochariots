@@ -17,7 +17,7 @@ import (
 )
 
 var bufMutex sync.Mutex
-var bufferedCausality []Causality // for two phase append
+var bufferedCausality []record.Causality // for two phase append
 var bufferedRecord []record.Record
 var maintainersClient []maintainer.MaintainerClient
 var maintainersHost []string
@@ -27,18 +27,13 @@ var nextQueueHost string
 var nextQueueVer int
 var twoPhase bool
 
+var maintainerPacketSize = 1000
 var querySizeLimit = 1000
 var benchmark misc.Benchmark
 
 // Token is used by queues to ensure causality of LId assignment
 type Token struct {
 	LastLId uint32
-}
-
-// Record[Id] is caused by Record[Parent]
-type Causality struct {
-	Id     string
-	Parent string
 }
 
 type Server struct{}
@@ -117,7 +112,7 @@ func InitQueue(hasToken, twoPhaseAppend bool, querySize, benchmarkAccuracy int) 
 	querySizeLimit = querySize
 	benchmark = misc.NewBenchmark(benchmarkAccuracy)
 	if twoPhase {
-		bufferedCausality = []Causality{}
+		bufferedCausality = []record.Causality{}
 	} else {
 		bufferedRecord = []record.Record{}
 	}
@@ -142,11 +137,11 @@ func (token *Token) InitToken(lastLId uint32) {
 func recordsArrival(records []record.Record) {
 	logrus.WithField("timestamp", time.Now()).Debug("recordsArrival")
 	if twoPhase {
-		go dispatchRecords(records, rand.Intn(len(maintainersClient)))
+		dispatchRecords(records)
 		bufMutex.Lock()
-		cs := make([]Causality, len(records))
+		cs := make([]record.Causality, len(records))
 		for i, r := range records {
-			cs[i] = Causality{
+			cs[i] = record.Causality{
 				Id:     r.Id,
 				Parent: r.Parent,
 			}
@@ -170,38 +165,19 @@ func tokenArrival(token Token) {
 		bufMutex.Lock()
 		// build queries
 		if len(bufferedCausality) > 0 {
-			queries := map[string]bool{}
-			querySize := len(bufferedCausality)
-			if querySize > querySizeLimit {
-				querySize = querySizeLimit
-			}
-			lastQueryIndex := rand.Intn(len(bufferedCausality))
-			for i := 0; i < querySize; i++ {
-				c := bufferedCausality[(lastQueryIndex+i)%len(bufferedCausality)]
-				if c.Parent != "" {
-					queries[c.Parent] = false
-				}
-			}
-
 			// ask MongoDB if the prerequisite records exist
-			err := mongodb.QueryDB(&queries, true)
+			exist, nonexist, err := mongodb.ParellelQueryDBCausality(bufferedCausality, querySizeLimit)
 			if err != nil {
 				logrus.WithError(err).Error("couldn't connect to DB")
 			}
+			bufferedCausality = nonexist
 			// update LId for those records with existing parent
-			head := 0
 			ids := []string{}
 			lids := []uint32{}
-			for _, c := range bufferedCausality {
-				exist, found := queries[c.Parent]
-				if c.Parent == "" || (found && exist) {
-					lastLId++
-					ids = append(ids, c.Id)
-					lids = append(lids, lastLId)
-				} else {
-					bufferedCausality[head] = c
-					head++
-				}
+			for _, c := range exist {
+				lastLId++
+				ids = append(ids, c.Id)
+				lids = append(lids, lastLId)
 			}
 			go func() {
 				err := mongodb.InsertLIds(ids, lids)
@@ -210,7 +186,6 @@ func tokenArrival(token Token) {
 					logrus.WithError(err).Error("error when updating lid")
 				}
 			}()
-			bufferedCausality = bufferedCausality[:head]
 		}
 		bufMutex.Unlock()
 	} else {
@@ -218,40 +193,20 @@ func tokenArrival(token Token) {
 		bufMutex.Lock()
 		// build queries
 		if len(bufferedRecord) > 0 {
-			queries := map[string]bool{}
-			querySize := len(bufferedRecord)
-			if querySize > querySizeLimit {
-				querySize = querySizeLimit
-			}
-			lastQueryIndex := rand.Intn(len(bufferedRecord))
-			for i := 0; i < querySize; i++ {
-				c := bufferedRecord[(lastQueryIndex+i)%len(bufferedRecord)]
-				if c.Parent != "" {
-					queries[c.Parent] = false
-				}
-			}
-
-			// ask MongoDB if the prerequisite records exist
-			err := mongodb.QueryDB(&queries, false)
+			exist, nonexist, err := mongodb.ParellelQueryDBRecord(bufferedRecord, querySizeLimit)
 			if err != nil {
 				logrus.WithError(err).Error("couldn't connect to DB")
 			}
+			bufferedRecord = nonexist
 			// update LId for those records with existing parent
-			head := 0
-			toDispatch := []record.Record{}
-			for _, c := range bufferedRecord {
-				exist, found := queries[c.Parent]
-				if c.Parent == "" || (found && exist) {
+			if len(exist) > 0 {
+				for i := range exist {
 					lastLId++
-					c.LId = lastLId
-					toDispatch = append(toDispatch, c)
-				} else {
-					bufferedRecord[head] = c
-					head++
+					exist[i].LId = lastLId
 				}
+				dispatchRecords(exist)
+				benchmark.Logging(len(exist))
 			}
-			go dispatchRecords(toDispatch, rand.Intn(len(maintainersClient)))
-			bufferedRecord = bufferedRecord[:head]
 		}
 		bufMutex.Unlock()
 	}
@@ -273,7 +228,17 @@ func passToken(token *Token) {
 }
 
 // dispatchRecords sends the ready records to log maintainers
-func dispatchRecords(records []record.Record, maintainerID int) {
+func dispatchRecords(records []record.Record) {
+	for i := 0; i < len(records); i += maintainerPacketSize {
+		end := i + maintainerPacketSize
+		if len(records) < end {
+			end = len(records)
+		}
+		go sendToMaintainer(records[i:end], rand.Intn(len(maintainersClient)))
+	}
+}
+
+func sendToMaintainer(records []record.Record, maintainerID int) {
 	// info.LogTimestamp("dispatchRecords")
 	rpcRecords := maintainer.RPCRecords{
 		Records: make([]*maintainer.RPCRecord, len(records)),
@@ -292,7 +257,7 @@ func dispatchRecords(records []record.Record, maintainerID int) {
 	}
 	_, err := maintainersClient[maintainerID].ReceiveRecords(context.Background(), &rpcRecords)
 	if err != nil {
-		logrus.WithField("id", maintainerID).Error("failed to connect to maintainer")
+		logrus.WithError(err).Error("failed to connect to maintainer", len(records))
 	} else {
 		logrus.WithFields(logrus.Fields{"records": len(records), "id": maintainerID}).Debug("sent the records to maintainer")
 	}
