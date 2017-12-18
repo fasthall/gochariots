@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/fasthall/gochariots/info"
+	"github.com/fasthall/gochariots/misc"
 	"github.com/satori/go.uuid"
 
 	"github.com/fasthall/gochariots/batcher/batcherrpc"
@@ -26,6 +27,8 @@ var queueClient []queue.QueueClient
 var queuePool []string
 var queuePoolVer int
 var numFilters int
+
+var benchmark misc.Benchmark
 
 type Server struct{}
 
@@ -98,10 +101,11 @@ func (s *Server) UpdateQueue(ctx context.Context, in *batcherrpc.RPCQueues) (*ba
 }
 
 // InitBatcher allocates n buffers, where n is the number of filters
-func InitBatcher(bs int) {
+func InitBatcher(bs, benchmarkAccuracy int) {
 	bufferSize = bs
 	buffer = make(chan record.Record, bufferSize)
 	bufferFull = make(chan bool)
+	benchmark = misc.NewBenchmark(benchmarkAccuracy)
 	go Sweeper()
 }
 
@@ -154,6 +158,7 @@ func sendToQueue() {
 		if err != nil {
 			logrus.WithField("id", queueID).Error("couldn't connect to queue")
 		} else {
+			benchmark.Logging(len(rpcRecords.Records))
 			logrus.WithField("id", queueID).Debug("sent to queue")
 		}
 	}()

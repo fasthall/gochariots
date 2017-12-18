@@ -42,6 +42,7 @@ var (
 	batcherConfig     = batcherCommand.Flag("config_file", "Configuration file to read.").Short('f').String()
 	batcherInfo       = batcherCommand.Flag("info", "Turn on info level logging.").Short('i').Bool()
 	batcherDebug      = batcherCommand.Flag("debug", "Turn on debug level logging.").Short('d').Bool()
+	batcherBenchmark  = batcherCommand.Flag("benchmark_accuracy", "How many records betweeen each throughput logging.").Int()
 
 	controllerCommand = gochariots.Command("controller", "Start a controller instance.")
 	controllerNumDC   = controllerCommand.Flag("num_dc", "The port controller listens to.").Int()
@@ -157,9 +158,9 @@ func main() {
 			info.Config(*batcherConfig, "batcher")
 		}
 		if *batcherTOId {
-			batcher.TOIDInitBatcher(*batcherBufferSize)
+			batcher.TOIDInitBatcher(*batcherBufferSize, *batcherBenchmark)
 		} else {
-			batcher.InitBatcher(*batcherBufferSize)
+			batcher.InitBatcher(*batcherBufferSize, *batcherBenchmark)
 		}
 		ln, err := net.Listen("tcp", ":"+*batcherPort)
 		if err != nil {

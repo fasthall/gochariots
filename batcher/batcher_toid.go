@@ -9,6 +9,7 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/fasthall/gochariots/batcher/batcherrpc"
 	"github.com/fasthall/gochariots/info"
+	"github.com/fasthall/gochariots/misc"
 	"github.com/fasthall/gochariots/queue"
 	"github.com/fasthall/gochariots/record"
 	"golang.org/x/net/context"
@@ -63,10 +64,11 @@ func (s *Server) TOIDUpdateQueue(ctx context.Context, in *batcherrpc.RPCQueues) 
 }
 
 // InitBatcher allocates n buffers, where n is the number of filters
-func TOIDInitBatcher(bs int) {
+func TOIDInitBatcher(bs, benchmarkAccuracy int) {
 	bufferSize = bs
 	TOIDbuffer = make(chan record.TOIDRecord, bufferSize)
 	bufferFull = make(chan bool)
+	benchmark = misc.NewBenchmark(benchmarkAccuracy)
 	go TOIDSweeper()
 }
 
@@ -123,6 +125,7 @@ func TOIDsendToQueue() {
 		if err != nil {
 			logrus.WithField("id", queueID).Error("couldn't connect to queue")
 		} else {
+			benchmark.Logging(len(rpcRecords.Records))
 			logrus.WithField("id", queueID).Debug("sent to queue")
 		}
 	}()
