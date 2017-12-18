@@ -65,7 +65,7 @@ services:
       - cluster
   maintainer:
     image: fasthall/gochariots
-    entrypoint: gochariots maintainer -f config/config.yaml -i --mongodb --benchmark_accuracy 1000
+    entrypoint: gochariots maintainer -f config/config.yaml -i --mongodb --benchmark_accuracy 10000
     depends_on:
       - controller
     environment:

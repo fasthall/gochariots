@@ -238,7 +238,6 @@ func TokenArrivalBufferDeferred(token TOIDToken) {
 		// 	}
 		// }
 		// go TOIDdispatchRecords(dispatch, rand.Intn(len(maintainersClient)))
-		benchmark.Logging(len(dispatch))
 		TOIDdispatchRecords(dispatch)
 	}
 	go TOIDpassToken(&token)
@@ -323,7 +322,7 @@ func TOIDsendToMaintainer(records []record.TOIDRecord, maintainerID int) {
 	if err != nil {
 		logrus.WithField("id", maintainerID).Error("failed to connect to maintainer")
 	} else {
+		benchmark.Logging(len(records))
 		logrus.WithFields(logrus.Fields{"records": records, "id": maintainerID}).Debug("sent the records to maintainer")
 	}
-	// log.Printf("TIMESTAMP %s:record in queue %s\n", info.GetName(), time.Since(lastTime))
 }

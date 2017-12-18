@@ -202,7 +202,6 @@ func tokenArrival(token Token) {
 					exist[i].LId = lastLId
 				}
 				dispatchRecords(exist)
-				benchmark.Logging(len(exist))
 			}
 		}
 		bufMutex.Unlock()
@@ -271,6 +270,7 @@ func sendToMaintainer(records []record.Record, maintainerID int) {
 	if err != nil {
 		logrus.WithError(err).Error("failed to connect to maintainer", len(records))
 	} else {
+		benchmark.Logging(len(records))
 		logrus.WithFields(logrus.Fields{"records": len(records), "id": maintainerID}).Debug("sent the records to maintainer")
 	}
 }
