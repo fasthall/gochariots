@@ -132,7 +132,7 @@ func TOIDrecordsArrival(records []record.TOIDRecord) {
 // For each deferred records in the token, check if the current max TOId in shared log satisfies the dependency.
 // If so, the deferred records are sent to the log maintainers.
 func TokenArrivalCarryDeferred(token TOIDToken) {
-	logrus.WithField("timestamp", time.Now()).Debug("TokenArrivalCarryDeferred")
+	// logrus.WithField("timestamp", time.Now()).Debug("TokenArrivalCarryDeferred")
 	bufMutex.Lock()
 	// append buffered records to the token in order
 	for host := range TOIDbuffered {
@@ -194,7 +194,7 @@ func TokenArrivalCarryDeferred(token TOIDToken) {
 
 // TokenArrivalBufferDeferred is similar to TokenArrivalCarryDeferred, except deferred records will be buffered rather than carried with token
 func TokenArrivalBufferDeferred(token TOIDToken) {
-	logrus.WithField("timestamp", time.Now()).Debug("TokenArrivalBufferDeferred")
+	// logrus.WithField("timestamp", time.Now()).Debug("TokenArrivalBufferDeferred")
 	dispatch := []record.TOIDRecord{}
 	bufMutex.Lock()
 	for host := range TOIDbuffered {
@@ -323,6 +323,6 @@ func TOIDsendToMaintainer(records []record.TOIDRecord, maintainerID int) {
 		logrus.WithField("id", maintainerID).Error("failed to connect to maintainer")
 	} else {
 		benchmark.Logging(len(records))
-		logrus.WithFields(logrus.Fields{"records": records, "id": maintainerID}).Debug("sent the records to maintainer")
+		logrus.WithFields(logrus.Fields{"records": len(records), "id": maintainerID}).Debug("sent the records to maintainer")
 	}
 }
