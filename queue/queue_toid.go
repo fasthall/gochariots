@@ -116,7 +116,7 @@ func (token *TOIDToken) InitToken(maxTOId []uint32) {
 
 // recordsArrival deals with the records received from filters
 func TOIDrecordsArrival(records []record.TOIDRecord) {
-	// info.LogTimestamp("recordsArrival")
+	logrus.WithFields(logrus.Fields{"timestamp": time.Now(), "counts": len(records)}).Debug("TOIDrecordsArrival")
 	bufMutex.Lock()
 	for _, r := range records {
 		if r.Host == uint32(info.ID) {
@@ -132,7 +132,7 @@ func TOIDrecordsArrival(records []record.TOIDRecord) {
 // For each deferred records in the token, check if the current max TOId in shared log satisfies the dependency.
 // If so, the deferred records are sent to the log maintainers.
 func TokenArrivalCarryDeferred(token TOIDToken) {
-	logrus.WithField("timestamp", time.Now()).Debug("recordsArrival")
+	logrus.WithField("timestamp", time.Now()).Debug("TokenArrivalCarryDeferred")
 	bufMutex.Lock()
 	// append buffered records to the token in order
 	for host := range TOIDbuffered {
@@ -194,7 +194,7 @@ func TokenArrivalCarryDeferred(token TOIDToken) {
 
 // TokenArrivalBufferDeferred is similar to TokenArrivalCarryDeferred, except deferred records will be buffered rather than carried with token
 func TokenArrivalBufferDeferred(token TOIDToken) {
-	logrus.WithField("timestamp", time.Now()).Debug("recordsArrival")
+	logrus.WithField("timestamp", time.Now()).Debug("TokenArrivalBufferDeferred")
 	dispatch := []record.TOIDRecord{}
 	bufMutex.Lock()
 	for host := range TOIDbuffered {
