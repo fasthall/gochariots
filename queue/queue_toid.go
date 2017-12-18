@@ -227,17 +227,6 @@ func TokenArrivalBufferDeferred(token TOIDToken) {
 		// assign LId and send to log maintainers
 		lastID := TOIDassignLId(dispatch, token.LastLId)
 		token.LastLId = lastID
-		// toDispatch := make([][]record.TOIDRecord, len(maintainersClient))
-		// for _, r := range dispatch {
-		// 	id := maintainer.AssignToMaintainer(r.LId, len(maintainersClient))
-		// 	toDispatch[id] = append(toDispatch[id], r)
-		// }
-		// for id, t := range toDispatch {
-		// 	if len(t) > 0 {
-		// 		TOIDdispatchRecords(t, id)
-		// 	}
-		// }
-		// go TOIDdispatchRecords(dispatch, rand.Intn(len(maintainersClient)))
 		TOIDdispatchRecords(dispatch)
 	}
 	go TOIDpassToken(&token)
@@ -288,6 +277,7 @@ func TOIDpassToken(token *TOIDToken) {
 }
 
 func TOIDdispatchRecords(records []record.TOIDRecord) {
+	logrus.WithField("count", len(records)).Debug("TOIDdispatchRecords")
 	for i := 0; i < len(records); i += maintainerPacketSize {
 		end := i + maintainerPacketSize
 		if len(records) < end {
@@ -299,7 +289,7 @@ func TOIDdispatchRecords(records []record.TOIDRecord) {
 
 // dispatchRecords sends the ready records to log maintainers
 func TOIDsendToMaintainer(records []record.TOIDRecord, maintainerID int) {
-	// info.LogTimestamp("dispatchRecords")
+	logrus.WithFields(logrus.Fields{"count": len(records), "maintainer": maintainerID}).Debug("TOIDsendToMaintainer")
 	rpcRecords := maintainer.RPCRecords{
 		Records: make([]*maintainer.RPCRecord, len(records)),
 	}
