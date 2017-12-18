@@ -59,20 +59,17 @@ func PutTOIDRecords(records []record.TOIDRecord) error {
 	sessionCopy := session.Copy()
 	defer sessionCopy.Close()
 	c := sessionCopy.DB(DB_NAME).C(COLLECTION_RECORD)
-
 	if len(records) > INSERT_SIZE_LIMIT {
 		PutTOIDRecords(records[INSERT_SIZE_LIMIT:])
 		records = records[:INSERT_SIZE_LIMIT]
 	}
 	bulk := c.Bulk()
-	objs := make([]interface{}, len(records)*2)
+	objs := make([]interface{}, len(records))
 	for i, r := range records {
-		objs[2*i] = bson.M{"_id": r.Id}
-		objs[2*i+1] = bson.M{
-			"$set": bson.M{"host": r.Host, "toid": r.TOId, "lid": r.LId, "tags": r.Tags, "prehost": r.Pre.Host, "pretoid": r.Pre.TOId, "timestamp": r.Timestamp},
-		}
+		objs[i] = r
 	}
-	bulk.Upsert(objs...)
+	bulk.Unordered()
+	bulk.Insert(objs...)
 	_, err := bulk.Run()
 	return err
 }

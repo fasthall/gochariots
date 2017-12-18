@@ -8,7 +8,6 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/maintainer"
-	"github.com/fasthall/gochariots/maintainer/adapter/mongodb"
 	"github.com/fasthall/gochariots/misc"
 	"github.com/fasthall/gochariots/record"
 	"golang.org/x/net/context"
@@ -118,7 +117,6 @@ func (token *TOIDToken) InitToken(maxTOId []uint32) {
 // recordsArrival deals with the records received from filters
 func TOIDrecordsArrival(records []record.TOIDRecord) {
 	// info.LogTimestamp("recordsArrival")
-	benchmark.Logging(len(records))
 	bufMutex.Lock()
 	for _, r := range records {
 		if r.Host == uint32(info.ID) {
@@ -188,7 +186,8 @@ func TokenArrivalCarryDeferred(token TOIDToken) {
 		// 		TOIDdispatchRecords(t, id)
 		// 	}
 		// }
-		go TOIDdispatchRecords(dispatch, rand.Intn(len(maintainersClient)))
+		benchmark.Logging(len(dispatch))
+		TOIDdispatchRecords(dispatch)
 	}
 	go TOIDpassToken(&token)
 }
@@ -239,12 +238,8 @@ func TokenArrivalBufferDeferred(token TOIDToken) {
 		// 	}
 		// }
 		// go TOIDdispatchRecords(dispatch, rand.Intn(len(maintainersClient)))
-		go func() {
-			err := mongodb.PutTOIDRecords(dispatch)
-			if err != nil {
-				logrus.WithError(err).Error("couldn't put records to mongodb")
-			}
-		}()
+		benchmark.Logging(len(dispatch))
+		TOIDdispatchRecords(dispatch)
 	}
 	go TOIDpassToken(&token)
 }
@@ -293,8 +288,18 @@ func TOIDpassToken(token *TOIDToken) {
 	}
 }
 
+func TOIDdispatchRecords(records []record.TOIDRecord) {
+	for i := 0; i < len(records); i += maintainerPacketSize {
+		end := i + maintainerPacketSize
+		if len(records) < end {
+			end = len(records)
+		}
+		go TOIDsendToMaintainer(records[i:end], rand.Intn(len(maintainersClient)))
+	}
+}
+
 // dispatchRecords sends the ready records to log maintainers
-func TOIDdispatchRecords(records []record.TOIDRecord, maintainerID int) {
+func TOIDsendToMaintainer(records []record.TOIDRecord, maintainerID int) {
 	// info.LogTimestamp("dispatchRecords")
 	rpcRecords := maintainer.RPCRecords{
 		Records: make([]*maintainer.RPCRecord, len(records)),

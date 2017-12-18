@@ -3,6 +3,7 @@ package maintainer
 import (
 	"encoding/binary"
 	"encoding/json"
+	"sync"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/fasthall/gochariots/info"
@@ -10,6 +11,9 @@ import (
 	"github.com/fasthall/gochariots/record"
 	"golang.org/x/net/context"
 )
+
+var xxx = 0
+var mu sync.Mutex
 
 func (s *Server) TOIDReceiveRecords(ctx context.Context, in *RPCRecords) (*RPCReply, error) {
 	records := make([]record.TOIDRecord, len(in.GetRecords()))
@@ -35,6 +39,8 @@ func (s *Server) TOIDReceiveRecords(ctx context.Context, in *RPCRecords) (*RPCRe
 		err := mongodb.PutTOIDRecords(records)
 		if err != nil {
 			logrus.WithError(err).Error("couldn't put records to mongodb")
+		} else {
+			benchmark.Logging(len(records))
 		}
 	}()
 	go TOIDPropagate(propagated)
