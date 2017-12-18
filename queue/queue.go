@@ -179,13 +179,10 @@ func tokenArrival(token Token) {
 				ids = append(ids, c.Id)
 				lids = append(lids, lastLId)
 			}
-			go func() {
-				err := mongodb.InsertLIds(ids, lids)
+			if len(ids) > 0 {
+				insertLIDs(ids, lids)
 				benchmark.Logging(len(ids))
-				if err != nil {
-					logrus.WithError(err).Error("error when updating lid")
-				}
-			}()
+			}
 		}
 		bufMutex.Unlock()
 	} else {
@@ -224,6 +221,21 @@ func passToken(token *Token) {
 			Lastlid: token.LastLId,
 		}
 		nextQueueClient.ReceiveToken(context.Background(), &rpcToken)
+	}
+}
+
+// dispatchRecords sends the ready records to log maintainers
+func insertLIDs(ids []string, lids []uint32) {
+	if len(ids) != len(lids) {
+		logrus.Error("length doesn't match when inserting LIDs")
+		return
+	}
+	for i := 0; i < len(ids); i += maintainerPacketSize {
+		end := i + maintainerPacketSize
+		if len(ids) < end {
+			end = len(ids)
+		}
+		go mongodb.InsertLIds(ids[i:end], lids[i:end])
 	}
 }
 
