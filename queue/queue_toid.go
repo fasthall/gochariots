@@ -84,7 +84,7 @@ type TOIDToken struct {
 // InitQueue initializes the buffer and hashmap for queued records
 func TOIDInitQueue(hasToken, carry bool, benchmarkAccuracy int) {
 	Carry = carry
-	TOIDbuffered = make([]BufferHeap, info.NumDC)
+	TOIDbuffered = make([]BufferHeap, info.NumDC+1)
 	benchmark = misc.NewBenchmark(benchmarkAccuracy)
 	for i := range TOIDbuffered {
 		TOIDbuffered[i] = BufferHeap{}

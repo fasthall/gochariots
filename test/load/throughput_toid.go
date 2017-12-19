@@ -80,9 +80,9 @@ func main() {
 		for time.Since(lastSent) < waitTime {
 			//
 		}
-
 		for l := 0; l < depLevel; l++ {
 			ll := l
+			base := b * batchSize
 			go func() {
 				defer wg.Done()
 				records := batcherrpc.RPCRecords{
@@ -90,14 +90,16 @@ func main() {
 				}
 				for i := range records.Records {
 					records.Records[i] = &batcherrpc.RPCRecord{
-						Id:     id[ll][i],
-						Host:   1,
-						Tags:   map[string]string{},
-						Parent: "",
-						Seed:   seed[i],
+						Id:   id[ll][i],
+						Host: 1,
+						Tags: map[string]string{},
+						Causality: &batcherrpc.RPCCausality{
+							Host: 1,
+							Toid: 0,
+						},
 					}
 					if ll > 0 {
-						records.Records[i].Parent = id[ll-1][i]
+						records.Records[i].Causality.Toid = uint32(base + i)
 					}
 				}
 				_, err := batcherClient[batch%poolSize].TOIDReceiveRecords(context.Background(), &records)
