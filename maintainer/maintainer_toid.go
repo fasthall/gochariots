@@ -1,8 +1,6 @@
 package maintainer
 
 import (
-	"encoding/binary"
-	"encoding/json"
 	"sync"
 
 	"github.com/Sirupsen/logrus"
@@ -52,89 +50,5 @@ func (s *Server) TOIDUpdateBatchers(ctx context.Context, in *RPCBatchers) (*RPCR
 }
 
 func (s *Server) TOIDReadByLId(ctx context.Context, in *RPCLId) (*RPCReply, error) {
-	lid := in.GetLid()
-	r, err := TOIDReadByLId(lid)
-	if err != nil {
-		return nil, err
-	}
-	j, err := json.Marshal(r)
-	return &RPCReply{Message: string(j)}, nil
-}
-
-// // Append appends a new record to the maintainer.
-// func TOIDAppend(r record.TOIDRecord) error {
-// 	// info.LogTimestamp("Append")
-// 	r.Timestamp = time.Now().UnixNano()
-
-// 	if maintainerInterface == adapter.DYNAMODB {
-// 		err := dynamodb.PutTOIDRecord(r)
-// 		if err != nil {
-// 			return err
-// 		}
-// 	} else if maintainerInterface == adapter.DATASTORE {
-// 		err := datastore.PutTOIDRecord(r)
-// 		if err != nil {
-// 			return err
-// 		}
-// 	} else if maintainerInterface == adapter.FLSTORE {
-// 		b, err := record.TOIDToJSON(r)
-// 		if err != nil {
-// 			return err
-// 		}
-// 		lenbuf := make([]byte, 4)
-// 		binary.BigEndian.PutUint32(lenbuf, uint32(len(b)))
-// 		lid := r.LId
-// 		_, err = f.WriteAt(append(lenbuf, b...), int64(512*lid))
-// 		if err != nil {
-// 			return err
-// 		}
-// 		// log.Println(info.GetName(), "wrote record ", lid)
-// 	} else if maintainerInterface == adapter.COSMOSDB {
-// 		err := cosmos.PutTOIDRecord(r)
-// 		if err != nil {
-// 			return err
-// 		}
-// 	} else if maintainerInterface == adapter.MONGODB {
-// 		err := mongodb.PutTOIDRecord(r)
-// 		if err != nil {
-// 			return err
-// 		}
-// 	}
-// 	// log.Println(info.GetName(), "wrote record ", lid)
-
-// 	if r.Host == uint32(info.ID) {
-// 		TOIDPropagate(r)
-// 	}
-// 	return nil
-// }
-
-// ReadByLId reads from the maintainer according to LId.
-func TOIDReadByLId(lid uint32) (record.TOIDRecord, error) {
-	lenbuf := make([]byte, 4)
-	_, err := f.ReadAt(lenbuf, int64(512*lid))
-	if err != nil {
-		return record.TOIDRecord{}, err
-	}
-	length := int(binary.BigEndian.Uint32(lenbuf))
-	buf := make([]byte, length)
-	_, err = f.ReadAt(buf, int64(512*lid+4))
-	if err != nil {
-		return record.TOIDRecord{}, err
-	}
-	var r record.TOIDRecord
-	err = record.TOIDJSONToRecord(buf, &r)
-	return r, err
-}
-
-// ReadByLIds reads multiple records
-func TOIDReadByLIds(lids []uint32) ([]record.TOIDRecord, error) {
-	result := []record.TOIDRecord{}
-	for _, lid := range lids {
-		r, err := TOIDReadByLId(lid)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, r)
-	}
-	return result, nil
+	return &RPCReply{Message: "not implemented"}, nil
 }

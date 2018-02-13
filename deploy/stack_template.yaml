@@ -1,47 +1,56 @@
 version: '3'
 services:
-  controller:
-    image: fasthall/gochariots
-    entrypoint: gochariots controller -p 8081 -i
-    volumes:
-      - ./logs:/go/logs
-    ports: 
-      - 8081:8081
-    networks:
-      - cluster
   app:
     image: fasthall/gochariots
-    entrypoint: gochariots app -p 8080 -i -t -f config/config.yaml
-    depends_on:
-      - controller
+    entrypoint: gochariots app -p app_port -i -f config/config.yaml
     volumes:
       - ./config:/go/config
       - ./logs:/go/logs
-    depends_on:
-      - controller
-    ports:
-      - 8080:8080
+    ports: 
+      - app_port:app_port
+    networks:
+      - cluster
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+  controller:
+    image: fasthall/gochariots
+    entrypoint: gochariots controller -p controller_port -i
+    volumes:
+      - ./logs:/go/logs
+    ports: 
+      - controller_port:controller_port
     networks:
       - cluster
   batcher:
     image: fasthall/gochariots
-    entrypoint: gochariots batcher -p 9000 -i -t -f config/config.yaml -d
+    entrypoint: gochariots batcher -p batcher_port -f config/config.yaml -i --buffer_size=10000 --benchmark_accuracy 10000
     depends_on:
       - controller
     volumes:
       - ./config:/go/config
       - ./logs:/go/logs
     ports: 
-      - 9000
+      - batcher_port
     environment:
-      - TCP_PORTS=9000
+      - TCP_PORTS=batcher_port
+      - SERVICE_PORTS=batcher_port
+      - MONGODB_HOST=mongodb_host
     networks:
       - cluster
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
   queue-leader:
     image: fasthall/gochariots
-    entrypoint: gochariots queue --hold -i -t -f config/config.yaml -d
+    entrypoint: gochariots queue --hold -f config/config.yaml -i --benchmark_accuracy 10000
     depends_on:
+      - queue
       - controller
+    environment:
+      - MONGODB_HOST=mongodb_host
     volumes:
       - ./config:/go/config
       - ./logs:/go/logs
@@ -49,9 +58,11 @@ services:
       - cluster
   queue:
     image: fasthall/gochariots
-    entrypoint: gochariots queue --no-hold -i -t -f config/config.yaml -d
+    entrypoint: gochariots queue --no-hold -f config/config.yaml -i --benchmark_accuracy 10000
     depends_on:
       - controller
+    environment:
+      - MONGODB_HOST=mongodb_host
     volumes:
       - ./config:/go/config
       - ./logs:/go/logs
@@ -59,20 +70,11 @@ services:
       - cluster
   maintainer:
     image: fasthall/gochariots
-    entrypoint: gochariots maintainer -i -t -f config/config.yaml -d
+    entrypoint: gochariots maintainer -f config/config.yaml -i --mongodb --benchmark_accuracy 10000
     depends_on:
       - controller
-    volumes:
-      - ./config:/go/config
-      - ./logs:/go/logs
-      - ./flstore:/go/flstore
-    networks:
-      - cluster
-  indexer:
-    image: fasthall/gochariots
-    entrypoint: gochariots indexer -i -t -f config/config.yaml -d
-    depends_on:
-      - controller
+    environment:
+      - MONGODB_HOST=mongodb_host
     volumes:
       - ./config:/go/config
       - ./logs:/go/logs
@@ -83,11 +85,15 @@ services:
     depends_on:
       - batcher
     ports:
-      - 9000:9000
+      - batcher_port:batcher_port
     links:
       - batcher
     networks:                                                                                                                                  
       - cluster
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
 

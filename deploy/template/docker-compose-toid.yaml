@@ -9,23 +9,23 @@ services:
       - 8081:8081
     networks:
       - cluster
-#  app:
-#    image: fasthall/gochariots
-#    entrypoint: gochariots app -p 8080 -f config/config.yaml -i
-#    depends_on:
-#      - controller
-#    volumes:
-#      - ./config:/go/config
-#      - ./logs:/go/logs
-#    depends_on:
-#      - controller
-#    ports:
-#      - 8080:8080
-#    networks:
-#      - cluster
+  app:
+    image: fasthall/gochariots
+    entrypoint: gochariots app -p 8080 -i -t -f config/config.yaml
+    depends_on:
+      - controller
+    volumes:
+      - ./config:/go/config
+      - ./logs:/go/logs
+    depends_on:
+      - controller
+    ports:
+      - 8080:8080
+    networks:
+      - cluster
   batcher:
     image: fasthall/gochariots
-    entrypoint: gochariots batcher -p 9000 -f config/config.yaml -i --buffer_size=10000 --benchmark_accuracy 10000
+    entrypoint: gochariots batcher -p 9000 -i -t -f config/config.yaml -d
     depends_on:
       - controller
     volumes:
@@ -35,17 +35,13 @@ services:
       - 9000
     environment:
       - TCP_PORTS=9000
-      - MONGODB_HOST=169.231.235.70
     networks:
       - cluster
   queue-leader:
     image: fasthall/gochariots
-    entrypoint: gochariots queue --hold -f config/config.yaml -i -p 9020 --benchmark_accuracy 10000
+    entrypoint: gochariots queue --hold -i -t -f config/config.yaml -d
     depends_on:
-      - queue
       - controller
-    environment:
-      - MONGODB_HOST=169.231.235.70
     volumes:
       - ./config:/go/config
       - ./logs:/go/logs
@@ -53,11 +49,9 @@ services:
       - cluster
   queue:
     image: fasthall/gochariots
-    entrypoint: gochariots queue --no-hold -f config/config.yaml -i -p 9021 --benchmark_accuracy 10000
+    entrypoint: gochariots queue --no-hold -i -t -f config/config.yaml -d
     depends_on:
       - controller
-    environment:
-      - MONGODB_HOST=169.231.235.70
     volumes:
       - ./config:/go/config
       - ./logs:/go/logs
@@ -65,15 +59,22 @@ services:
       - cluster
   maintainer:
     image: fasthall/gochariots
-    entrypoint: gochariots maintainer -f config/config.yaml -i --mongodb --benchmark_accuracy 10000
+    entrypoint: gochariots maintainer -i -t -f config/config.yaml -d
     depends_on:
       - controller
-    environment:
-      - MONGODB_HOST=169.231.235.70
     volumes:
       - ./config:/go/config
       - ./logs:/go/logs
-      - ./flstore:/go/flstore
+    networks:
+      - cluster
+  indexer:
+    image: fasthall/gochariots
+    entrypoint: gochariots indexer -i -t -f config/config.yaml -d
+    depends_on:
+      - controller
+    volumes:
+      - ./config:/go/config
+      - ./logs:/go/logs
     networks:
       - cluster
   batcher_lb:

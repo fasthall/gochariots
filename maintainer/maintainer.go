@@ -1,10 +1,6 @@
 package maintainer
 
 import (
-	"encoding/binary"
-	"encoding/json"
-	"os"
-
 	"github.com/fasthall/gochariots/maintainer/adapter/mongodb"
 	"github.com/fasthall/gochariots/misc"
 
@@ -20,9 +16,6 @@ import (
 
 const batchSize int = 10000
 
-var path = "flstore"
-var f *os.File
-var maintainerInterface int
 var benchmark misc.Benchmark
 
 type Server struct{}
@@ -78,59 +71,12 @@ func (s *Server) UpdateBatchers(ctx context.Context, in *RPCBatchers) (*RPCReply
 }
 
 func (s *Server) ReadByLId(ctx context.Context, in *RPCLId) (*RPCReply, error) {
-	lid := int(in.GetLid())
-	r, err := ReadByLId(lid)
-	if err != nil {
-		return nil, err
-	}
-	j, err := json.Marshal(r)
-	return &RPCReply{Message: string(j)}, nil
+	return &RPCReply{Message: "not implemented"}, nil
 }
 
 // InitLogMaintainer initializes the maintainer and assign the path name to store the records
-func InitLogMaintainer(p string, itf int, benchmarkAccuracy int) {
-	// err := os.MkdirAll(path, os.ModePerm)
-	// if err != nil {
-	// 	logrus.WithField("path", path).Error("couldn't access path")
-	// }
-	// f, err = os.Create(filepath.Join(path, p))
-	// if err != nil {
-	// 	logrus.WithField("path", p).Error("couldn't create file")
-	// 	panic(err)
-	// }
-	maintainerInterface = itf
+func InitLogMaintainer(benchmarkAccuracy int) {
 	benchmark = misc.NewBenchmark(benchmarkAccuracy)
-}
-
-// ReadByLId reads from the maintainer according to LId.
-func ReadByLId(lid int) (record.Record, error) {
-	lenbuf := make([]byte, 4)
-	_, err := f.ReadAt(lenbuf, int64(512*lid))
-	if err != nil {
-		return record.Record{}, err
-	}
-	length := int(binary.BigEndian.Uint32(lenbuf))
-	buf := make([]byte, length)
-	_, err = f.ReadAt(buf, int64(512*lid+4))
-	if err != nil {
-		return record.Record{}, err
-	}
-	var r record.Record
-	err = record.JSONToRecord(buf, &r)
-	return r, err
-}
-
-// ReadByLIds reads multiple records
-func ReadByLIds(lids []int) ([]record.Record, error) {
-	result := []record.Record{}
-	for _, lid := range lids {
-		r, err := ReadByLId(lid)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, r)
-	}
-	return result, nil
 }
 
 func AssignToMaintainer(LId uint32, numMaintainers int) int {

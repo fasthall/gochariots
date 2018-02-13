@@ -4,7 +4,9 @@ services:
     image: fasthall/gochariots
     entrypoint: gochariots controller -p 8081 -i
     volumes:
-      - ./logs:/go/logs
+      - /home/ubuntu/deploy/logs:/go/logs
+    depends_on:
+      - controller
     ports: 
       - 8081:8081
     networks:
@@ -12,11 +14,9 @@ services:
   app:
     image: fasthall/gochariots
     entrypoint: gochariots app -p 8080 -i -f config/config.yaml
-    depends_on:
-      - controller
     volumes:
-      - ./config:/go/config
-      - ./logs:/go/logs
+      - /home/ubuntu/deploy/config:/go/config
+      - /home/ubuntu/deploy/logs:/go/logs
     depends_on:
       - controller
     ports:
@@ -26,71 +26,73 @@ services:
   batcher:
     image: fasthall/gochariots
     entrypoint: gochariots batcher -p 9000 -i -f config/config.yaml
+    volumes:
+      - /home/ubuntu/deploy/config:/go/config
+      - /home/ubuntu/deploy/logs:/go/logs
     depends_on:
       - controller
-    volumes:
-      - ./config:/go/config
-      - ./logs:/go/logs
-    ports: 
-      - 9000
     environment:
       - TCP_PORTS=9000
+      - SERVICE_PORTS=9000
+    deploy:
+      replicas: 3
     networks:
       - cluster
   queue-leader:
     image: fasthall/gochariots
     entrypoint: gochariots queue --hold -i -f config/config.yaml
+    volumes:
+      - /home/ubuntu/deploy/config:/go/config
+      - /home/ubuntu/deploy/logs:/go/logs
     depends_on:
       - controller
-    volumes:
-      - ./config:/go/config
-      - ./logs:/go/logs
     networks:
       - cluster
   queue:
     image: fasthall/gochariots
     entrypoint: gochariots queue --no-hold -i -f config/config.yaml
+    volumes:
+      - /home/ubuntu/deploy/config:/go/config
+      - /home/ubuntu/deploy/logs:/go/logs
     depends_on:
       - controller
-    volumes:
-      - ./config:/go/config
-      - ./logs:/go/logs
     networks:
       - cluster
   maintainer:
     image: fasthall/gochariots
-    entrypoint: gochariots maintainer -i -f config/config.yaml --dynamodb
-    environment:
-      - AWS_ACCESS_KEY_ID=your_aws_key_id
-      - AWS_SECRET_ACCESS_KEY=your_aws_secret_key
+    entrypoint: gochariots maintainer -i -f config/config.yaml
+    volumes:
+      - /home/ubuntu/deploy/config:/go/config
+      - /home/ubuntu/deploy/logs:/go/logs
     depends_on:
       - controller
-    volumes:
-      - ./config:/go/config
-      - ./logs:/go/logs
-      - ./flstore:/go/flstore
     networks:
       - cluster
   indexer:
     image: fasthall/gochariots
     entrypoint: gochariots indexer -i -f config/config.yaml
+    volumes:
+      - /home/ubuntu/deploy/config:/go/config
+      - /home/ubuntu/deploy/logs:/go/logs
     depends_on:
       - controller
-    volumes:
-      - ./config:/go/config
-      - ./logs:/go/logs
     networks:
       - cluster
   batcher_lb:
     image: dockercloud/haproxy
-    depends_on:
-      - batcher
     ports:
       - 9000:9000
     links:
       - batcher
     networks:                                                                                                                                  
       - cluster
+    depends_on:
+      - batcher
+      - controller
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
 

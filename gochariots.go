@@ -14,7 +14,6 @@ import (
 	"github.com/fasthall/gochariots/controller"
 	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/maintainer"
-	"github.com/fasthall/gochariots/maintainer/adapter"
 	"github.com/fasthall/gochariots/queue"
 
 	"github.com/Sirupsen/logrus"
@@ -236,17 +235,7 @@ func main() {
 		if *maintainerConfig != "" {
 			info.Config(*maintainerConfig, "maintainer")
 		}
-		adap := adapter.FLSTORE
-		if *maintainerDynamoDB {
-			adap = adapter.DYNAMODB
-		} else if *maintainerDatastore {
-			adap = adapter.DATASTORE
-		} else if *maintainerCosmosDB {
-			adap = adapter.COSMOSDB
-		} else if *maintainerMongoDB {
-			adap = adapter.MONGODB
-		}
-		maintainer.InitLogMaintainer(info.GetName(), adap, *maintainerBenchmark)
+		maintainer.InitLogMaintainer(*maintainerBenchmark)
 		ln, err := net.Listen("tcp", ":"+*maintainerPort)
 		if err != nil {
 			fmt.Println(info.GetName() + "couldn't listen on port " + *maintainerPort)
