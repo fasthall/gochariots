@@ -5,9 +5,10 @@ ports = {
     'app': '8080',
     'controller': '8081',
     'batcher': '9000',
+    'batcher_lb': '9000',
 }
 
-mongodb_host = 'localhost'
+mongodb_host = ''
 
 def ordered_load(stream, Loader=yaml.Loader, object_pairs_hook=OrderedDict):
     class OrderedLoader(Loader):

@@ -85,7 +85,7 @@ services:
     depends_on:
       - batcher
     ports:
-      - batcher_port:batcher_port
+      - batcher_lb_port:batcher_lb_port
     links:
       - batcher
     networks:                                                                                                                                  
