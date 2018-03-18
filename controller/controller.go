@@ -30,6 +30,8 @@ var queuesVersion uint32
 var maintainers []string
 var maintainerClient []maintainer.MaintainerClient
 var maintainersVersion uint32
+var redisCaches []string
+var redisCachesVersion uint32
 var remoteBatcher []string
 var remoteBatcherVer uint32
 var mutex sync.Mutex
@@ -53,6 +55,8 @@ func StartController(port string) {
 	router.GET("/queue", getQueues)
 	router.POST("/maintainer", addMaintainer)
 	router.GET("/maintainer", getMaintainers)
+	router.POST("/rediscache", addRedisCache)
+	router.GET("/rediscache", getRedisCaches)
 	router.POST("/remote/batcher", addRemoteBatcher)
 	router.GET("/remote/batcher", getRemoteBatcher)
 
@@ -65,6 +69,7 @@ func getInfo(c *gin.Context) {
 		"batchers":       batchers,
 		"queues":         queues,
 		"maintainers":    maintainers,
+		"redisCaches":    redisCaches,
 		"remoteBatchers": remoteBatcher,
 	})
 }
@@ -107,6 +112,7 @@ func informAppBatcher(host string) {
 func getApps(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"apps": apps,
+		"ver":  appsVersion,
 	})
 }
 
@@ -149,6 +155,7 @@ func addBatchers(c *gin.Context) {
 func getBatchers(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"batchers": batchers,
+		"ver":      batchersVersion,
 	})
 }
 
@@ -210,6 +217,7 @@ func addQueue(c *gin.Context) {
 func getQueues(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"queues": queues,
+		"ver":    queuesVersion,
 	})
 }
 
@@ -257,6 +265,55 @@ func addMaintainer(c *gin.Context) {
 func getMaintainers(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"maintainers": maintainers,
+		"ver":         maintainersVersion,
+	})
+}
+
+func addRedisCache(c *gin.Context) {
+	if c.Query("host") == "" {
+		c.String(http.StatusBadRequest, "invalid parameter, needs $host")
+		return
+	}
+	mutex.Lock()
+	redisCaches = append(redisCaches, c.Query("host"))
+	redisCachesVersion++
+	mutex.Unlock()
+
+	// update queues' redisCaches list
+	for i, cli := range queueClient {
+		rpcRedisCache := queue.RPCRedisCache{
+			Version:    redisCachesVersion,
+			RedisCache: redisCaches,
+		}
+		_, err := cli.UpdateRedisCache(context.Background(), &rpcRedisCache)
+		if err != nil {
+			logrus.WithField("id", i).Error("couldn't send redisCaches list to queue")
+			panic("failing to update cluster may cause unexpected error")
+		}
+		logrus.WithField("redisCaches", redisCaches).Info("successfully informed queues about redisCaches list")
+	}
+
+	// update maintainers' redisCaches list
+	for i, cli := range maintainerClient {
+		rpcRedisCache := maintainer.RPCRedisCache{
+			Version:    redisCachesVersion,
+			RedisCache: redisCaches,
+		}
+		_, err := cli.UpdateRedisCache(context.Background(), &rpcRedisCache)
+		if err != nil {
+			logrus.WithField("id", i).Error("couldn't send redisCaches list to maintainer")
+			panic("failing to update cluster may cause unexpected error")
+		}
+		logrus.WithField("redisCaches", redisCaches).Info("successfully informed maintainers about redisCaches list")
+	}
+
+	c.String(http.StatusOK, c.Query("host")+" added")
+}
+
+func getRedisCaches(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"redisCaches": redisCaches,
+		"ver":         redisCachesVersion,
 	})
 }
 
@@ -293,5 +350,6 @@ func addRemoteBatcher(c *gin.Context) {
 func getRemoteBatcher(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"batchers": remoteBatcher,
+		"ver":      remoteBatcherVer,
 	})
 }

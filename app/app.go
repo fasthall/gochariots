@@ -24,10 +24,11 @@ var batcherPool []string
 var batchersVer int
 
 type JsonRecord struct {
-	ID     string            `json:"id"`
-	Tags   map[string]string `json:"tags"`
-	Parent string            `json:"parent"`
-	Seed   string            `json:"seed"`
+	ID    string            `json:"id"`
+	Tags  map[string]string `json:"tags"`
+	Trace string            `json:"trace"`
+	SeqID int               `json:"seqid"`
+	Depth int               `json:"depth"`
 }
 
 func Run(port string) {
@@ -80,11 +81,12 @@ func postRecord(c *gin.Context) {
 
 	// send to batcher
 	r := batcherrpc.RPCRecord{
-		Id:     jsonRecord.ID,
-		Host:   uint32(info.ID),
-		Tags:   jsonRecord.Tags,
-		Parent: jsonRecord.Parent,
-		Seed:   jsonRecord.Seed,
+		Id:    jsonRecord.ID,
+		Host:  uint32(info.ID),
+		Tags:  jsonRecord.Tags,
+		Trace: jsonRecord.Trace,
+		Seqid: int64(jsonRecord.SeqID),
+		Depth: uint32(jsonRecord.Depth),
 	}
 	if r.Id == "" {
 		r.Id = uuid.NewV4().String()

@@ -6,18 +6,17 @@ import (
 	"time"
 
 	"github.com/fasthall/gochariots/misc"
+	"github.com/go-redis/redis"
 
 	"google.golang.org/grpc"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/fasthall/gochariots/maintainer"
-	"github.com/fasthall/gochariots/maintainer/adapter/mongodb"
 	"github.com/fasthall/gochariots/record"
 	"golang.org/x/net/context"
 )
 
 var bufMutex sync.Mutex
-var bufferedCausality []record.Causality // for two phase append
 var bufferedRecord []record.Record
 var maintainersClient []maintainer.MaintainerClient
 var maintainersHost []string
@@ -25,7 +24,9 @@ var maintainersVer int
 var nextQueueClient QueueClient
 var nextQueueHost string
 var nextQueueVer int
-var twoPhase bool
+var redisCacheHost []string
+var redisCacheVer int
+var redisClient []*redis.Client
 
 var maintainerPacketSize = 1000
 var querySizeLimit = 1000
@@ -38,17 +39,37 @@ type Token struct {
 
 type Server struct{}
 
+func (s *Server) UpdateMemcached(ctx context.Context, in *RPCRedisCache) (*RPCReply, error) {
+	ver := int(in.GetVersion())
+	if ver > redisCacheVer {
+		redisCacheVer = ver
+		redisCacheHost = in.GetRedisCache()
+		redisClient = make([]*redis.Client, len(redisCacheHost))
+		for i := range redisCacheHost {
+			redisClient[i] = redis.NewClient(&redis.Options{
+				Addr:     redisCacheHost[i],
+				Password: "",
+				DB:       0,
+			})
+		}
+		logrus.WithField("host", in.GetRedisCache()).Info("received Redis hosts update")
+	} else {
+		logrus.WithFields(logrus.Fields{"current": redisCacheVer, "received": ver}).Debug("received older version of Redis hosts")
+	}
+	return &RPCReply{Message: "ok"}, nil
+}
+
 func (s *Server) ReceiveRecords(ctx context.Context, in *RPCRecords) (*RPCReply, error) {
 	records := make([]record.Record, len(in.GetRecords()))
 	for i, ri := range in.GetRecords() {
 		records[i] = record.Record{
-			Id:        ri.GetId(),
+			ID:        ri.GetId(),
 			Timestamp: ri.GetTimestamp(),
 			Host:      ri.GetHost(),
-			LId:       ri.GetLid(),
+			SeqID:     ri.GetSeqid(),
+			Depth:     ri.GetDepth(),
 			Tags:      ri.GetTags(),
-			Parent:    ri.GetParent(),
-			Seed:      ri.GetSeed(),
+			Trace:     ri.GetTrace(),
 		}
 	}
 	recordsArrival(records)
@@ -107,15 +128,10 @@ func (s *Server) UpdateMaintainers(ctx context.Context, in *RPCMaintainers) (*RP
 }
 
 // InitQueue initializes the buffer and hashmap for queued records
-func InitQueue(hasToken, twoPhaseAppend bool, querySize, benchmarkAccuracy int) {
-	twoPhase = twoPhaseAppend
+func InitQueue(hasToken bool, querySize, benchmarkAccuracy int) {
 	querySizeLimit = querySize
 	benchmark = misc.NewBenchmark(benchmarkAccuracy)
-	if twoPhase {
-		bufferedCausality = []record.Causality{}
-	} else {
-		bufferedRecord = []record.Record{}
-	}
+	bufferedRecord = []record.Record{}
 	if hasToken {
 		var token Token
 		token.InitToken(0)
@@ -136,23 +152,9 @@ func (token *Token) InitToken(lastLId uint32) {
 // recordsArrival deals with the records received from filters
 func recordsArrival(records []record.Record) {
 	logrus.WithField("timestamp", time.Now()).Debug("recordsArrival")
-	if twoPhase {
-		dispatchRecords(records)
-		bufMutex.Lock()
-		cs := make([]record.Causality, len(records))
-		for i, r := range records {
-			cs[i] = record.Causality{
-				Id:     r.Id,
-				Parent: r.Parent,
-			}
-		}
-		bufferedCausality = append(bufferedCausality, cs...)
-		bufMutex.Unlock()
-	} else {
-		bufMutex.Lock()
-		bufferedRecord = append(bufferedRecord, records...)
-		bufMutex.Unlock()
-	}
+	bufMutex.Lock()
+	bufferedRecord = append(bufferedRecord, records...)
+	bufMutex.Unlock()
 }
 
 // tokenArrival function deals with token received.
@@ -161,51 +163,24 @@ func recordsArrival(records []record.Record) {
 func tokenArrival(token Token) {
 	lastLId := token.LastLId
 	// two phase append
-	if twoPhase {
-		bufMutex.Lock()
-		// build queries
-		if len(bufferedCausality) > 0 {
-			// ask MongoDB if the prerequisite records exist
-			exist, nonexist, err := mongodb.ParellelQueryDBCausality(bufferedCausality, querySizeLimit)
-			if err != nil {
-				logrus.WithError(err).Error("couldn't connect to DB")
-			}
-			bufferedCausality = nonexist
-			// update LId for those records with existing parent
-			ids := []string{}
-			lids := []uint32{}
-			for _, c := range exist {
-				lastLId++
-				ids = append(ids, c.Id)
-				lids = append(lids, lastLId)
-			}
-			if len(ids) > 0 {
-				insertLIDs(ids, lids)
-				benchmark.Logging(len(ids))
-			}
-		}
-		bufMutex.Unlock()
-	} else {
-		// non two phase append
-		bufMutex.Lock()
-		// build queries
-		if len(bufferedRecord) > 0 {
-			exist, nonexist, err := mongodb.ParellelQueryDBRecord(bufferedRecord, querySizeLimit)
-			if err != nil {
-				logrus.WithError(err).Error("couldn't connect to DB")
-			}
-			bufferedRecord = nonexist
-			// update LId for those records with existing parent
-			if len(exist) > 0 {
-				for i := range exist {
-					lastLId++
-					exist[i].LId = lastLId
-				}
-				dispatchRecords(exist)
-			}
-		}
-		bufMutex.Unlock()
+	bufMutex.Lock()
+	// build queries
+	if len(bufferedRecord) > 0 {
+		// exist, nonexist, err := mongodb.ParellelQueryDBRecord(bufferedRecord, querySizeLimit)
+		// if err != nil {
+		// 	logrus.WithError(err).Error("couldn't connect to DB")
+		// }
+		// bufferedRecord = nonexist
+		// // update LId for those records with existing parent
+		// if len(exist) > 0 {
+		// 	for i := range exist {
+		// 		lastLId++
+		// 		exist[i].LId = lastLId
+		// 	}
+		// 	dispatchRecords(exist)
+		// }
 	}
+	bufMutex.Unlock()
 	token.LastLId = lastLId
 	go passToken(&token)
 }
@@ -220,21 +195,6 @@ func passToken(token *Token) {
 			Lastlid: token.LastLId,
 		}
 		nextQueueClient.ReceiveToken(context.Background(), &rpcToken)
-	}
-}
-
-// dispatchRecords sends the ready records to log maintainers
-func insertLIDs(ids []string, lids []uint32) {
-	if len(ids) != len(lids) {
-		logrus.Error("length doesn't match when inserting LIDs")
-		return
-	}
-	for i := 0; i < len(ids); i += maintainerPacketSize {
-		end := i + maintainerPacketSize
-		if len(ids) < end {
-			end = len(ids)
-		}
-		go mongodb.InsertLIds(ids[i:end], lids[i:end])
 	}
 }
 
@@ -256,13 +216,13 @@ func sendToMaintainer(records []record.Record, maintainerID int) {
 	}
 	for i, r := range records {
 		tmp := maintainer.RPCRecord{
-			Id:        r.Id,
+			Id:        r.ID,
 			Timestamp: r.Timestamp,
 			Host:      r.Host,
-			Lid:       r.LId,
+			Seqid:     r.SeqID,
+			Depth:     r.Depth,
 			Tags:      r.Tags,
-			Parent:    r.Parent,
-			Seed:      r.Seed,
+			Trace:     r.Trace,
 		}
 		rpcRecords.Records[i] = &tmp
 	}

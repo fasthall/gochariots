@@ -34,43 +34,43 @@ type Server struct{}
 
 func (s *Server) ReceiveRecord(ctx context.Context, in *batcherrpc.RPCRecord) (*batcherrpc.RPCReply, error) {
 	r := record.Record{
-		Id:        in.GetId(),
+		ID:        in.GetId(),
 		Timestamp: in.GetTimestamp(),
 		Host:      in.GetHost(),
-		LId:       in.GetLid(),
+		SeqID:     in.GetSeqid(),
+		Depth:     in.GetDepth(),
 		Tags:      in.GetTags(),
-		Parent:    in.GetParent(),
-		Seed:      in.GetSeed(),
+		Trace:     in.GetTrace(),
 	}
 	if r.Host == 0 {
 		r.Host = uint32(info.ID)
 	}
-	if r.Id == "" {
-		r.Id = uuid.NewV4().String()
+	if r.ID == "" {
+		r.ID = uuid.NewV4().String()
 	}
 	go arrival(r)
-	return &batcherrpc.RPCReply{Message: r.Id}, nil
+	return &batcherrpc.RPCReply{Message: r.ID}, nil
 }
 
 func (s *Server) ReceiveRecords(ctx context.Context, in *batcherrpc.RPCRecords) (*batcherrpc.RPCReply, error) {
 	ids := []string{}
 	for _, i := range in.GetRecords() {
 		r := record.Record{
-			Id:        i.GetId(),
+			ID:        i.GetId(),
 			Timestamp: i.GetTimestamp(),
 			Host:      i.GetHost(),
-			LId:       i.GetLid(),
+			SeqID:     i.GetSeqid(),
+			Depth:     i.GetDepth(),
 			Tags:      i.GetTags(),
-			Parent:    i.GetParent(),
-			Seed:      i.GetSeed(),
+			Trace:     i.GetTrace(),
 		}
 		if r.Host == 0 {
 			r.Host = uint32(info.ID)
 		}
-		if r.Id == "" {
-			r.Id = uuid.NewV4().String()
+		if r.ID == "" {
+			r.ID = uuid.NewV4().String()
 		}
-		ids = append(ids, r.Id)
+		ids = append(ids, r.ID)
 		go arrival(r)
 	}
 	// b, err := json.Marshal(ids)
@@ -136,13 +136,13 @@ func sendToQueue() {
 		select {
 		case r := <-buffer:
 			rpcRecords.Records = append(rpcRecords.Records, &queue.RPCRecord{
-				Id:        r.Id,
+				Id:        r.ID,
 				Timestamp: r.Timestamp,
 				Host:      r.Host,
-				Lid:       r.LId,
+				Seqid:     r.SeqID,
+				Depth:     r.Depth,
 				Tags:      r.Tags,
-				Parent:    r.Parent,
-				Seed:      r.Seed,
+				Trace:     r.Trace,
 			})
 			if len(rpcRecords.Records) == bufferSize {
 				done = true

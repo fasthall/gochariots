@@ -1,5 +1,3 @@
-// Package record provides the functions of log mainteiners in Chariots.
-// It will be implemented using FLStore, but it's currently a mocked in-memory log for prototyping.
 package record
 
 import (
@@ -14,19 +12,13 @@ import (
 //	TOId: The total order of the record in the origining datacenter
 //	Tags: Consist of keys and values
 type Record struct {
-	Id        string `bson:"_id,omitempty"`
+	ID        string `bson:"_id,omitempty"`
 	Timestamp int64
 	Host      uint32
-	LId       uint32
+	SeqID     int64
+	Depth     uint32
 	Tags      map[string]string
-	Parent    string
-	Seed      string
-}
-
-// Record[Id] is caused by Record[Parent]
-type Causality struct {
-	Id     string
-	Parent string
+	Trace     string
 }
 
 // ToJSON encodes a record into bytes
