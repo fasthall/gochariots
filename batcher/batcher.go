@@ -9,7 +9,7 @@ import (
 
 	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/misc"
-	"github.com/satori/go.uuid"
+	"github.com/google/uuid"
 
 	"github.com/fasthall/gochariots/batcher/batcherrpc"
 	"github.com/fasthall/gochariots/queue"
@@ -46,7 +46,7 @@ func (s *Server) ReceiveRecord(ctx context.Context, in *batcherrpc.RPCRecord) (*
 		r.Host = uint32(info.ID)
 	}
 	if r.ID == "" {
-		r.ID = uuid.NewV4().String()
+		r.ID = uuid.New().String()
 	}
 	go arrival(r)
 	return &batcherrpc.RPCReply{Message: r.ID}, nil
@@ -68,7 +68,7 @@ func (s *Server) ReceiveRecords(ctx context.Context, in *batcherrpc.RPCRecords) 
 			r.Host = uint32(info.ID)
 		}
 		if r.ID == "" {
-			r.ID = uuid.NewV4().String()
+			r.ID = uuid.New().String()
 		}
 		ids = append(ids, r.ID)
 		go arrival(r)

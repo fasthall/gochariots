@@ -7,14 +7,14 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/fasthall/gochariots/batcher/batcherrpc"
-	"github.com/satori/go.uuid"
+	"github.com/google/uuid"
 
 	"google.golang.org/grpc"
 
 	"encoding/json"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/fasthall/gochariots/info"
 	"github.com/gin-gonic/gin"
 )
@@ -89,7 +89,7 @@ func postRecord(c *gin.Context) {
 		Depth: uint32(jsonRecord.Depth),
 	}
 	if r.Id == "" {
-		r.Id = uuid.NewV4().String()
+		r.Id = uuid.New().String()
 	}
 
 	hostID := rand.Intn(len(batcherPool))
