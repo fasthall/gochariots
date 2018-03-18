@@ -1,14 +1,16 @@
 package maintainer
 
 import (
+	"hash/crc32"
+
 	"github.com/fasthall/gochariots/maintainer/adapter/mongodb"
 	"github.com/fasthall/gochariots/misc"
+	"github.com/go-redis/redis"
 
 	"google.golang.org/grpc"
 
-	"github.com/fasthall/gochariots/batcher/batcherrpc"
-
 	"github.com/Sirupsen/logrus"
+	"github.com/fasthall/gochariots/batcher/batcherrpc"
 	"github.com/fasthall/gochariots/info"
 	"github.com/fasthall/gochariots/record"
 	"golang.org/x/net/context"
@@ -17,21 +19,49 @@ import (
 const batchSize int = 10000
 
 var benchmark misc.Benchmark
+var redisCacheHost []string
+var redisCacheVer int
+var redisClient []*redis.Client
+
+type RecordHead struct {
+	Depth uint32
+	SeqID int64
+}
 
 type Server struct{}
+
+func (s *Server) UpdateRedisCache(ctx context.Context, in *RPCRedisCache) (*RPCReply, error) {
+	ver := int(in.GetVersion())
+	if ver > redisCacheVer {
+		redisCacheVer = ver
+		redisCacheHost = in.GetRedisCache()
+		redisClient = make([]*redis.Client, len(redisCacheHost))
+		for i := range redisCacheHost {
+			redisClient[i] = redis.NewClient(&redis.Options{
+				Addr:     redisCacheHost[i],
+				Password: "",
+				DB:       0,
+			})
+		}
+		logrus.WithField("host", in.GetRedisCache()).Info("received Redis hosts update")
+	} else {
+		logrus.WithFields(logrus.Fields{"current": redisCacheVer, "received": ver}).Debug("received older version of Redis hosts")
+	}
+	return &RPCReply{Message: "ok"}, nil
+}
 
 func (s *Server) ReceiveRecords(ctx context.Context, in *RPCRecords) (*RPCReply, error) {
 	records := make([]record.Record, len(in.GetRecords()))
 	propagated := []record.Record{}
 	for i, ri := range in.GetRecords() {
 		records[i] = record.Record{
-			Id:        ri.GetId(),
+			ID:        ri.GetId(),
 			Timestamp: ri.GetTimestamp(),
 			Host:      ri.GetHost(),
-			LId:       ri.GetLid(),
+			SeqID:     ri.GetSeqid(),
+			Depth:     ri.GetDepth(),
 			Tags:      ri.GetTags(),
-			Parent:    ri.GetParent(),
-			Seed:      ri.GetSeed(),
+			Trace:     ri.GetTrace(),
 		}
 		if ri.GetHost() == uint32(info.ID) {
 			propagated = append(propagated, records[i])
@@ -70,15 +100,28 @@ func (s *Server) UpdateBatchers(ctx context.Context, in *RPCBatchers) (*RPCReply
 	return &RPCReply{Message: "ok"}, nil
 }
 
-func (s *Server) ReadByLId(ctx context.Context, in *RPCLId) (*RPCReply, error) {
-	return &RPCReply{Message: "not implemented"}, nil
-}
-
 // InitLogMaintainer initializes the maintainer and assign the path name to store the records
 func InitLogMaintainer(benchmarkAccuracy int) {
 	benchmark = misc.NewBenchmark(benchmarkAccuracy)
 }
 
-func AssignToMaintainer(LId uint32, numMaintainers int) int {
-	return int((LId - 1) / uint32(batchSize) % uint32(numMaintainers))
+func NotifyRedisCache(head map[string]RecordHead) {
+	pipes := make([]redis.Pipeliner, len(redisClient))
+	for i := range redisClient {
+		pipes[i] = redisClient[i].Pipeline()
+	}
+	for k, v := range head {
+		key := k + string(v.Depth)
+		i := crc32.ChecksumIEEE([]byte(key)) % uint32(len(redisClient))
+		err := pipes[i].SetBit(key, v.SeqID, 1).Err()
+		if err != nil {
+			logrus.WithError(err).Error("couldn't add command to redis pipeline")
+		}
+	}
+	for _, pipe := range pipes {
+		_, err := pipe.Exec()
+		if err != nil {
+			logrus.WithError(err).Error("couldn't execute commands in redis pipeline")
+		}
+	}
 }
