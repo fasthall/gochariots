@@ -200,7 +200,7 @@ func main() {
 		if *queueTOId {
 			queue.TOIDInitQueue(*queueHold, *queueCarry, *queueBenchmark)
 		} else {
-			queue.InitQueue(*queueHold, *queueTwoPhaseAppend, *queueQuerySizeLimit, *queueBenchmark)
+			queue.InitQueue(*queueHold, *queueQuerySizeLimit, *queueBenchmark)
 		}
 		ln, err := net.Listen("tcp", ":"+*queuePort)
 		if err != nil {

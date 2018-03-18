@@ -39,7 +39,7 @@ type Token struct {
 
 type Server struct{}
 
-func (s *Server) UpdateMemcached(ctx context.Context, in *RPCRedisCache) (*RPCReply, error) {
+func (s *Server) UpdateRedisCache(ctx context.Context, in *RPCRedisCache) (*RPCReply, error) {
 	ver := int(in.GetVersion())
 	if ver > redisCacheVer {
 		redisCacheVer = ver
