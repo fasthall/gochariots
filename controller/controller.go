@@ -132,7 +132,6 @@ func addBatchers(c *gin.Context) {
 	}
 	cli := batcherrpc.NewBatcherRPCClient(conn)
 	batcherClient = append(batcherClient, cli)
-	logrus.Error("batcherClient[" + strconv.Itoa(len(batcherClient)-1) + "]=" + c.Query("host"))
 	mutex.Unlock()
 	for _, host := range apps {
 		informAppBatcher(host)
@@ -212,6 +211,18 @@ func addQueue(c *gin.Context) {
 		panic("failing to update cluster may cause unexpected error")
 	}
 	logrus.WithField("maintainers", maintainers).Info("successfully informed new queue about maintainer list")
+
+	// update queues' cache list
+	rpcRedisCache := queue.RPCRedisCache{
+		Version:    redisCachesVersion,
+		RedisCache: redisCaches,
+	}
+	_, err = cli.UpdateRedisCache(context.Background(), &rpcRedisCache)
+	if err != nil {
+		logrus.WithField("host", c.Query("host")).Error("couldn't send cache list to new queue")
+		panic("failing to update cluster may cause unexpected error")
+	}
+	logrus.WithField("caches", redisCaches).Info("successfully informed new queue about cache list")
 }
 
 func getQueues(c *gin.Context) {
@@ -259,7 +270,19 @@ func addMaintainer(c *gin.Context) {
 		logrus.WithField("host", c.Query("host")).Error("couldn't send remoteBatcher to maintainer")
 		panic("failing to update cluster may cause unexpected error")
 	}
-	logrus.WithField("batchers", remoteBatcher).Info("successfully informed maintainers about new remote batchers")
+	logrus.WithField("batchers", remoteBatcher).Info("successfully informed maintainer about new remote batchers")
+
+	// update cache list
+	rpcRedisCache := maintainer.RPCRedisCache{
+		Version:    redisCachesVersion,
+		RedisCache: redisCaches,
+	}
+	_, err = cli.UpdateRedisCache(context.Background(), &rpcRedisCache)
+	if err != nil {
+		logrus.WithField("host", c.Query("host")).Error("couldn't send cache list to maintainer")
+		panic("failing to update cluster may cause unexpected error")
+	}
+	logrus.WithField("caches", redisCaches).Info("successfully informed maintainer about cache list")
 }
 
 func getMaintainers(c *gin.Context) {

@@ -98,7 +98,9 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
   cache:
     image: fasthall/redis-cache-for-lowgo
-    entrypoint: docker-entrypoint.sh
+    entrypoint: docker-entrypoint.sh redis-server
+    depends_on:
+      - controller
     volumes:
       - ./config:/config
     ports:
