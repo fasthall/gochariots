@@ -6,7 +6,7 @@ ports = {
     'controller': '8081',
     'batcher': '9000',
     'batcher_lb': '9000',
-    'cache': '6379',
+    'cache': '6380',
 }
 
 mongodb_host = ''

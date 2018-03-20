@@ -1,7 +1,7 @@
 syntax = "proto3";
 
 service Maintainer {
-    rpc UpdateRedisCache (RPCRedisCache) returns (RPCReply) {}
+    rpc UpdateCaches (RPCCaches) returns (RPCReply) {}
     rpc ReceiveRecords (RPCRecords) returns (RPCReply) {}
     rpc UpdateBatchers (RPCBatchers) returns (RPCReply) {}
     rpc TOIDReceiveRecords (RPCRecords) returns (RPCReply) {}
@@ -11,16 +11,15 @@ service Maintainer {
 
 message RPCRecord {
     string id = 1;
-    int64 timestamp = 2;
-    uint32 host = 3;
-    int64 seqid = 4;
-    uint32 depth = 5;
+    uint32 lid = 2;
+    string parent = 3;
+    int64 timestamp = 4;
+    uint32 host = 5;
     map<string, string> tags = 6;
     string trace = 7;
     // for TOID record
-    uint32 lid = 8;
-    uint32 toid = 9;
-    RPCCausality causality = 10;
+    uint32 toid = 8;
+    RPCCausality causality = 9;
 }
 
 message RPCCausality {
@@ -45,7 +44,7 @@ message RPCLId {
     uint32 lid = 1;
 }
 
-message RPCRedisCache {
+message RPCCaches {
     uint32 version = 1;
-    repeated string redisCache = 2;
+    repeated string hosts = 2;
 }

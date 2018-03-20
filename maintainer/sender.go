@@ -27,10 +27,9 @@ func Propagate(rs []record.Record) {
 			for i, r := range rs {
 				rpcRecords.Records[i] = &batcherrpc.RPCRecord{
 					Id:        r.ID,
+					Parent:    r.Parent,
 					Timestamp: r.Timestamp,
 					Host:      r.Host,
-					Seqid:     r.SeqID,
-					Depth:     r.Depth,
 					Tags:      r.Tags,
 					Trace:     r.Trace,
 				}

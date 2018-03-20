@@ -35,10 +35,9 @@ type Server struct{}
 func (s *Server) ReceiveRecord(ctx context.Context, in *batcherrpc.RPCRecord) (*batcherrpc.RPCReply, error) {
 	r := record.Record{
 		ID:        in.GetId(),
+		Parent:    in.GetParent(),
 		Timestamp: in.GetTimestamp(),
 		Host:      in.GetHost(),
-		SeqID:     in.GetSeqid(),
-		Depth:     in.GetDepth(),
 		Tags:      in.GetTags(),
 		Trace:     in.GetTrace(),
 	}
@@ -57,10 +56,9 @@ func (s *Server) ReceiveRecords(ctx context.Context, in *batcherrpc.RPCRecords) 
 	for _, i := range in.GetRecords() {
 		r := record.Record{
 			ID:        i.GetId(),
+			Parent:    i.GetParent(),
 			Timestamp: i.GetTimestamp(),
 			Host:      i.GetHost(),
-			SeqID:     i.GetSeqid(),
-			Depth:     i.GetDepth(),
 			Tags:      i.GetTags(),
 			Trace:     i.GetTrace(),
 		}
@@ -137,10 +135,9 @@ func sendToQueue() {
 		case r := <-buffer:
 			rpcRecords.Records = append(rpcRecords.Records, &queue.RPCRecord{
 				Id:        r.ID,
+				Parent:    r.Parent,
 				Timestamp: r.Timestamp,
 				Host:      r.Host,
-				Seqid:     r.SeqID,
-				Depth:     r.Depth,
 				Tags:      r.Tags,
 				Trace:     r.Trace,
 			})

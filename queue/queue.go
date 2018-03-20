@@ -6,11 +6,11 @@ import (
 	"time"
 
 	"github.com/fasthall/gochariots/misc"
-	"github.com/go-redis/redis"
 
 	"google.golang.org/grpc"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/fasthall/gochariots/cache"
 	"github.com/fasthall/gochariots/maintainer"
 	"github.com/fasthall/gochariots/record"
 	"golang.org/x/net/context"
@@ -24,9 +24,9 @@ var maintainersVer int
 var nextQueueClient QueueClient
 var nextQueueHost string
 var nextQueueVer int
-var redisCacheHost []string
-var redisCacheVer int
-var redisClient []*redis.Client
+var cacheHost []string
+var cacheVer int
+var cacheClient []cache.CacheClient
 
 var maintainerPacketSize = 1000
 var querySizeLimit = 1000
@@ -39,22 +39,25 @@ type Token struct {
 
 type Server struct{}
 
-func (s *Server) UpdateRedisCache(ctx context.Context, in *RPCRedisCache) (*RPCReply, error) {
+func (s *Server) UpdateCaches(ctx context.Context, in *RPCCaches) (*RPCReply, error) {
 	ver := int(in.GetVersion())
-	if ver > redisCacheVer {
-		redisCacheVer = ver
-		redisCacheHost = in.GetRedisCache()
-		redisClient = make([]*redis.Client, len(redisCacheHost))
-		for i := range redisCacheHost {
-			redisClient[i] = redis.NewClient(&redis.Options{
-				Addr:     redisCacheHost[i],
-				Password: "",
-				DB:       0,
-			})
+	if ver > cacheVer {
+		cacheVer = ver
+		cacheHost = in.GetHosts()
+		cacheClient = make([]cache.CacheClient, len(cacheHost))
+		for i := range cacheHost {
+			conn, err := grpc.Dial(cacheHost[i], grpc.WithInsecure())
+			if err != nil {
+				reply := RPCReply{
+					Message: "couldn't connect to cache",
+				}
+				return &reply, err
+			}
+			cacheClient[i] = cache.NewCacheClient(conn)
 		}
-		logrus.WithField("host", in.GetRedisCache()).Info("received Redis hosts update")
+		logrus.WithField("host", in.GetHosts()).Info("received Redis hosts update")
 	} else {
-		logrus.WithFields(logrus.Fields{"current": redisCacheVer, "received": ver}).Debug("received older version of Redis hosts")
+		logrus.WithFields(logrus.Fields{"current": cacheVer, "received": ver}).Debug("received older version of cache hosts")
 	}
 	return &RPCReply{Message: "ok"}, nil
 }
@@ -64,10 +67,9 @@ func (s *Server) ReceiveRecords(ctx context.Context, in *RPCRecords) (*RPCReply,
 	for i, ri := range in.GetRecords() {
 		records[i] = record.Record{
 			ID:        ri.GetId(),
+			Parent:    ri.GetParent(),
 			Timestamp: ri.GetTimestamp(),
 			Host:      ri.GetHost(),
-			SeqID:     ri.GetSeqid(),
-			Depth:     ri.GetDepth(),
 			Tags:      ri.GetTags(),
 			Trace:     ri.GetTrace(),
 		}
@@ -166,6 +168,7 @@ func tokenArrival(token Token) {
 	bufMutex.Lock()
 	// build queries
 	if len(bufferedRecord) > 0 {
+		// ask cache
 		// exist, nonexist, err := mongodb.ParellelQueryDBRecord(bufferedRecord, querySizeLimit)
 		// if err != nil {
 		// 	logrus.WithError(err).Error("couldn't connect to DB")
@@ -217,10 +220,9 @@ func sendToMaintainer(records []record.Record, maintainerID int) {
 	for i, r := range records {
 		tmp := maintainer.RPCRecord{
 			Id:        r.ID,
+			Parent:    r.Parent,
 			Timestamp: r.Timestamp,
 			Host:      r.Host,
-			Seqid:     r.SeqID,
-			Depth:     r.Depth,
 			Tags:      r.Tags,
 			Trace:     r.Trace,
 		}

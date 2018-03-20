@@ -30,8 +30,8 @@ var queuesVersion uint32
 var maintainers []string
 var maintainerClient []maintainer.MaintainerClient
 var maintainersVersion uint32
-var redisCaches []string
-var redisCachesVersion uint32
+var caches []string
+var cachesVersion uint32
 var remoteBatcher []string
 var remoteBatcherVer uint32
 var mutex sync.Mutex
@@ -69,7 +69,7 @@ func getInfo(c *gin.Context) {
 		"batchers":       batchers,
 		"queues":         queues,
 		"maintainers":    maintainers,
-		"redisCaches":    redisCaches,
+		"caches":         caches,
 		"remoteBatchers": remoteBatcher,
 	})
 }
@@ -213,16 +213,16 @@ func addQueue(c *gin.Context) {
 	logrus.WithField("maintainers", maintainers).Info("successfully informed new queue about maintainer list")
 
 	// update queues' cache list
-	rpcRedisCache := queue.RPCRedisCache{
-		Version:    redisCachesVersion,
-		RedisCache: redisCaches,
+	rpcCaches := queue.RPCCaches{
+		Version: cachesVersion,
+		Hosts:   caches,
 	}
-	_, err = cli.UpdateRedisCache(context.Background(), &rpcRedisCache)
+	_, err = cli.UpdateCaches(context.Background(), &rpcCaches)
 	if err != nil {
 		logrus.WithField("host", c.Query("host")).Error("couldn't send cache list to new queue")
 		panic("failing to update cluster may cause unexpected error")
 	}
-	logrus.WithField("caches", redisCaches).Info("successfully informed new queue about cache list")
+	logrus.WithField("caches", caches).Info("successfully informed new queue about cache list")
 }
 
 func getQueues(c *gin.Context) {
@@ -273,16 +273,16 @@ func addMaintainer(c *gin.Context) {
 	logrus.WithField("batchers", remoteBatcher).Info("successfully informed maintainer about new remote batchers")
 
 	// update cache list
-	rpcRedisCache := maintainer.RPCRedisCache{
-		Version:    redisCachesVersion,
-		RedisCache: redisCaches,
+	rpcCaches := maintainer.RPCCaches{
+		Version: cachesVersion,
+		Hosts:   caches,
 	}
-	_, err = cli.UpdateRedisCache(context.Background(), &rpcRedisCache)
+	_, err = cli.UpdateCaches(context.Background(), &rpcCaches)
 	if err != nil {
 		logrus.WithField("host", c.Query("host")).Error("couldn't send cache list to maintainer")
 		panic("failing to update cluster may cause unexpected error")
 	}
-	logrus.WithField("caches", redisCaches).Info("successfully informed maintainer about cache list")
+	logrus.WithField("caches", caches).Info("successfully informed maintainer about cache list")
 }
 
 func getMaintainers(c *gin.Context) {
@@ -298,36 +298,36 @@ func addRedisCache(c *gin.Context) {
 		return
 	}
 	mutex.Lock()
-	redisCaches = append(redisCaches, c.Query("host"))
-	redisCachesVersion++
+	caches = append(caches, c.Query("host"))
+	cachesVersion++
 	mutex.Unlock()
 
 	// update queues' redisCaches list
 	for i, cli := range queueClient {
-		rpcRedisCache := queue.RPCRedisCache{
-			Version:    redisCachesVersion,
-			RedisCache: redisCaches,
+		rpcCaches := queue.RPCCaches{
+			Version: cachesVersion,
+			Hosts:   caches,
 		}
-		_, err := cli.UpdateRedisCache(context.Background(), &rpcRedisCache)
+		_, err := cli.UpdateCaches(context.Background(), &rpcCaches)
 		if err != nil {
 			logrus.WithField("id", i).Error("couldn't send redisCaches list to queue")
 			panic("failing to update cluster may cause unexpected error")
 		}
-		logrus.WithField("redisCaches", redisCaches).Info("successfully informed queues about redisCaches list")
+		logrus.WithField("caches", caches).Info("successfully informed queues about cache list")
 	}
 
 	// update maintainers' redisCaches list
 	for i, cli := range maintainerClient {
-		rpcRedisCache := maintainer.RPCRedisCache{
-			Version:    redisCachesVersion,
-			RedisCache: redisCaches,
+		rpcCaches := maintainer.RPCCaches{
+			Version: cachesVersion,
+			Hosts:   caches,
 		}
-		_, err := cli.UpdateRedisCache(context.Background(), &rpcRedisCache)
+		_, err := cli.UpdateCaches(context.Background(), &rpcCaches)
 		if err != nil {
 			logrus.WithField("id", i).Error("couldn't send redisCaches list to maintainer")
 			panic("failing to update cluster may cause unexpected error")
 		}
-		logrus.WithField("redisCaches", redisCaches).Info("successfully informed maintainers about redisCaches list")
+		logrus.WithField("caches", caches).Info("successfully informed maintainers about cache list")
 	}
 
 	c.String(http.StatusOK, c.Query("host")+" added")
@@ -335,8 +335,8 @@ func addRedisCache(c *gin.Context) {
 
 func getRedisCaches(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
-		"redisCaches": redisCaches,
-		"ver":         redisCachesVersion,
+		"caches": caches,
+		"ver":    cachesVersion,
 	})
 }
 

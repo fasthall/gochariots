@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+service Cache {
+    rpc Put (RPCIDs) returns (RPCReply) {}
+    rpc Get (RPCIDs) returns (RPCBools) {}
+}
+
+message RPCIDs {
+    repeated string ids = 1;
+}
+
+message RPCReply {
+    string message = 1;
+}
+
+message RPCBools {
+    repeated bool exists = 1;
+}

@@ -3,9 +3,9 @@ package maintainer
 import (
 	"hash/crc32"
 
+	"github.com/fasthall/gochariots/cache"
 	"github.com/fasthall/gochariots/maintainer/adapter/mongodb"
 	"github.com/fasthall/gochariots/misc"
-	"github.com/go-redis/redis"
 
 	"google.golang.org/grpc"
 
@@ -19,33 +19,31 @@ import (
 const batchSize int = 10000
 
 var benchmark misc.Benchmark
-var redisCacheHost []string
-var redisCacheVer int
-var redisClient []*redis.Client
-
-type RecordHead struct {
-	Depth uint32
-	SeqID int64
-}
+var cacheHost []string
+var cacheVer int
+var cacheClient []cache.CacheClient
 
 type Server struct{}
 
-func (s *Server) UpdateRedisCache(ctx context.Context, in *RPCRedisCache) (*RPCReply, error) {
+func (s *Server) UpdateCaches(ctx context.Context, in *RPCCaches) (*RPCReply, error) {
 	ver := int(in.GetVersion())
-	if ver > redisCacheVer {
-		redisCacheVer = ver
-		redisCacheHost = in.GetRedisCache()
-		redisClient = make([]*redis.Client, len(redisCacheHost))
-		for i := range redisCacheHost {
-			redisClient[i] = redis.NewClient(&redis.Options{
-				Addr:     redisCacheHost[i],
-				Password: "",
-				DB:       0,
-			})
+	if ver > cacheVer {
+		cacheVer = ver
+		cacheHost = in.GetHosts()
+		cacheClient = make([]cache.CacheClient, len(cacheHost))
+		for i := range cacheHost {
+			conn, err := grpc.Dial(cacheHost[i], grpc.WithInsecure())
+			if err != nil {
+				reply := RPCReply{
+					Message: "couldn't connect to cache",
+				}
+				return &reply, err
+			}
+			cacheClient[i] = cache.NewCacheClient(conn)
 		}
-		logrus.WithField("host", in.GetRedisCache()).Info("received Redis hosts update")
+		logrus.WithField("host", in.GetHosts()).Info("received Redis hosts update")
 	} else {
-		logrus.WithFields(logrus.Fields{"current": redisCacheVer, "received": ver}).Debug("received older version of Redis hosts")
+		logrus.WithFields(logrus.Fields{"current": cacheVer, "received": ver}).Debug("received older version of cache hosts")
 	}
 	return &RPCReply{Message: "ok"}, nil
 }
@@ -53,19 +51,23 @@ func (s *Server) UpdateRedisCache(ctx context.Context, in *RPCRedisCache) (*RPCR
 func (s *Server) ReceiveRecords(ctx context.Context, in *RPCRecords) (*RPCReply, error) {
 	records := make([]record.Record, len(in.GetRecords()))
 	propagated := []record.Record{}
+	cacheUpdate := make([][]string, len(cacheClient))
 	for i, ri := range in.GetRecords() {
 		records[i] = record.Record{
 			ID:        ri.GetId(),
+			LID:       ri.GetLid(),
+			Parent:    ri.GetParent(),
 			Timestamp: ri.GetTimestamp(),
 			Host:      ri.GetHost(),
-			SeqID:     ri.GetSeqid(),
-			Depth:     ri.GetDepth(),
 			Tags:      ri.GetTags(),
 			Trace:     ri.GetTrace(),
 		}
 		if ri.GetHost() == uint32(info.ID) {
 			propagated = append(propagated, records[i])
 		}
+		// notify caches about these IDs
+		hashed := crc32.ChecksumIEEE([]byte(ri.GetId())) % uint32(len(cacheClient))
+		cacheUpdate[hashed] = append(cacheUpdate[hashed], ri.GetId())
 	}
 	go func() {
 		err := mongodb.PutRecords(records)
@@ -73,6 +75,10 @@ func (s *Server) ReceiveRecords(ctx context.Context, in *RPCRecords) (*RPCReply,
 			logrus.WithError(err).Error("couldn't put records to mongodb")
 		} else {
 			benchmark.Logging(len(records))
+		}
+		err = notifyCache(cacheUpdate)
+		if err != nil {
+			logrus.WithError(err).Error("failed to update redis cache")
 		}
 	}()
 	go Propagate(propagated)
@@ -105,23 +111,16 @@ func InitLogMaintainer(benchmarkAccuracy int) {
 	benchmark = misc.NewBenchmark(benchmarkAccuracy)
 }
 
-func NotifyRedisCache(head map[string]RecordHead) {
-	pipes := make([]redis.Pipeliner, len(redisClient))
-	for i := range redisClient {
-		pipes[i] = redisClient[i].Pipeline()
-	}
-	for k, v := range head {
-		key := k + string(v.Depth)
-		i := crc32.ChecksumIEEE([]byte(key)) % uint32(len(redisClient))
-		err := pipes[i].SetBit(key, v.SeqID, 1).Err()
+// Tell cache that these IDs are in the storage
+func notifyCache(ids [][]string) error {
+	for i, partial := range ids {
+		rpcIDs := cache.RPCIDs{
+			Ids: partial,
+		}
+		_, err := cacheClient[i].Put(context.Background(), &rpcIDs)
 		if err != nil {
-			logrus.WithError(err).Error("couldn't add command to redis pipeline")
+			logrus.WithError(err).Error("failed to update cache")
 		}
 	}
-	for _, pipe := range pipes {
-		_, err := pipe.Exec()
-		if err != nil {
-			logrus.WithError(err).Error("couldn't execute commands in redis pipeline")
-		}
-	}
+	return nil
 }

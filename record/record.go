@@ -13,10 +13,10 @@ import (
 //	Tags: Consist of keys and values
 type Record struct {
 	ID        string `bson:"_id,omitempty"`
+	LID       uint32
+	Parent    string
 	Timestamp int64
 	Host      uint32
-	SeqID     int64
-	Depth     uint32
 	Tags      map[string]string
 	Trace     string
 }
