@@ -1,6 +1,7 @@
 syntax = "proto3";
 
 service Cache {
+    rpc UpdateStorage (RPCStorages) returns (RPCReply) {}
     rpc Put (RPCIDs) returns (RPCReply) {}
     rpc Get (RPCIDs) returns (RPCBools) {}
 }
@@ -15,4 +16,9 @@ message RPCReply {
 
 message RPCBools {
     repeated bool exists = 1;
+}
+
+message RPCStorages {
+    uint32 version = 1;
+    repeated string hosts = 2;
 }

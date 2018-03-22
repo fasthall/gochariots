@@ -13,6 +13,7 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	"github.com/fasthall/gochariots/batcher/batcherrpc"
+	"github.com/fasthall/gochariots/cache"
 	"github.com/fasthall/gochariots/maintainer"
 	"github.com/fasthall/gochariots/misc"
 	"github.com/fasthall/gochariots/queue"
@@ -30,7 +31,10 @@ var queuesVersion uint32
 var maintainers []string
 var maintainerClient []maintainer.MaintainerClient
 var maintainersVersion uint32
+var storages []string
+var storagesVersion uint32
 var caches []string
+var cacheClient []cache.CacheClient
 var cachesVersion uint32
 var remoteBatcher []string
 var remoteBatcherVer uint32
@@ -55,8 +59,10 @@ func StartController(port string) {
 	router.GET("/queue", getQueues)
 	router.POST("/maintainer", addMaintainer)
 	router.GET("/maintainer", getMaintainers)
-	router.POST("/rediscache", addRedisCache)
-	router.GET("/rediscache", getRedisCaches)
+	router.POST("/cache", addCache)
+	router.GET("/cache", getCaches)
+	router.POST("/storage", addStorage)
+	router.GET("/storage", getStorages)
 	router.POST("/remote/batcher", addRemoteBatcher)
 	router.GET("/remote/batcher", getRemoteBatcher)
 
@@ -75,6 +81,7 @@ func getInfo(c *gin.Context) {
 }
 
 func addApps(c *gin.Context) {
+	logrus.WithField("host", c.Query("host")).Info("addApps")
 	if c.Query("host") == "" {
 		c.String(http.StatusBadRequest, "invalid parameter, needs $host")
 		return
@@ -117,21 +124,22 @@ func getApps(c *gin.Context) {
 }
 
 func addBatchers(c *gin.Context) {
+	logrus.WithField("host", c.Query("host")).Info("addBatchers")
 	if c.Query("host") == "" {
 		c.String(http.StatusBadRequest, "invalid parameter, needs $host")
 		return
 	}
 	mutex.Lock()
-	batchers = append(batchers, c.Query("host"))
-	batchersVersion++
 	conn, err := grpc.Dial(c.Query("host"), grpc.WithInsecure())
 	if err != nil {
 		c.String(http.StatusBadRequest, "couldn't connect to batcher")
-		logrus.WithError(err).Error("couldn't connect to batcher")
+		logrus.WithError(err).Error("couldn't connect to " + c.Query("host"))
 		return
 	}
 	cli := batcherrpc.NewBatcherRPCClient(conn)
 	batcherClient = append(batcherClient, cli)
+	batchers = append(batchers, c.Query("host"))
+	batchersVersion++
 	mutex.Unlock()
 	for _, host := range apps {
 		informAppBatcher(host)
@@ -159,15 +167,21 @@ func getBatchers(c *gin.Context) {
 }
 
 func addQueue(c *gin.Context) {
+	logrus.WithField("host", c.Query("host")).Info("addQueue")
 	if c.Query("host") == "" {
 		c.String(http.StatusBadRequest, "invalid parameter, needs $host")
 		return
 	}
 	mutex.Lock()
-	queues = append(queues, c.Query("host"))
 	conn, err := grpc.Dial(c.Query("host"), grpc.WithInsecure())
+	if err != nil {
+		c.String(http.StatusBadRequest, "couldn't connect to batcher")
+		logrus.WithError(err).Error("couldn't connect to " + c.Query("host"))
+		return
+	}
 	cli := queue.NewQueueClient(conn)
 	queueClient = append(queueClient, cli)
+	queues = append(queues, c.Query("host"))
 	queuesVersion++
 	mutex.Unlock()
 
@@ -233,15 +247,21 @@ func getQueues(c *gin.Context) {
 }
 
 func addMaintainer(c *gin.Context) {
+	logrus.WithField("host", c.Query("host")).Info("addMaintainer")
 	if c.Query("host") == "" {
 		c.String(http.StatusBadRequest, "invalid parameter, needs $host")
 		return
 	}
 	mutex.Lock()
-	maintainers = append(maintainers, c.Query("host"))
 	conn, err := grpc.Dial(c.Query("host"), grpc.WithInsecure())
+	if err != nil {
+		c.String(http.StatusBadRequest, "couldn't connect to batcher")
+		logrus.WithError(err).Error("couldn't connect to " + c.Query("host"))
+		return
+	}
 	cli := maintainer.NewMaintainerClient(conn)
 	maintainerClient = append(maintainerClient, cli)
+	maintainers = append(maintainers, c.Query("host"))
 	maintainersVersion++
 	mutex.Unlock()
 	c.String(http.StatusOK, c.Query("host")+" added")
@@ -283,6 +303,17 @@ func addMaintainer(c *gin.Context) {
 		panic("failing to update cluster may cause unexpected error")
 	}
 	logrus.WithField("caches", caches).Info("successfully informed maintainer about cache list")
+
+	rpcMongos := maintainer.RPCMongos{
+		Version: storagesVersion,
+		Hosts:   storages,
+	}
+	_, err = cli.UpdateMongos(context.Background(), &rpcMongos)
+	if err != nil {
+		logrus.WithField("host", c.Query("host")).Error("couldn't send storage list to maintainer")
+		panic("failing to update cluster may cause unexpected error")
+	}
+	logrus.WithField("storages", storages).Info("successfully informed maintainer about storage list")
 }
 
 func getMaintainers(c *gin.Context) {
@@ -292,15 +323,36 @@ func getMaintainers(c *gin.Context) {
 	})
 }
 
-func addRedisCache(c *gin.Context) {
+func addCache(c *gin.Context) {
+	logrus.WithField("host", c.Query("host")).Info("addCache")
 	if c.Query("host") == "" {
 		c.String(http.StatusBadRequest, "invalid parameter, needs $host")
 		return
 	}
 	mutex.Lock()
+	conn, err := grpc.Dial(c.Query("host"), grpc.WithInsecure())
+	if err != nil {
+		c.String(http.StatusBadRequest, "couldn't connect to batcher")
+		logrus.WithError(err).Error("couldn't connect to " + c.Query("host"))
+		return
+	}
+	cli := cache.NewCacheClient(conn)
+	cacheClient = append(cacheClient, cli)
 	caches = append(caches, c.Query("host"))
 	cachesVersion++
 	mutex.Unlock()
+
+	// inform new cache about storage list
+	rpcStorages := cache.RPCStorages{
+		Version: storagesVersion,
+		Hosts:   storages,
+	}
+	_, err = cli.UpdateStorage(context.Background(), &rpcStorages)
+	if err != nil {
+		logrus.WithError(err).Error("couldn't send storage list to cache")
+		panic("failing to update cluster may cause unexpected error")
+	}
+	logrus.WithField("storages", storages).Info("successfully informed cache about storage list")
 
 	// update queues' redisCaches list
 	for i, cli := range queueClient {
@@ -333,14 +385,51 @@ func addRedisCache(c *gin.Context) {
 	c.String(http.StatusOK, c.Query("host")+" added")
 }
 
-func getRedisCaches(c *gin.Context) {
+func getCaches(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"caches": caches,
 		"ver":    cachesVersion,
 	})
 }
 
+func addStorage(c *gin.Context) {
+	logrus.WithField("host", c.Query("host")).Info("addStorage")
+	if c.Query("host") == "" {
+		c.String(http.StatusBadRequest, "invalid parameter, needs $host")
+		return
+	}
+	mutex.Lock()
+	storages = append(storages, c.Query("host"))
+	storagesVersion++
+	mutex.Unlock()
+
+	// update maintainers' redisCaches list
+	for _, cli := range maintainerClient {
+		rpcMongos := maintainer.RPCMongos{
+			Version: storagesVersion,
+			Hosts:   storages,
+		}
+		_, err := cli.UpdateMongos(context.Background(), &rpcMongos)
+		if err != nil {
+			logrus.Error(len(maintainerClient))
+			logrus.WithError(err).Error("couldn't send storage list to maintainer")
+			panic("failing to update cluster may cause unexpected error")
+		}
+		logrus.WithField("storages", storages).Info("successfully informed maintainers about storage list")
+	}
+
+	c.String(http.StatusOK, c.Query("host")+" added")
+}
+
+func getStorages(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"storages": storages,
+		"ver":      cachesVersion,
+	})
+}
+
 func addRemoteBatcher(c *gin.Context) {
+	logrus.WithField("host", c.Query("host")).Info("addRemoteBatcher")
 	dc, err := strconv.Atoi(c.Query("dc"))
 	if err != nil {
 		logrus.WithField("parameter", c.Query("dc")).Warning("received invalid parameter")

@@ -22,8 +22,27 @@ var benchmark misc.Benchmark
 var cacheHost []string
 var cacheVer int
 var cacheClient []cache.CacheClient
+var mongoHost []string
+var mongoVer int
+var mongoClient []mongodb.Client
 
 type Server struct{}
+
+func (s *Server) UpdateMongos(ctx context.Context, in *RPCMongos) (*RPCReply, error) {
+	ver := int(in.GetVersion())
+	if ver > mongoVer {
+		mongoVer = ver
+		mongoHost = in.GetHosts()
+		mongoClient = make([]mongodb.Client, len(mongoHost))
+		for i := range mongoHost {
+			mongoClient[i] = mongodb.NewClient(mongoHost[i])
+		}
+		logrus.WithField("host", in.GetHosts()).Info("received mongoDB hosts update")
+	} else {
+		logrus.WithFields(logrus.Fields{"current": mongoVer, "received": ver}).Debug("received older version of mongoDB hosts")
+	}
+	return &RPCReply{Message: "ok"}, nil
+}
 
 func (s *Server) UpdateCaches(ctx context.Context, in *RPCCaches) (*RPCReply, error) {
 	ver := int(in.GetVersion())
@@ -70,7 +89,8 @@ func (s *Server) ReceiveRecords(ctx context.Context, in *RPCRecords) (*RPCReply,
 		cacheUpdate[hashed] = append(cacheUpdate[hashed], ri.GetId())
 	}
 	go func() {
-		err := mongodb.PutRecords(records)
+		// TODO mongodb sharding
+		err := mongoClient[0].PutRecords(records)
 		if err != nil {
 			logrus.WithError(err).Error("couldn't put records to mongodb")
 		} else {

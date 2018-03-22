@@ -5,7 +5,6 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	"github.com/fasthall/gochariots/info"
-	"github.com/fasthall/gochariots/maintainer/adapter/mongodb"
 	"github.com/fasthall/gochariots/record"
 	"golang.org/x/net/context"
 )
@@ -34,7 +33,8 @@ func (s *Server) TOIDReceiveRecords(ctx context.Context, in *RPCRecords) (*RPCRe
 		}
 	}
 	go func() {
-		err := mongodb.PutTOIDRecords(records)
+		// mongodb sharding
+		err := mongoClient[0].PutTOIDRecords(records)
 		if err != nil {
 			logrus.WithError(err).Error("couldn't put records to mongodb")
 		} else {

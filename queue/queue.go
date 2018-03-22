@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/fasthall/gochariots/maintainer/adapter/mongodb"
 	"github.com/fasthall/gochariots/misc"
 
 	"google.golang.org/grpc"
@@ -27,6 +28,9 @@ var nextQueueVer int
 var cacheHost []string
 var cacheVer int
 var cacheClient []cache.CacheClient
+var mongoHost []string
+var mongoVer int
+var mongoClient []mongodb.Client
 
 var maintainerPacketSize = 1000
 var querySizeLimit = 1000
@@ -38,6 +42,22 @@ type Token struct {
 }
 
 type Server struct{}
+
+func (s *Server) UpdateMongos(ctx context.Context, in *RPCMongos) (*RPCReply, error) {
+	ver := int(in.GetVersion())
+	if ver > mongoVer {
+		mongoVer = ver
+		mongoHost = in.GetHosts()
+		mongoClient = make([]mongodb.Client, len(mongoHost))
+		for i := range mongoHost {
+			mongoClient[i] = mongodb.NewClient(mongoHost[i])
+		}
+		logrus.WithField("host", in.GetHosts()).Info("received mongoDB hosts update")
+	} else {
+		logrus.WithFields(logrus.Fields{"current": mongoVer, "received": ver}).Debug("received older version of mongoDB hosts")
+	}
+	return &RPCReply{Message: "ok"}, nil
+}
 
 func (s *Server) UpdateCaches(ctx context.Context, in *RPCCaches) (*RPCReply, error) {
 	ver := int(in.GetVersion())

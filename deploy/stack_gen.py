@@ -7,6 +7,7 @@ ports = {
     'batcher': '9000',
     'batcher_lb': '9000',
     'cache': '6380',
+    'storage': '27017',
 }
 
 mongodb_host = ''
@@ -59,6 +60,7 @@ def generate(outfile_name):
         replace_port(stack_file, 'maintainer')
         replace_port(stack_file, 'batcher_lb')
         replace_port(stack_file, 'cache')
+        replace_port(stack_file, 'storage')
 
     with open(outfile_name, 'w') as outfile:
         ordered_dump(stack_file, outfile, default_flow_style=False)

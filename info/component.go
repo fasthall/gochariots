@@ -113,7 +113,7 @@ func report(host, path string, p misc.Params) {
 			if err != nil {
 				time.Sleep(1 * time.Second)
 				fmt.Println("Couldn't report to the controller")
-				logrus.WithError(err).Error("couldn't report to the controller")
+				logrus.WithError(err).Warning("couldn't report to the controller")
 			}
 		}
 		fmt.Println("Reported to controller")

@@ -1,6 +1,7 @@
 syntax = "proto3";
 
 service Maintainer {
+    rpc UpdateMongos (RPCMongos) returns (RPCReply) {}
     rpc UpdateCaches (RPCCaches) returns (RPCReply) {}
     rpc ReceiveRecords (RPCRecords) returns (RPCReply) {}
     rpc UpdateBatchers (RPCBatchers) returns (RPCReply) {}
@@ -45,6 +46,11 @@ message RPCLId {
 }
 
 message RPCCaches {
+    uint32 version = 1;
+    repeated string hosts = 2;
+}
+
+message RPCMongos {
     uint32 version = 1;
     repeated string hosts = 2;
 }

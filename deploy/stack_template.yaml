@@ -80,6 +80,17 @@ services:
       - ./logs:/go/logs
     networks:
       - cluster
+  storage:
+    image: fasthall/mongo-for-lowgo
+    entrypoint: docker-entrypoint.sh
+    depends_on:
+    - controller
+    volumes:
+    - ./config:/config
+    ports:
+    - storage_port:storage_port
+    networks:
+    - cluster
   batcher_lb:
     image: dockercloud/haproxy
     depends_on:
