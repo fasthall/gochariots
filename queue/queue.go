@@ -38,7 +38,7 @@ var benchmark misc.Benchmark
 
 // Token is used by queues to ensure causality of LId assignment
 type Token struct {
-	LastLId uint32
+	LastLID uint32
 }
 
 type Server struct{}
@@ -100,7 +100,7 @@ func (s *Server) ReceiveRecords(ctx context.Context, in *RPCRecords) (*RPCReply,
 
 func (s *Server) ReceiveToken(ctx context.Context, in *RPCToken) (*RPCReply, error) {
 	token := Token{
-		LastLId: in.Lastlid,
+		LastLID: in.Lastlid,
 	}
 	tokenArrival(token)
 	return &RPCReply{Message: "ok"}, nil
@@ -156,7 +156,7 @@ func InitQueue(hasToken bool, querySize, benchmarkAccuracy int) {
 	bufferedRecord = []record.Record{}
 	if hasToken {
 		var token Token
-		token.InitToken(0)
+		token.LastLID = 0
 		tokenArrival(token)
 	}
 	if hasToken {
@@ -164,11 +164,6 @@ func InitQueue(hasToken bool, querySize, benchmarkAccuracy int) {
 	} else {
 		logrus.WithField("token", false).Info("initialized")
 	}
-}
-
-// InitToken intializes a token. The IDs info should be accuired from log maintainers
-func (token *Token) InitToken(lastLId uint32) {
-	token.LastLId = lastLId
 }
 
 // recordsArrival deals with the records received from filters
@@ -183,28 +178,28 @@ func recordsArrival(records []record.Record) {
 // For each deferred records in the token, check if the current max TOId in shared log satisfies the dependency.
 // If so, the deferred records are sent to the log maintainers.
 func tokenArrival(token Token) {
-	lastLId := token.LastLId
+	lastLID := token.LastLID
 	// two phase append
 	bufMutex.Lock()
 	// build queries
 	if len(bufferedRecord) > 0 {
 		// ask cache
-		// exist, nonexist, err := mongodb.ParellelQueryDBRecord(bufferedRecord, querySizeLimit)
-		// if err != nil {
-		// 	logrus.WithError(err).Error("couldn't connect to DB")
-		// }
-		// bufferedRecord = nonexist
-		// // update LId for those records with existing parent
-		// if len(exist) > 0 {
-		// 	for i := range exist {
-		// 		lastLId++
-		// 		exist[i].LId = lastLId
-		// 	}
-		// 	dispatchRecords(exist)
-		// }
+		exist, nonexist, err := queryCaches(bufferedRecord)
+		if err != nil {
+			logrus.WithError(err).Error("couldn't connect to DB")
+		}
+		bufferedRecord = nonexist
+		// update LId for those records with existing parent
+		if len(exist) > 0 {
+			for i := range exist {
+				lastLID++
+				exist[i].LID = lastLID
+			}
+			dispatchRecords(exist)
+		}
 	}
 	bufMutex.Unlock()
-	token.LastLId = lastLId
+	token.LastLID = lastLID
 	go passToken(&token)
 }
 
@@ -215,7 +210,7 @@ func passToken(token *Token) {
 		tokenArrival(*token)
 	} else {
 		rpcToken := RPCToken{
-			Lastlid: token.LastLId,
+			Lastlid: token.LastLID,
 		}
 		nextQueueClient.ReceiveToken(context.Background(), &rpcToken)
 	}
@@ -255,4 +250,51 @@ func sendToMaintainer(records []record.Record, maintainerID int) {
 		benchmark.Logging(len(records))
 		logrus.WithFields(logrus.Fields{"records": len(records), "id": maintainerID}).Debug("sent the records to maintainer")
 	}
+}
+
+func queryCache(records []record.Record, cacheID int) ([]bool, error) {
+	rpcIDs := cache.RPCIDs{}
+	for _, record := range records {
+		rpcIDs.Ids = append(rpcIDs.Ids, record.Parent)
+	}
+	result, err := cacheClient[cacheID].Get(context.Background(), &rpcIDs)
+	if err != nil {
+		return nil, err
+	}
+	return result.Exists, nil
+}
+
+func queryCaches(records []record.Record) ([]record.Record, []record.Record, error) {
+	poolSize := len(cacheClient)
+	partialRecords := make([][]record.Record, poolSize)
+	results := make([][]bool, poolSize)
+	for _, record := range records {
+		clientID := misc.HashID(record.Parent, poolSize)
+		partialRecords[clientID] = append(partialRecords[clientID], record)
+	}
+	wg := sync.WaitGroup{}
+	wg.Add(poolSize)
+	for i := 0; i < poolSize; i++ {
+		go func() {
+			var err error
+			results[i], err = queryCache(partialRecords[i], poolSize)
+			if err != nil {
+				logrus.WithError(err).Error("couldn't query cache")
+			}
+			wg.Done()
+		}()
+	}
+	wg.Wait()
+	exists := []record.Record{}
+	nonexists := []record.Record{}
+	for i := 0; i < poolSize; i++ {
+		for j := range results[i] {
+			if results[i][j] {
+				exists = append(exists, partialRecords[i][j])
+			} else {
+				nonexists = append(nonexists, partialRecords[i][j])
+			}
+		}
+	}
+	return exists, nonexists, nil
 }

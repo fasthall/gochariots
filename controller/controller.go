@@ -90,10 +90,9 @@ func addApps(c *gin.Context) {
 	apps = append(apps, c.Query("host"))
 	appsVersion++
 	mutex.Unlock()
+	c.String(http.StatusOK, c.Query("host")+" added")
 
 	go informAppBatcher(c.Query("host"))
-
-	c.String(http.StatusOK, c.Query("host")+" added")
 }
 
 func informAppBatcher(host string) {
@@ -141,6 +140,8 @@ func addBatchers(c *gin.Context) {
 	batchers = append(batchers, c.Query("host"))
 	batchersVersion++
 	mutex.Unlock()
+	c.String(http.StatusOK, c.Query("host")+" added")
+
 	for _, host := range apps {
 		informAppBatcher(host)
 	}
@@ -156,7 +157,6 @@ func addBatchers(c *gin.Context) {
 		}
 		logrus.WithFields(logrus.Fields{"id": i, "queues": queues}).Info("successfully informed batcher about queue list")
 	}
-	c.String(http.StatusOK, c.Query("host")+" added")
 }
 
 func getBatchers(c *gin.Context) {
@@ -184,8 +184,8 @@ func addQueue(c *gin.Context) {
 	queues = append(queues, c.Query("host"))
 	queuesVersion++
 	mutex.Unlock()
-
 	c.String(http.StatusOK, c.Query("host")+" added")
+
 	// update "next queue" for each queue
 	for i := range queueClient {
 		host := queues[(i+1)%len(queues)]
@@ -201,12 +201,12 @@ func addQueue(c *gin.Context) {
 		logrus.WithFields(logrus.Fields{"id": i, "queue": queues[(i+1)%len(queues)]}).Info("successfully informed queue about next queue host")
 	}
 	// update batchers about queues
-	for i, cli := range batcherClient {
+	for i := range batcherClient {
 		rpcQueues := batcherrpc.RPCQueues{
 			Version: queuesVersion,
 			Queues:  queues,
 		}
-		_, err := cli.UpdateQueue(context.Background(), &rpcQueues)
+		_, err := batcherClient[i].UpdateQueue(context.Background(), &rpcQueues)
 		if err != nil {
 			logrus.WithField("batcherID", i).WithError(err).Error("couldn't send new queue host")
 			panic("failing to update cluster may cause unexpected error")
@@ -267,12 +267,12 @@ func addMaintainer(c *gin.Context) {
 	c.String(http.StatusOK, c.Query("host")+" added")
 
 	// update queues' maintainer list
-	for i, cli := range queueClient {
+	for i := range queueClient {
 		rpcMaintainers := queue.RPCMaintainers{
 			Version:    maintainersVersion,
 			Maintainer: maintainers,
 		}
-		_, err := cli.UpdateMaintainers(context.Background(), &rpcMaintainers)
+		_, err := queueClient[i].UpdateMaintainers(context.Background(), &rpcMaintainers)
 		if err != nil {
 			logrus.WithField("id", i).Error("couldn't send maintainer list to queue")
 			panic("failing to update cluster may cause unexpected error")
@@ -341,18 +341,7 @@ func addCache(c *gin.Context) {
 	caches = append(caches, c.Query("host"))
 	cachesVersion++
 	mutex.Unlock()
-
-	// inform new cache about storage list
-	rpcStorages := cache.RPCStorages{
-		Version: storagesVersion,
-		Hosts:   storages,
-	}
-	_, err = cli.UpdateStorage(context.Background(), &rpcStorages)
-	if err != nil {
-		logrus.WithError(err).Error("couldn't send storage list to cache")
-		panic("failing to update cluster may cause unexpected error")
-	}
-	logrus.WithField("storages", storages).Info("successfully informed cache about storage list")
+	c.String(http.StatusOK, c.Query("host")+" added")
 
 	// update queues' redisCaches list
 	for i, cli := range queueClient {
@@ -382,7 +371,17 @@ func addCache(c *gin.Context) {
 		logrus.WithField("caches", caches).Info("successfully informed maintainers about cache list")
 	}
 
-	c.String(http.StatusOK, c.Query("host")+" added")
+	// inform new cache about storage list
+	rpcStorages := cache.RPCStorages{
+		Version: storagesVersion,
+		Hosts:   storages,
+	}
+	_, err = cli.UpdateStorage(context.Background(), &rpcStorages)
+	if err != nil {
+		logrus.WithError(err).Error("couldn't send storage list to cache")
+		panic("failing to update cluster may cause unexpected error")
+	}
+	logrus.WithField("storages", storages).Info("successfully informed cache about storage list")
 }
 
 func getCaches(c *gin.Context) {
@@ -402,6 +401,7 @@ func addStorage(c *gin.Context) {
 	storages = append(storages, c.Query("host"))
 	storagesVersion++
 	mutex.Unlock()
+	c.String(http.StatusOK, c.Query("host")+" added")
 
 	// update maintainers' redisCaches list
 	for _, cli := range maintainerClient {
@@ -417,8 +417,6 @@ func addStorage(c *gin.Context) {
 		}
 		logrus.WithField("storages", storages).Info("successfully informed maintainers about storage list")
 	}
-
-	c.String(http.StatusOK, c.Query("host")+" added")
 }
 
 func getStorages(c *gin.Context) {
@@ -443,6 +441,7 @@ func addRemoteBatcher(c *gin.Context) {
 	remoteBatcher[dc] = c.Query("host")
 	remoteBatcherVer++
 	mutex.Unlock()
+	c.String(http.StatusOK, "remoteBatcher["+c.Query("dc")+"] = "+c.Query("host")+" updated")
 
 	for i, cli := range maintainerClient {
 		rpcBatchers := maintainer.RPCBatchers{
@@ -456,7 +455,6 @@ func addRemoteBatcher(c *gin.Context) {
 		}
 		logrus.WithField("batchers", remoteBatcher).Info("successfully informed maintainers about new remote batchers")
 	}
-	c.String(http.StatusOK, "remoteBatcher["+c.Query("dc")+"] = "+c.Query("host")+" updated")
 }
 
 func getRemoteBatcher(c *gin.Context) {

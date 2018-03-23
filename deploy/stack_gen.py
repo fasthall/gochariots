@@ -10,8 +10,6 @@ ports = {
     'storage': '27017',
 }
 
-mongodb_host = ''
-
 def ordered_load(stream, Loader=yaml.Loader, object_pairs_hook=OrderedDict):
     class OrderedLoader(Loader):
         pass
@@ -47,7 +45,6 @@ def replace_port(stack_file, service):
         for i in range(len(stack_file['services'][service]['environment'])):
             if service in ports:
                 stack_file['services'][service]['environment'][i] = stack_file['services'][service]['environment'][i].replace(port_name, ports[service])
-            stack_file['services'][service]['environment'][i] = stack_file['services'][service]['environment'][i].replace('mongodb_host', mongodb_host)
 
 def generate(outfile_name):
     with open('stack_template.yaml', 'r') as infile:

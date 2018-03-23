@@ -36,7 +36,6 @@ services:
     environment:
       - TCP_PORTS=batcher_port
       - SERVICE_PORTS=batcher_port
-      - MONGODB_HOST=mongodb_host
     networks:
       - cluster
     deploy:
@@ -49,8 +48,6 @@ services:
     depends_on:
       - queue
       - controller
-    environment:
-      - MONGODB_HOST=mongodb_host
     volumes:
       - ./config:/go/config
       - ./logs:/go/logs
@@ -61,8 +58,6 @@ services:
     entrypoint: gochariots queue --no-hold -f config/config.yaml -i --benchmark_accuracy 10000
     depends_on:
       - controller
-    environment:
-      - MONGODB_HOST=mongodb_host
     volumes:
       - ./config:/go/config
       - ./logs:/go/logs
@@ -73,8 +68,6 @@ services:
     entrypoint: gochariots maintainer -f config/config.yaml -i --mongodb --benchmark_accuracy 10000
     depends_on:
       - controller
-    environment:
-      - MONGODB_HOST=mongodb_host
     volumes:
       - ./config:/go/config
       - ./logs:/go/logs
