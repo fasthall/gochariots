@@ -184,18 +184,19 @@ func tokenArrival(token Token) {
 	// build queries
 	if len(bufferedRecord) > 0 {
 		// ask cache
-		exist, nonexist, err := queryCaches(bufferedRecord)
+		exists, nonexists, err := queryCaches(bufferedRecord)
 		if err != nil {
 			logrus.WithError(err).Error("couldn't connect to DB")
 		}
-		bufferedRecord = nonexist
+		bufferedRecord = nonexists
 		// update LId for those records with existing parent
-		if len(exist) > 0 {
-			for i := range exist {
+		if len(exists) > 0 {
+			for i := range exists {
 				lastLID++
-				exist[i].LID = lastLID
+				exists[i].LID = lastLID
+				exists[i].Timestamp = time.Now().Unix()
 			}
-			dispatchRecords(exist)
+			dispatchRecords(exists)
 		}
 	}
 	bufMutex.Unlock()
@@ -235,6 +236,7 @@ func sendToMaintainer(records []record.Record, maintainerID int) {
 	for i, r := range records {
 		tmp := maintainer.RPCRecord{
 			Id:        r.ID,
+			Lid:       r.LID,
 			Parent:    r.Parent,
 			Timestamp: r.Timestamp,
 			Host:      r.Host,
@@ -265,19 +267,27 @@ func queryCache(records []record.Record, cacheID int) ([]bool, error) {
 }
 
 func queryCaches(records []record.Record) ([]record.Record, []record.Record, error) {
+	exists := []record.Record{}
+	nonexists := []record.Record{}
+
 	poolSize := len(cacheClient)
 	partialRecords := make([][]record.Record, poolSize)
 	results := make([][]bool, poolSize)
 	for _, record := range records {
-		clientID := misc.HashID(record.Parent, poolSize)
-		partialRecords[clientID] = append(partialRecords[clientID], record)
+		if record.Parent == "" {
+			exists = append(exists, record)
+		} else {
+			clientID := misc.HashID(record.Parent, poolSize)
+			partialRecords[clientID] = append(partialRecords[clientID], record)
+		}
 	}
 	wg := sync.WaitGroup{}
 	wg.Add(poolSize)
 	for i := 0; i < poolSize; i++ {
+		j := i
 		go func() {
 			var err error
-			results[i], err = queryCache(partialRecords[i], poolSize)
+			results[j], err = queryCache(partialRecords[j], j)
 			if err != nil {
 				logrus.WithError(err).Error("couldn't query cache")
 			}
@@ -285,8 +295,6 @@ func queryCaches(records []record.Record) ([]record.Record, []record.Record, err
 		}()
 	}
 	wg.Wait()
-	exists := []record.Record{}
-	nonexists := []record.Record{}
 	for i := 0; i < poolSize; i++ {
 		for j := range results[i] {
 			if results[i][j] {

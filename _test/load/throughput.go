@@ -10,7 +10,7 @@ import (
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 
 	"github.com/fasthall/gochariots/batcher/batcherrpc"
-	"github.com/satori/uuid"
+	"github.com/google/uuid"
 	"google.golang.org/grpc"
 )
 
@@ -72,9 +72,9 @@ func main() {
 		seed := make([]string, batchSize)
 		for i := 0; i < batchSize; i++ {
 			for l := range id {
-				id[l][i] = uuid.NewV4().String()
+				id[l][i] = uuid.New().String()
 			}
-			seed[i] = uuid.NewV4().String()
+			seed[i] = uuid.New().String()
 		}
 
 		for time.Since(lastSent) < waitTime {
