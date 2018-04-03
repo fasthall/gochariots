@@ -1,6 +1,7 @@
 package queue
 
 import (
+	"math"
 	"math/rand"
 	"sync"
 	"time"
@@ -247,7 +248,7 @@ func sendToMaintainer(records []record.Record, maintainerID int) {
 	}
 	_, err := maintainersClient[maintainerID].ReceiveRecords(context.Background(), &rpcRecords)
 	if err != nil {
-		logrus.WithError(err).Error("failed to connect to maintainer", len(records))
+		logrus.WithError(err).Error("failed to connect to maintainer ", len(records))
 	} else {
 		benchmark.Logging(len(records))
 		logrus.WithFields(logrus.Fields{"records": len(records), "id": maintainerID}).Debug("sent the records to maintainer")
@@ -267,6 +268,39 @@ func queryCache(records []record.Record, cacheID int) ([]bool, error) {
 }
 
 func queryCaches(records []record.Record) ([]record.Record, []record.Record, error) {
+	exists := []record.Record{}
+	nonexists := []record.Record{}
+	wg := sync.WaitGroup{}
+	wg.Add(int(math.Ceil(float64(len(records)) / float64(querySizeLimit))))
+	mutex := sync.Mutex{}
+
+	for i := 0; i < len(records); i += querySizeLimit {
+		li := i
+		ri := i + querySizeLimit
+		if len(records) < ri {
+			ri = len(records)
+		}
+		go func(li, ri int) error {
+			partialExists, partialNonexists, err := queryPartialCaches(records[li:ri])
+			if err != nil {
+				logrus.WithError(err).Error("couldn't query partial cache, len=", ri-li)
+				wg.Done()
+				return err
+			}
+			mutex.Lock()
+			exists = append(exists, partialExists...)
+			nonexists = append(nonexists, partialNonexists...)
+			mutex.Unlock()
+			wg.Done()
+			return nil
+		}(li, ri)
+	}
+	wg.Wait()
+
+	return exists, nonexists, nil
+}
+
+func queryPartialCaches(records []record.Record) ([]record.Record, []record.Record, error) {
 	exists := []record.Record{}
 	nonexists := []record.Record{}
 
@@ -289,7 +323,7 @@ func queryCaches(records []record.Record) ([]record.Record, []record.Record, err
 			var err error
 			results[j], err = queryCache(partialRecords[j], j)
 			if err != nil {
-				logrus.WithError(err).Error("couldn't query cache")
+				logrus.WithError(err).Error("couldn't query partial cache, len=", len(partialRecords[j]))
 			}
 			wg.Done()
 		}()
