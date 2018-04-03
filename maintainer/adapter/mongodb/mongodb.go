@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	"github.com/fasthall/gochariots/record"
-	"github.com/satori/go.uuid"
+	"github.com/google/uuid"
 	mgo "gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 )
@@ -116,7 +116,7 @@ func PutTOIDRecord(r record.TOIDRecord) error {
 	c := sessionCopy.DB(DB_NAME).C(COLLECTION_RECORD)
 
 	if r.Id == "" {
-		r.Id = uuid.NewV4().String()
+		r.Id = uuid.New().String()
 	}
 	return c.Insert(&r)
 }

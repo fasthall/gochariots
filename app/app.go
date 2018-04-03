@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/fasthall/gochariots/batcher/batcherrpc"
-	"github.com/satori/go.uuid"
+	"github.com/google/uuid"
 
 	"google.golang.org/grpc"
 
@@ -87,7 +87,7 @@ func postRecord(c *gin.Context) {
 		Seed:   jsonRecord.Seed,
 	}
 	if r.Id == "" {
-		r.Id = uuid.NewV4().String()
+		r.Id = uuid.New().String()
 	}
 
 	hostID := rand.Intn(len(batcherPool))
