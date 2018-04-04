@@ -268,6 +268,8 @@ func queryCache(records []record.Record, cacheID int) ([]bool, error) {
 }
 
 func queryCaches(records []record.Record) ([]record.Record, []record.Record, error) {
+	start := time.Now()
+
 	exists := []record.Record{}
 	nonexists := []record.Record{}
 	wg := sync.WaitGroup{}
@@ -297,6 +299,7 @@ func queryCaches(records []record.Record) ([]record.Record, []record.Record, err
 	}
 	wg.Wait()
 
+	logrus.Debug("Query ", len(records), " records took ", time.Since(start))
 	return exists, nonexists, nil
 }
 

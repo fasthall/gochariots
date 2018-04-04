@@ -2,6 +2,7 @@ package maintainer
 
 import (
 	"hash/crc32"
+	"time"
 
 	"github.com/fasthall/gochariots/cache"
 	"github.com/fasthall/gochariots/maintainer/adapter/mongodb"
@@ -133,7 +134,10 @@ func InitLogMaintainer(benchmarkAccuracy int) {
 
 // Tell cache that these IDs are in the storage
 func notifyCache(ids [][]string) error {
+	start := time.Now()
+	cnt := 0
 	for i, partial := range ids {
+		cnt += len(partial)
 		rpcIDs := cache.RPCIDs{
 			Ids: partial,
 		}
@@ -142,5 +146,7 @@ func notifyCache(ids [][]string) error {
 			logrus.WithError(err).Error("failed to update cache")
 		}
 	}
+
+	logrus.Debug("Notify cache about ", cnt, "IDs took ", time.Since(start))
 	return nil
 }
