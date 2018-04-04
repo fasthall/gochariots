@@ -117,7 +117,7 @@ func (token *TOIDToken) InitToken(maxTOId []uint32) {
 // recordsArrival deals with the records received from filters
 func TOIDrecordsArrival(records []record.TOIDRecord) {
 	logrus.WithFields(logrus.Fields{"timestamp": time.Now(), "counts": len(records)}).Debug("TOIDrecordsArrival")
-	bufMutex.Lock()
+	bufferedMutex.Lock()
 	for _, r := range records {
 		if r.Host == uint32(info.ID) {
 			sameDCBuffered = append(sameDCBuffered, r)
@@ -125,7 +125,7 @@ func TOIDrecordsArrival(records []record.TOIDRecord) {
 			heap.Push(&TOIDbuffered[r.Host], r)
 		}
 	}
-	bufMutex.Unlock()
+	bufferedMutex.Unlock()
 }
 
 // TokenArrivalCarryDeferred function deals with token received.
@@ -133,7 +133,7 @@ func TOIDrecordsArrival(records []record.TOIDRecord) {
 // If so, the deferred records are sent to the log maintainers.
 func TokenArrivalCarryDeferred(token TOIDToken) {
 	// logrus.WithField("timestamp", time.Now()).Debug("TokenArrivalCarryDeferred")
-	bufMutex.Lock()
+	bufferedMutex.Lock()
 	// append buffered records to the token in order
 	for host := range TOIDbuffered {
 		for TOIDbuffered[host].Len() > 0 {
@@ -143,7 +143,7 @@ func TokenArrivalCarryDeferred(token TOIDToken) {
 	}
 	token.DeferredRecords = append(token.DeferredRecords, sameDCBuffered...)
 	sameDCBuffered = []record.TOIDRecord{}
-	bufMutex.Unlock()
+	bufferedMutex.Unlock()
 	// put the deffered records with dependency satisfied into dispatch slice
 
 	dispatch := []record.TOIDRecord{}
@@ -196,7 +196,7 @@ func TokenArrivalCarryDeferred(token TOIDToken) {
 func TokenArrivalBufferDeferred(token TOIDToken) {
 	// logrus.WithField("timestamp", time.Now()).Debug("TokenArrivalBufferDeferred")
 	dispatch := []record.TOIDRecord{}
-	bufMutex.Lock()
+	bufferedMutex.Lock()
 	for host := range TOIDbuffered {
 		for TOIDbuffered[host].Len() > 0 {
 			r := &TOIDbuffered[host][0]
@@ -221,7 +221,7 @@ func TokenArrivalBufferDeferred(token TOIDToken) {
 		}
 	}
 	sameDCBuffered = sameDCBuffered[:head]
-	bufMutex.Unlock()
+	bufferedMutex.Unlock()
 	// put the deffered records with dependency satisfied into dispatch slice
 	if len(dispatch) > 0 {
 		// assign LId and send to log maintainers

@@ -18,8 +18,10 @@ import (
 	"golang.org/x/net/context"
 )
 
-var bufMutex sync.Mutex
+var bufferedMutex sync.Mutex
 var bufferedRecord []record.Record
+var readyMutex sync.Mutex
+var readyRecord []record.Record
 var maintainersClient []maintainer.MaintainerClient
 var maintainersHost []string
 var maintainersVer int
@@ -155,6 +157,7 @@ func InitQueue(hasToken bool, querySize, benchmarkAccuracy int) {
 	querySizeLimit = querySize
 	benchmark = misc.NewBenchmark(benchmarkAccuracy)
 	bufferedRecord = []record.Record{}
+	readyRecord = []record.Record{}
 	if hasToken {
 		var token Token
 		token.LastLID = 0
@@ -165,14 +168,32 @@ func InitQueue(hasToken bool, querySize, benchmarkAccuracy int) {
 	} else {
 		logrus.WithField("token", false).Info("initialized")
 	}
+	go queryLoop()
+}
+
+func queryLoop() {
+	for {
+		bufferedMutex.Lock()
+		// ask cache
+		exists, nonexists, err := queryCaches(bufferedRecord)
+		if err != nil {
+			logrus.WithError(err).Error("couldn't connect to DB")
+		}
+		bufferedRecord = nonexists
+		bufferedMutex.Unlock()
+
+		readyMutex.Lock()
+		readyRecord = append(readyRecord, exists...)
+		readyMutex.Unlock()
+	}
 }
 
 // recordsArrival deals with the records received from filters
 func recordsArrival(records []record.Record) {
 	logrus.WithField("timestamp", time.Now()).Debug("recordsArrival")
-	bufMutex.Lock()
+	bufferedMutex.Lock()
 	bufferedRecord = append(bufferedRecord, records...)
-	bufMutex.Unlock()
+	bufferedMutex.Unlock()
 }
 
 // tokenArrival function deals with token received.
@@ -180,27 +201,16 @@ func recordsArrival(records []record.Record) {
 // If so, the deferred records are sent to the log maintainers.
 func tokenArrival(token Token) {
 	lastLID := token.LastLID
-	// two phase append
-	bufMutex.Lock()
-	// build queries
-	if len(bufferedRecord) > 0 {
-		// ask cache
-		exists, nonexists, err := queryCaches(bufferedRecord)
-		if err != nil {
-			logrus.WithError(err).Error("couldn't connect to DB")
+	readyMutex.Lock()
+	if len(readyRecord) > 0 {
+		for i := range readyRecord {
+			lastLID++
+			readyRecord[i].LID = lastLID
+			readyRecord[i].Timestamp = time.Now().Unix()
 		}
-		bufferedRecord = nonexists
-		// update LId for those records with existing parent
-		if len(exists) > 0 {
-			for i := range exists {
-				lastLID++
-				exists[i].LID = lastLID
-				exists[i].Timestamp = time.Now().Unix()
-			}
-			dispatchRecords(exists)
-		}
+		readyRecord = dispatchRecords(readyRecord)
 	}
-	bufMutex.Unlock()
+	readyMutex.Unlock()
 	token.LastLID = lastLID
 	go passToken(&token)
 }
@@ -219,7 +229,7 @@ func passToken(token *Token) {
 }
 
 // dispatchRecords sends the ready records to log maintainers
-func dispatchRecords(records []record.Record) {
+func dispatchRecords(records []record.Record) []record.Record {
 	for i := 0; i < len(records); i += maintainerPacketSize {
 		end := i + maintainerPacketSize
 		if len(records) < end {
@@ -227,6 +237,7 @@ func dispatchRecords(records []record.Record) {
 		}
 		go sendToMaintainer(records[i:end], rand.Intn(len(maintainersClient)))
 	}
+	return []record.Record{}
 }
 
 func sendToMaintainer(records []record.Record, maintainerID int) {
@@ -268,6 +279,10 @@ func queryCache(records []record.Record, cacheID int) ([]bool, error) {
 }
 
 func queryCaches(records []record.Record) ([]record.Record, []record.Record, error) {
+	if len(records) == 0 {
+		return []record.Record{}, []record.Record{}, nil
+	}
+
 	start := time.Now()
 
 	exists := []record.Record{}

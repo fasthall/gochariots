@@ -147,6 +147,6 @@ func notifyCache(ids [][]string) error {
 		}
 	}
 
-	logrus.Debug("Notify cache about ", cnt, "IDs took ", time.Since(start))
+	logrus.Debug("Notify cache about ", cnt, " IDs took ", time.Since(start))
 	return nil
 }
